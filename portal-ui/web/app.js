@@ -266,8 +266,8 @@ async function claude() {
   claudeLoad();
   view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cnew">Neuer Chat</button>') +
     '<div class="cwrap"><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
-    '<div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="server">Server-Home</option></select></label>' +
-    '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option></select></label>' +
+    '<div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
+    '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option></select></label>' +
     '<label>Modell<select name="model"><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
     '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude …" required></textarea><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();

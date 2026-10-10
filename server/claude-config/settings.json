@@ -1,0 +1,11 @@
+{
+  "model": "sonnet",
+  "fallbackModel": ["haiku"],
+  "permissions": {
+    "deny": [
+      "Read(**/.env*)", "Read(~/.ssh/**)", "Read(/etc/ma-home/**)", "Read(~/.claude/.credentials.json)", "Read(~/.claude/secrets/**)",
+      "Bash(sudo:*)", "Bash(su:*)", "Bash(rm -rf *)", "Bash(rm -fr *)", "Bash(mkfs*)", "Bash(dd *)", "Bash(shutdown*)", "Bash(reboot*)",
+      "Bash(git push --force*)", "Bash(*.claude/secrets*)", "Bash(*.ssh/*)", "Bash(*credentials*)"
+    ]
+  }
+}

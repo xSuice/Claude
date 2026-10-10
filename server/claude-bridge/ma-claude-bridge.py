@@ -17,6 +17,7 @@ DIRS = {
     'notizen': '/srv/ma-home/library/vault-notizen',
     'bibliothek': '/srv/ma-home/library',
     'server': '/home/andrew',
+    'maserver': '/home/andrew/MA-Server',
 }
 READ_BASH = [f'Bash({c}:*)' for c in (
     'ls', 'cat', 'head', 'tail', 'df', 'du', 'uptime', 'free', 'ps', 'ss', 'systemctl status', 'systemctl list-timers',
@@ -24,6 +25,8 @@ READ_BASH = [f'Bash({c}:*)' for c in (
 MODES = {
     'lesen': ('default', ['Read', 'Grep', 'Glob'] + READ_BASH),
     'notizen': ('acceptEdits', ['Read', 'Grep', 'Glob', 'Edit', 'Write'] + READ_BASH),
+    # wie am PC: Dateien aendern und beliebige Befehle als andrew (ohne sudo). Gesperrtes steht in ~/.claude/settings.json (deny).
+    'voll': ('acceptEdits', ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'Skill', 'Task']),
 }
 MODELS = ('haiku', 'sonnet', 'opus')
 SESSION = re.compile(r'[0-9a-f-]{36}\Z')
@@ -48,7 +51,7 @@ class Handler(socketserver.StreamRequestHandler):
             if not cwd or not mode:
                 return self.reply({'type': 'bridge_error', 'error': 'Ungueltige Auswahl'})
             args = [CLAUDE, '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--model', model,
-                    '--permission-mode', mode[0], '--allowedTools', ','.join(mode[1]), '--max-turns', '12']
+                    '--permission-mode', mode[0], '--allowedTools', ','.join(mode[1]), '--max-turns', '30' if req.get('mode') == 'voll' else '12']
             sid = req.get('session')
             if isinstance(sid, str) and SESSION.fullmatch(sid):
                 args += ['--resume', sid]

@@ -24,6 +24,19 @@ for u in $USERS; do
   if mountpoint -q /mnt/ma-backup; then mountpoint -q "$D/Backup-USB" || mount "$D/Backup-USB"; mount -o remount,bind,ro "$D/Backup-USB"; fi
   echo "== $u: Inhalt =="; ls -la "$D" | head -20
 done
+
+echo "== Filebrowser: alles sichtbar (Bibliothek bearbeitbar, Backup nur lesen) =="
+FB=/srv/ma-home/files
+for d in inbox documents media archive review; do
+  [ -d /srv/ma-home/library/$d ] && chmod -R g+rwX /srv/ma-home/library/$d && find /srv/ma-home/library/$d -type d -exec chmod g+s {} +
+done
+install -d -o ma-web -g ma-web -m 750 "$FB/Bibliothek"
+grep -q " $FB/Bibliothek " /etc/fstab || echo "/srv/ma-home/library $FB/Bibliothek none bind,nofail 0 0" >> /etc/fstab
+systemctl daemon-reload
+mountpoint -q "$FB/Bibliothek" || mount "$FB/Bibliothek"
+if mountpoint -q "$FB/Backup-USB"; then echo "Backup-USB: schon eingehaengt (nur lesen)"; fi
+docker restart $(docker ps --format '{{.Names}}' | grep -i filebrowser | head -1) >/dev/null && echo "Filebrowser neu gestartet"
+ls -la "$FB" | head -20
 systemctl restart ma-home-web
 sleep 2
 curl -s -o /dev/null -w "Portal intern: HTTP %{http_code}\n" http://127.0.0.1:18765/healthz

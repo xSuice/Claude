@@ -27,7 +27,8 @@ Environment=HOME=/home/andrew
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable --now ma-claude-bridge
+systemctl enable ma-claude-bridge
+systemctl restart ma-claude-bridge
 sleep 2
 systemctl is-active ma-claude-bridge
 ls -l /run/ma-claude/
