@@ -67,7 +67,7 @@ const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'Gute N
 /* ---------- Lage (Übersicht, alles anklickbar) ---------- */
 const KEYNOTES = [
   ['Übersicht', 'Übersicht.md', 'Startseite des Vaults'], ['Fristen', '_Claude-Memory/Dienste/Fristen-Uebersicht.md', 'Was ansteht'],
-  ['Mail-Tagesbericht', '_Claude-Memory/Dienste/Mail-Tagesbericht.md', 'Neues in deinen Mails'], ['Server-Abgleich', '_Claude-Memory/Dienste/Server-Abgleich.md', 'Was ist neu auf dem Server'],
+  ['Mail-Tagesbericht', '_Claude-Memory/Dienste/Mail-Tagesbericht.md', 'Neues in deinen Mails'], ['Morgenbrief', '_Claude-Memory/Dienste/Morgenbrief.md', 'Heute in Kürze'], ['Server-Abgleich', '_Claude-Memory/Dienste/Server-Abgleich.md', 'Was ist neu auf dem Server'],
   ['MA-Server Zentrale', '30 Technik/MA-Server/MA-Server Zentrale.md', 'Stand der Zentrale'], ['Profil', '_Claude-Memory/Profil.md', 'Wer du bist, wie wir arbeiten'],
   ['Crimson Zone', '20 Projekte/Crimson Zone/Crimson Zone.md', 'Projekt'], ['Eternal Bonds', '20 Projekte/Projekt Schmejd/Projekt Schmejd.md', 'Projekt']];
 async function home() {
@@ -301,6 +301,11 @@ async function claudeSend(prompt, opts) {
   S.busy = false; claudeSave(); claudeRender();
   const b = $('#csend'); if (b) b.disabled = false;
 }
+const COUNCIL = (idee) => 'AI-Council: Prüfe diese Idee aus fünf Rollen und bewerte jede Rolle mit zwei bis vier Sätzen.\n' +
+  '1. Skeptiker: Was kann schiefgehen, welche Annahmen sind ungeprüft?\n2. Grundlagen: Was ist belegt, was fehlt an Fakten (nutze meine Notizen im Vault, wenn passend)?\n' +
+  '3. Chancen: Wo steckt der größte Hebel?\n4. Außenblick: Wie sieht es für jemanden aus, der nichts über mich weiß (Leser, Kunde, Ausbilder)?\n5. Umsetzer: Konkrete nächste drei Schritte mit Aufwand.\n' +
+  'Danach eine zweite Prüfrunde: Wo widersprechen sich die Rollen? Schließe mit einer klaren Empfehlung (machen, ändern, lassen) und einer offenen Frage an mich.\n\nIdee:\n' + idee;
+
 async function claude() {
   claudeLoad();
   view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cnew">Neuer Chat</button>') +
@@ -308,7 +313,7 @@ async function claude() {
     '<div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
     '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
     '<label>Modell<select name="model"><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
-    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude …" required></textarea><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
+    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude …" required></textarea><button class="btn ghost" type="button" id="ccouncil" title="Prüft deine Idee aus fünf Rollen mit zweiter Runde">Council</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();
   $('#cnew').onclick = () => { if (claudeState.busy) return; claudeState = { msgs: [], sid: null, busy: false }; claudeSave(); claudeRender(); };
   $('#cf').onsubmit = e => {
@@ -320,6 +325,7 @@ async function claude() {
     if (f.get('mode') === 'voll_senden') e.target.mode.value = 'voll';
   };
   try { const q = sessionStorage.getItem('ma-claude-q'); if (q) { sessionStorage.removeItem('ma-claude-q'); $('#cf').prompt.value = q; setTimeout(() => $('#cf').requestSubmit(), 150); } } catch (er) { /* ohne Speicher */ }
+  $('#ccouncil').onclick = () => { const f = new FormData($('#cf')); const p = String(f.get('prompt')).trim(); if (!p || claudeState.busy) { toast('Erst die Idee ins Feld schreiben', 1); return; } $('#cf').prompt.value = ''; claudeSend(COUNCIL(p), { dir: f.get('dir'), mode: f.get('mode') === 'voll_senden' ? 'voll' : f.get('mode'), model: f.get('model') }); };
   $('#cf').prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cf').requestSubmit(); } });
 }
 
