@@ -64,7 +64,7 @@ async function home() {
   const open = tasks.filter(t => !t.done).sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1);
   const month = today().slice(0, 7);
   const sum = money.filter(m => m.date.startsWith(month)).reduce((s, m) => s + m.cents, 0) / 100;
-  const dom = me.domain.replace(/^https?:\/\/(?:[^.]+\.)?/, '').replace(/\/$/, '') || 'ma-server.duckdns.org';
+  let dom = 'ma-server.duckdns.org'; try { dom = new URL(me.domain).host || dom; } catch (e) { /* Standard */ }
   const bk = st && st.backup_status && st.backup_status.state;
   const pills = st ? `<span class="pill dot">Server online</span><span class="pill">Laufzeit ${fmtUp(st.uptime)}</span>` + (bk ? `<span class="pill ${/^OK/.test(bk) ? 'dot' : 'dot off'}">Backup: ${esc(String(bk).slice(0, 38))}</span>` : '') : '<span class="pill dot off">Status nicht abrufbar</span>';
   const bar = (p, hot) => `<div class="bar ${hot ? 'hot' : ''}"><i data-p="${Math.round(p)}"></i></div>`;
@@ -77,9 +77,8 @@ async function home() {
     <div class="card"><h2>${ico('training')} Training</h2><div class="stat">${tr.length ? esc(tr[0].exercise) : '–'}</div><div class="sub">${tr.length ? `zuletzt ${fmtDate(tr[0].date)}, ${tr[0].sets}×${tr[0].reps} ${tr[0].kg > 0 ? tr[0].kg + ' kg' : ''}` : 'noch kein Eintrag'}</div></div>
   </div>
   <div class="card mt"><h2>Dienste &amp; Apps</h2><div class="apps">
-    <a class="app" href="https://ha.${dom}" target="_blank" rel="noopener"><div class="ic c1">${ico('ha')}</div><b>Home Assistant</b><span>Smart Home</span></a>
-    <a class="app" href="https://ntfy.${dom}" target="_blank" rel="noopener"><div class="ic c3">${ico('bell')}</div><b>Benachrichtigungen</b><span>ntfy</span></a>
-    <a class="app" href="https://sync.${dom}" target="_blank" rel="noopener"><div class="ic c2">${ico('sync')}</div><b>Notizen-Sync</b><span>CouchDB</span></a>
+    <a class="app" href="https://ha.${dom}/"><div class="ic c1">${ico('ha')}</div><b>Home Assistant</b><span>Smart Home</span></a>
+    <a class="app" href="https://ntfy.${dom}/"><div class="ic c3">${ico('bell')}</div><b>Benachrichtigungen</b><span>ntfy</span></a>
     <a class="app" href="#/claude"><div class="ic c3">${ico('claude')}</div><b>Claude</b><span>Chat auf dem Server</span></a>
     <a class="app" href="#/files"><div class="ic c4">${ico('files')}</div><b>Dateien</b><span>Ablage &amp; Backup</span></a>
   </div></div>`;
@@ -249,7 +248,7 @@ async function claudeSend(prompt, opts) {
         } else if (d.type === 'result') {
           const a = asst();
           if (d.is_error) {
-            S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Einmal im Terminal: ssh -t ma-server "~/.local/bin/claude" und anmelden.' : String(d.result) });
+            S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Das geht nur einmal und nur mit deinem Konto. Auf deinem PC in PowerShell eingeben: ssh -t ma-server "~/.local/bin/claude". Danach funktioniert dieser Chat dauerhaft.' : String(d.result) });
           } else if (a && !a.t && d.result) a.t = d.result;
         } else if (d.type === 'bridge_error') {
           S.msgs.push({ r: 'e', t: d.error });
