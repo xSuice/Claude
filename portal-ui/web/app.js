@@ -64,11 +64,16 @@ function buildNav() {
 function head(title, sub, extra = '') { return `<div class="top"><div><div class="kicker">MA Home · ${esc(title)}</div><h1>${title}</h1><div class="sub">${sub || ''}</div></div>${extra}</div>`; }
 const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Hallo' : h < 22 ? 'Guten Abend' : 'Gute Nacht'; };
 
-/* ---------- Heute ---------- */
+/* ---------- Lage (Übersicht, alles anklickbar) ---------- */
+const KEYNOTES = [
+  ['Übersicht', 'Übersicht.md', 'Startseite des Vaults'], ['Fristen', '_Claude-Memory/Dienste/Fristen-Uebersicht.md', 'Was ansteht'],
+  ['Mail-Tagesbericht', '_Claude-Memory/Dienste/Mail-Tagesbericht.md', 'Neues in deinen Mails'], ['Server-Abgleich', '_Claude-Memory/Dienste/Server-Abgleich.md', 'Was ist neu auf dem Server'],
+  ['MA-Server Zentrale', '30 Technik/MA-Server/MA-Server Zentrale.md', 'Stand der Zentrale'], ['Profil', '_Claude-Memory/Profil.md', 'Wer du bist, wie wir arbeiten'],
+  ['Crimson Zone', '20 Projekte/Crimson Zone/Crimson Zone.md', 'Projekt'], ['Eternal Bonds', '20 Projekte/Projekt Schmejd/Projekt Schmejd.md', 'Projekt']];
 async function home() {
   view.innerHTML = head('Lage', new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })) + '<div class="skeleton"></div>';
-  const [st, tasks, money, tr] = await Promise.all([
-    api('/api/status').catch(() => null), items('tasks').catch(() => []), items('money').catch(() => []), items('training').catch(() => [])]);
+  const [st, tasks, money, tr, gr] = await Promise.all([
+    api('/api/status').catch(() => null), items('tasks').catch(() => []), items('money').catch(() => []), items('training').catch(() => []), loadGraph().catch(() => null)]);
   const open = tasks.filter(t => !t.done).sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1);
   const month = today().slice(0, 7);
   const sum = money.filter(m => m.date.startsWith(month)).reduce((s, m) => s + m.cents, 0) / 100;
@@ -76,21 +81,34 @@ async function home() {
   const bk = st && st.backup_status && st.backup_status.state;
   const pills = st ? `<span class="pill dot">Server online</span><span class="pill">Laufzeit ${fmtUp(st.uptime)}</span>` + (bk ? `<span class="pill ${/^OK/.test(bk) ? 'dot' : 'dot off'}">Backup: ${esc(String(bk).slice(0, 38))}</span>` : '') : '<span class="pill dot off">Status nicht abrufbar</span>';
   const bar = (p, hot) => `<div class="bar ${hot ? 'hot' : ''}"><i data-p="${Math.round(p)}"></i></div>`;
-  view.innerHTML = `<div class="hero"><h2>${greeting()}, ${esc(me.user)}.</h2><p>${open.length ? `${open.length} offene Aufgabe${open.length > 1 ? 'n' : ''}` + (open[0].due ? `, als Nächstes: ${esc(open[0].title)} (${fmtDate(open[0].due)})` : '') : 'Keine offenen Aufgaben. Alles erledigt.'}</p><div class="pills">${pills}</div></div>
-  <div class="grid">
-    ${st ? `<div class="card"><h2>Speicher</h2><div class="stat">${fmtBytes(st.disk_total - st.disk_used)} <small>frei</small></div>${bar(st.disk_used / st.disk_total * 100, st.disk_used / st.disk_total > .85)}<div class="sub">${fmtBytes(st.disk_used)} von ${fmtBytes(st.disk_total)}</div></div>
-    <div class="card"><h2>Arbeitsspeicher</h2><div class="stat">${Math.round(st.ram_used / st.ram_total * 100)}<small> %</small></div>${bar(st.ram_used / st.ram_total * 100, st.ram_used / st.ram_total > .9)}<div class="sub">${fmtBytes(st.ram_used)} von ${fmtBytes(st.ram_total)}</div></div>
-    <div class="card"><h2>Prozessor</h2><div class="stat">${Math.round(st.cpu)}<small> %</small></div>${bar(st.cpu, st.cpu > 85)}<div class="sub">${st.busy ? 'ein Auftrag läuft' : 'bereit'}</div></div>` : ''}
-    <div class="card"><h2>${ico('money')} Dieser Monat</h2><div class="stat ${sum >= 0 ? 'money-pos' : 'money-neg'}">${sum.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</div><div class="sub">Summe der Buchungen</div></div>
-    <div class="card"><h2>${ico('training')} Training</h2><div class="stat">${tr.length ? esc(tr[0].exercise) : '–'}</div><div class="sub">${tr.length ? `zuletzt ${fmtDate(tr[0].date)}, ${tr[0].sets}×${tr[0].reps} ${tr[0].kg > 0 ? tr[0].kg + ' kg' : ''}` : 'noch kein Eintrag'}</div></div>
+  const hubs = gr ? gr.nodes.map((n, i) => [n, i]).sort((a, b) => b[0].d - a[0].d).slice(0, 14) : [];
+  const taskRows = open.slice(0, 5).map(t => `<a class="row ${lvl(t.due)}" href="#/tasks"><div class="grow"><b>${esc(t.title)}</b>${t.due ? `<span>fällig ${fmtDate(t.due)}${lvl(t.due) === 'l3' ? ' · STUFE 3' : lvl(t.due) === 'l2' ? ' · STUFE 2' : ''}</span>` : ''}</div></a>`).join('');
+  view.innerHTML = head('Lage', new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })) + `
+  <a class="hero hero-link" href="#/system"><h2>${greeting()}, ${esc(me.user)}.</h2><p>${open.length ? `${open.length} offene Aufgabe${open.length > 1 ? 'n' : ''}` + (open[0].due ? `, als Nächstes: ${esc(open[0].title)} (${fmtDate(open[0].due)})` : '') : 'Keine offenen Aufgaben. Alles erledigt.'}</p><div class="pills">${pills}</div></a>
+  <form class="quick" id="qf"><input name="q" placeholder="Frag Claude auf deinem Server … (Enter)" autocomplete="off"><button class="btn">${ico('claude')} Fragen</button></form>
+  <div class="grid wide">
+    <div class="card"><h2>${ico('tasks')} Aufgaben <a class="more" href="#/tasks">alle</a></h2><div class="list">${taskRows || '<div class="empty">Keine offenen Aufgaben.</div>'}</div></div>
+    <div class="card"><h2>${ico('notes')} Wichtige Notizen</h2><div class="chips">${KEYNOTES.map(([n, p, d], i) => `<button class="chip" data-k="${i}" title="${esc(d)}">${esc(n)}</button>`).join('')}</div></div>
+    ${gr ? `<div class="card"><h2>${ico('wissen')} Wissen <a class="more" href="#/wissen">Graph öffnen</a></h2><div class="chips">${hubs.map(([n, i]) => `<button class="chip" data-g="${i}" title="${n.d} Verbindungen">${esc(n.n)}</button>`).join('')}</div><div class="sub mt">${gr.nodes.length} Notizen · ${gr.links.length} Verbindungen</div></div>` : ''}
   </div>
-  <div class="card mt"><h2>Dienste &amp; Apps</h2><div class="apps">
-    <a class="app" href="https://ha.${dom}/"><div class="ic c1">${ico('ha')}</div><b>Home Assistant</b><span>Smart Home</span></a>
-    <a class="app" href="https://ntfy.${dom}/"><div class="ic c3">${ico('bell')}</div><b>Benachrichtigungen</b><span>ntfy</span></a>
+  <div class="grid mt">
+    ${st ? `<a class="card statlink" href="#/system"><h2>Speicher</h2><div class="stat">${fmtBytes(st.disk_total - st.disk_used)} <small>frei</small></div>${bar(st.disk_used / st.disk_total * 100, st.disk_used / st.disk_total > .85)}<div class="sub">${fmtBytes(st.disk_used)} von ${fmtBytes(st.disk_total)}</div></a>
+    <a class="card statlink" href="#/system"><h2>Arbeitsspeicher</h2><div class="stat">${Math.round(st.ram_used / st.ram_total * 100)}<small> %</small></div>${bar(st.ram_used / st.ram_total * 100, st.ram_used / st.ram_total > .9)}<div class="sub">${fmtBytes(st.ram_used)} von ${fmtBytes(st.ram_total)}</div></a>` : ''}
+    <a class="card statlink" href="#/money"><h2>${ico('money')} Dieser Monat</h2><div class="stat ${sum >= 0 ? 'money-pos' : 'money-neg'}">${sum.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</div><div class="sub">Summe der Buchungen</div></a>
+    <a class="card statlink" href="#/training"><h2>${ico('training')} Training</h2><div class="stat">${tr.length ? esc(tr[0].exercise) : '–'}</div><div class="sub">${tr.length ? `zuletzt ${fmtDate(tr[0].date)}, ${tr[0].sets}×${tr[0].reps} ${tr[0].kg > 0 ? tr[0].kg + ' kg' : ''}` : 'noch kein Eintrag'}</div></a>
+  </div>
+  <div class="card mt"><h2>Alles auf einen Klick</h2><div class="apps">
     <a class="app" href="#/claude"><div class="ic c3">${ico('claude')}</div><b>Claude</b><span>Chat auf dem Server</span></a>
-    <a class="app" href="#/files"><div class="ic c4">${ico('files')}</div><b>Dateien</b><span>Ablage &amp; Backup</span></a>
+    <a class="app" href="#/wissen"><div class="ic c1">${ico('wissen')}</div><b>Wissen</b><span>Graph der Notizen</span></a>
+    <a class="app" href="#/files"><div class="ic c4">${ico('files')}</div><b>Dateien</b><span>Ablage, Bibliothek, Backup</span></a>
+    <a class="app" href="#/files?p=${encodeURIComponent('Bibliothek/inbox')}"><div class="ic c2">${ico('down')}</div><b>Eingang</b><span>Neue Dateien</span></a>
+    <a class="app" href="https://ha.${dom}/"><div class="ic c1">${ico('ha')}</div><b>Home Assistant</b><span>Smart Home</span></a>
+    <a class="app" href="https://ntfy.${dom}/"><div class="ic c3">${ico('bell')}</div><b>Meldungen</b><span>ntfy</span></a>
   </div></div>`;
   view.querySelectorAll('.bar i').forEach(i => requestAnimationFrame(() => i.style.setProperty('--p', i.dataset.p)));
+  $('#qf').onsubmit = e => { e.preventDefault(); const q = String(new FormData(e.target).get('q')).trim(); if (!q) return; try { sessionStorage.setItem('ma-claude-q', q); } catch (er) { /* ohne Speicher */ } location.hash = '#/claude'; };
+  view.querySelectorAll('.chip[data-k]').forEach(b => { b.onclick = () => { const [n, p] = KEYNOTES[+b.dataset.k]; openViewer('Bibliothek/vault-notizen/' + p, p.split('/').pop()); }; });
+  view.querySelectorAll('.chip[data-g]').forEach(b => { b.onclick = () => openNote(+b.dataset.g); });
 }
 
 /* ---------- Aufgaben ---------- */
@@ -301,6 +319,7 @@ async function claude() {
     claudeSend(p, { dir: f.get('dir'), mode: f.get('mode'), model: f.get('model') });
     if (f.get('mode') === 'voll_senden') e.target.mode.value = 'voll';
   };
+  try { const q = sessionStorage.getItem('ma-claude-q'); if (q) { sessionStorage.removeItem('ma-claude-q'); $('#cf').prompt.value = q; setTimeout(() => $('#cf').requestSubmit(), 150); } } catch (er) { /* ohne Speicher */ }
   $('#cf').prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cf').requestSubmit(); } });
 }
 
