@@ -115,5 +115,6 @@ if __name__ == '__main__':
         os.unlink(SOCK)
     os.umask(0o117)                                        # Socket 660 (andrew:ma-web)
     srv = Server(SOCK, Handler)
+    os.umask(0o022)                                        # nur das Socket war 660; Claude soll normale Rechte (Ordner mit x) anlegen
     print('Claude-Bruecke bereit', SOCK, flush=True)
     srv.serve_forever()
