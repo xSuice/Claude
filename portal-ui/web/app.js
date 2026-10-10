@@ -20,14 +20,18 @@ const ICONS = {
   sync: '<path d="M20 11a8 8 0 00-14-4M4 4v4h4M4 13a8 8 0 0014 4M20 20v-4h-4"/>',
   claude: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
   send: '<path d="M4 12l16-8-6 16-3-7z"/>',
-  logo: '<path d="M4 18V9l8-5 8 5v9M9 18v-6h6v6"/>'
+  logo: '<path d="M12 2.5c.9 3 4.2 4.6 4.2 9a4.2 4.2 0 01-8.4 0c0-1.8.8-3 1.7-4 .3 1.1.9 1.7 1.5 1.9C10.8 7.6 11.1 5 12 2.5z"/>'
 };
 const ico = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => new Date().toISOString().slice(0, 10);
 const fmtBytes = n => n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? Math.round(n / 1e3) + ' KB' : n + ' B';
 const fmtUp = s => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d} T ${h} Std` : h ? `${h} Std ${m} Min` : `${m} Min`; };
+const lvl = d => { if (!d) return ''; const diff = (new Date(d + 'T12:00:00') - new Date()) / 864e5; return diff < 0.5 ? 'l3' : diff < 3.5 ? 'l2' : ''; };
 const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '';
+
+const CANDLE = '<svg viewBox="0 0 24 32" aria-hidden="true"><path d="M7 14h10v16H7zM12 14v-3"/><path d="M12 10c-1.6-1.2-1.4-2.6-.2-3.6 1-.9.9-2.1.3-3"/></svg>';
+new MutationObserver(() => document.querySelectorAll('.empty:not([data-c])').forEach(e => { e.dataset.c = '1'; e.insertAdjacentHTML('afterbegin', '<span class="candle">' + CANDLE + '</span>'); })).observe(view, { childList: true, subtree: true });
 
 let me = { user: '', admin: false, domain: '' };
 let toastTimer;
@@ -44,17 +48,17 @@ async function api(path, opts = {}) {
 }
 const items = k => api('/api/items/' + k).then(d => d.items);
 
-const TABS = [['home', 'Heute'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['claude', 'Claude'], ['files', 'Dateien'], ['system', 'System']];
+const TABS = [['home', 'Lage'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['claude', 'Claude'], ['files', 'Dateien'], ['system', 'System']];
 function buildNav() {
   $('#nav').innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${ico(id)}<span>${name}</span></button>`).join('');
   $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) location.hash = '#/' + b.dataset.t; });
 }
-function head(title, sub, extra = '') { return `<div class="top"><div><h1>${title}</h1><div class="sub">${sub || ''}</div></div>${extra}</div>`; }
+function head(title, sub, extra = '') { return `<div class="top"><div><div class="kicker">MA Home · ${esc(title)}</div><h1>${title}</h1><div class="sub">${sub || ''}</div></div>${extra}</div>`; }
 const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Hallo' : h < 22 ? 'Guten Abend' : 'Gute Nacht'; };
 
 /* ---------- Heute ---------- */
 async function home() {
-  view.innerHTML = head('Heute', new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })) + '<div class="skeleton"></div>';
+  view.innerHTML = head('Lage', new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })) + '<div class="skeleton"></div>';
   const [st, tasks, money, tr] = await Promise.all([
     api('/api/status').catch(() => null), items('tasks').catch(() => []), items('money').catch(() => []), items('training').catch(() => [])]);
   const open = tasks.filter(t => !t.done).sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1);
@@ -72,7 +76,7 @@ async function home() {
     <div class="card"><h2>${ico('money')} Dieser Monat</h2><div class="stat ${sum >= 0 ? 'money-pos' : 'money-neg'}">${sum.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</div><div class="sub">Summe der Buchungen</div></div>
     <div class="card"><h2>${ico('training')} Training</h2><div class="stat">${tr.length ? esc(tr[0].exercise) : '–'}</div><div class="sub">${tr.length ? `zuletzt ${fmtDate(tr[0].date)}, ${tr[0].sets}×${tr[0].reps} ${tr[0].kg > 0 ? tr[0].kg + ' kg' : ''}` : 'noch kein Eintrag'}</div></div>
   </div>
-  <div class="card mt"><h2>Meine Apps</h2><div class="apps">
+  <div class="card mt"><h2>Dienste &amp; Apps</h2><div class="apps">
     <a class="app" href="https://ha.${dom}" target="_blank" rel="noopener"><div class="ic c1">${ico('ha')}</div><b>Home Assistant</b><span>Smart Home</span></a>
     <a class="app" href="https://ntfy.${dom}" target="_blank" rel="noopener"><div class="ic c3">${ico('bell')}</div><b>Benachrichtigungen</b><span>ntfy</span></a>
     <a class="app" href="https://sync.${dom}" target="_blank" rel="noopener"><div class="ic c2">${ico('sync')}</div><b>Notizen-Sync</b><span>CouchDB</span></a>
@@ -86,7 +90,7 @@ async function home() {
 async function tasks() {
   const render = async () => {
     const list = (await items('tasks')).sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
-    $('#list').innerHTML = list.length ? list.map(t => `<div class="row ${t.done ? 'done' : ''}" data-id="${t.id}"><button class="check ${t.done ? 'on' : ''}" data-a="toggle" aria-label="Erledigt">${t.done ? ico('check') : ''}</button><div class="grow"><b>${esc(t.title)}</b>${t.due ? `<span>fällig ${fmtDate(t.due)}</span>` : ''}</div><button class="icon-btn" data-a="del" aria-label="Löschen">${ico('trash')}</button></div>`).join('') : '<div class="empty">Keine Aufgaben. Leg unten eine an.</div>';
+    $('#list').innerHTML = list.length ? list.map(t => `<div class="row ${t.done ? 'done' : lvl(t.due)}" data-id="${t.id}"><button class="check ${t.done ? 'on' : ''}" data-a="toggle" aria-label="Erledigt">${t.done ? ico('check') : ''}</button><div class="grow"><b>${esc(t.title)}</b>${t.due ? `<span>fällig ${fmtDate(t.due)}${!t.done && lvl(t.due) === 'l3' ? ' · STUFE 3' : !t.done && lvl(t.due) === 'l2' ? ' · STUFE 2' : ''}</span>` : ''}</div><button class="icon-btn" data-a="del" aria-label="Löschen">${ico('trash')}</button></div>`).join('') : '<div class="empty">Keine Aufgaben. Leg unten eine an.</div>';
     $('#list').onclick = async e => {
       const b = e.target.closest('button'); if (!b) return; const id = b.closest('.row').dataset.id; const t = list.find(x => x.id === id);
       try {

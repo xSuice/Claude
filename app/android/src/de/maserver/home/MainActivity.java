@@ -37,7 +37,7 @@ public class MainActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         web = new WebView(this);
         setContentView(web);
-        web.setBackgroundColor(0xFF0D0B1A);
+        web.setBackgroundColor(0xFF07080C);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
                 if (r.isForMainFrame()) {
-                    v.loadData("<body style='background:#0d0b1a;color:#efecff;font-family:sans-serif;text-align:center;padding:48px 20px'>"
+                    v.loadData("<body style='background:#07080c;color:#efecff;font-family:sans-serif;text-align:center;padding:48px 20px'>"
                         + "<h2>Server nicht erreichbar</h2><p>Pr&uuml;fe Internet oder WLAN.</p>"
                         + "<p><a style='color:#9a8cff' href='" + HOME + "'>Erneut versuchen</a></p></body>", "text/html", "utf-8");
                 }
