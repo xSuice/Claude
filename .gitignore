@@ -12,3 +12,7 @@ secrets/
 *.log
 .router/
 server-snapshot/pc-dns-backup.json
+app/android/signing/
+app/android/build/
+*.keystore
+*.apk

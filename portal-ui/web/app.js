@@ -18,6 +18,8 @@ const ICONS = {
   ha: '<path d="M3 11l9-8 9 8M6 10v9h12v-9M10 19v-5h4v5"/>',
   bell: '<path d="M6 16V11a6 6 0 1112 0v5l2 2H4zM10 20a2 2 0 004 0"/>',
   sync: '<path d="M20 11a8 8 0 00-14-4M4 4v4h4M4 13a8 8 0 0014 4M20 20v-4h-4"/>',
+  claude: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
+  send: '<path d="M4 12l16-8-6 16-3-7z"/>',
   logo: '<path d="M4 18V9l8-5 8 5v9M9 18v-6h6v6"/>'
 };
 const ico = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -42,7 +44,7 @@ async function api(path, opts = {}) {
 }
 const items = k => api('/api/items/' + k).then(d => d.items);
 
-const TABS = [['home', 'Heute'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['files', 'Dateien'], ['system', 'System']];
+const TABS = [['home', 'Heute'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['claude', 'Claude'], ['files', 'Dateien'], ['system', 'System']];
 function buildNav() {
   $('#nav').innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${ico(id)}<span>${name}</span></button>`).join('');
   $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) location.hash = '#/' + b.dataset.t; });
@@ -178,7 +180,106 @@ async function system() {
   view.onclick = async e => { const b = e.target.closest('[data-s]'); if (!b) return; b.disabled = true; try { await api('/api/service', { body: { service: b.dataset.s, verb: 'restart' } }); toast(b.dataset.s + ' startet neu'); } catch (er) { toast(er.message, 1); } b.disabled = false; };
 }
 
-const ROUTES = { home, tasks, notes, money, training, files, system };
+/* ---------- Claude (Chat mit Claude Code auf dem Server) ---------- */
+function mdLite(src) {
+  const blocks = [];
+  let t = esc(src).replace(/```(?:\w+)?\n([\s\S]*?)```/g, (_m, c) => { blocks.push('<pre><code>' + c + '</code></pre>'); return '\u0000' + (blocks.length - 1) + '\u0000'; });
+  t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+  t = t.split(/\n{2,}/).map(p => /^\s*[-*] /m.test(p) ? '<ul>' + p.split('\n').map(l => l.replace(/^\s*[-*] (.*)$/, '<li>$1</li>')).join('') + '</ul>' : '<p>' + p.replace(/\n/g, '<br>') + '</p>').join('');
+  return t.replace(/\u0000(\d+)\u0000/g, (_m, i) => blocks[+i]);
+}
+let claudeState = { msgs: [], sid: null, busy: false };
+function claudeLoad() {
+  try { const d = JSON.parse(localStorage.getItem('ma-claude') || 'null'); if (d) claudeState = { msgs: d.msgs || [], sid: d.sid || null, busy: false }; } catch (e) { /* kein Speicher */ }
+}
+function claudeSave() {
+  try { localStorage.setItem('ma-claude', JSON.stringify({ msgs: claudeState.msgs.slice(-80), sid: claudeState.sid })); } catch (e) { /* ignorieren */ }
+}
+function claudeRender() {
+  const box = $('#cmsgs'); if (!box) return;
+  const S = claudeState;
+  box.innerHTML = S.msgs.length ? S.msgs.map(m => {
+    if (m.r === 'u') return '<div class="cm u">' + esc(m.t) + '</div>';
+    if (m.r === 't') return '<div class="ctool">' + esc(m.t) + '</div>';
+    if (m.r === 'e') return '<div class="cerr">' + esc(m.t) + '</div>';
+    return '<div class="cm' + (m.live ? ' typing' : '') + '">' + mdLite(m.t || '…') + '</div>';
+  }).join('') : '<div class="empty">Frag Claude auf deinem Server.<br>Zum Beispiel: „Wie voll ist die Backup-Platte?“ oder „Was ist neu in meinen Notizen?“<br>Mit „Nur lesen“ kann nichts verändert werden.</div>';
+  box.scrollTop = box.scrollHeight;
+}
+async function claudeSend(prompt, opts) {
+  const S = claudeState;
+  if (S.busy || !prompt) return;
+  S.busy = true;
+  S.msgs.push({ r: 'u', t: prompt }, { r: 'a', t: '', live: true });
+  claudeRender();
+  const asst = () => S.msgs.slice().reverse().find(m => m.r === 'a');
+  try {
+    const r = await fetch('/api/claude', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ prompt, session: S.sid, ...opts }) });
+    if (!r.ok) {
+      let m = 'Fehler ' + r.status;
+      try { m = (await r.json()).error || m; } catch (e) { /* leer */ }
+      throw new Error(r.status === 403 ? 'Nur für Administratoren.' : m);
+    }
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line) continue;
+        let d; try { d = JSON.parse(line); } catch (e) { continue; }
+        if (d.session_id) S.sid = d.session_id;
+        const ev = d.event;
+        if (d.type === 'stream_event' && ev && ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') {
+          const a = asst(); if (a) a.t += ev.delta.text;
+        } else if (d.type === 'assistant' && d.message && Array.isArray(d.message.content)) {
+          for (const b of d.message.content) {
+            if (b.type !== 'tool_use') continue;
+            const inp = b.input || {};
+            const idx = S.msgs.findIndex(m => m.live);
+            S.msgs.splice(idx < 0 ? S.msgs.length : idx, 0, { r: 't', t: b.name + ': ' + String(inp.command || inp.file_path || inp.pattern || inp.path || '').slice(0, 80) });
+          }
+        } else if (d.type === 'result') {
+          const a = asst();
+          if (d.is_error) {
+            S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Einmal im Terminal: ssh -t ma-server "~/.local/bin/claude" und anmelden.' : String(d.result) });
+          } else if (a && !a.t && d.result) a.t = d.result;
+        } else if (d.type === 'bridge_error') {
+          S.msgs.push({ r: 'e', t: d.error });
+        }
+        claudeRender();
+      }
+    }
+  } catch (er) { S.msgs.push({ r: 'e', t: er.message }); }
+  S.msgs.forEach(m => { delete m.live; });
+  S.msgs = S.msgs.filter(m => !(m.r === 'a' && !m.t));
+  S.busy = false; claudeSave(); claudeRender();
+  const b = $('#csend'); if (b) b.disabled = false;
+}
+async function claude() {
+  claudeLoad();
+  view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cnew">Neuer Chat</button>') +
+    '<div class="cwrap"><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
+    '<div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="server">Server-Home</option></select></label>' +
+    '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option></select></label>' +
+    '<label>Modell<select name="model"><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
+    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude …" required></textarea><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
+  claudeRender();
+  $('#cnew').onclick = () => { if (claudeState.busy) return; claudeState = { msgs: [], sid: null, busy: false }; claudeSave(); claudeRender(); };
+  $('#cf').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target); const p = String(f.get('prompt')).trim();
+    if (!p || claudeState.busy) return;
+    $('#csend').disabled = true; e.target.prompt.value = '';
+    claudeSend(p, { dir: f.get('dir'), mode: f.get('mode'), model: f.get('model') });
+  };
+  $('#cf').prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cf').requestSubmit(); } });
+}
+
+const ROUTES = { home, tasks, notes, money, training, claude, files, system };
 async function route() {
   const id = (location.hash.slice(2).split('?')[0]) || 'home';
   const fn = ROUTES[id] || home;
