@@ -5,12 +5,53 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "pack": "electron-packager . \"MA Home\" --platform=win32 --arch=x64 --out=dist --overwrite --asar"
+    "pack": "electron-packager . \"MA Home\" --platform=win32 --arch=x64 --out=dist --overwrite --asar",
+    "dist": "electron-builder --win nsis --x64"
   },
   "license": "UNLICENSED",
   "private": true,
   "devDependencies": {
     "@electron/packager": "^20.3.0",
-    "electron": "^44.7.0"
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "author": "Philipp",
+  "build": {
+    "appId": "de.maserver.home",
+    "productName": "MA Home",
+    "copyright": "Philipp",
+    "directories": {
+      "output": "setup",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MA Home",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "language": "1031"
+    }
   }
 }

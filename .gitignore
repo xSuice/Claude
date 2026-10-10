@@ -16,3 +16,5 @@ app/android/signing/
 app/android/build/
 *.keystore
 *.apk
+installer/
+setup/
