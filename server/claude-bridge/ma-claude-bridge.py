@@ -57,6 +57,8 @@ class Handler(socketserver.StreamRequestHandler):
                     '--permission-mode', mode[0], '--max-turns', '40' if str(req.get('mode', '')).startswith('voll') else '12']
             if mode[1]:
                 args += ['--allowedTools', ','.join(mode[1])]
+            if mode[1]:
+                args += ['--strict-mcp-config']   # Lesen/Notizen brauchen keine Verbindungen: spart die lange Werkzeugliste (Token)
             sid = req.get('session')
             if isinstance(sid, str) and SESSION.fullmatch(sid):
                 args += ['--resume', sid]
