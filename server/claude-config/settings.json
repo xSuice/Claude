@@ -1,11 +1,41 @@
 {
   "model": "sonnet",
-  "fallbackModel": ["haiku"],
+  "fallbackModel": [
+    "haiku"
+  ],
   "permissions": {
     "deny": [
-      "Read(**/.env*)", "Read(~/.ssh/**)", "Read(/etc/ma-home/**)", "Read(~/.claude/.credentials.json)", "Read(~/.claude/secrets/**)",
-      "Bash(sudo:*)", "Bash(su:*)", "Bash(rm -rf *)", "Bash(rm -fr *)", "Bash(mkfs*)", "Bash(dd *)", "Bash(shutdown*)", "Bash(reboot*)",
-      "Bash(git push --force*)", "Bash(*.claude/secrets*)", "Bash(*.ssh/*)", "Bash(*credentials*)"
+      "Read(**/.env*)",
+      "Read(~/.ssh/**)",
+      "Read(/etc/ma-home/**)",
+      "Read(~/.claude/.credentials.json)",
+      "Read(~/.claude/secrets/**)",
+      "Bash(sudo:*)",
+      "Bash(su:*)",
+      "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "Bash(mkfs*)",
+      "Bash(dd *)",
+      "Bash(shutdown*)",
+      "Bash(reboot*)",
+      "Bash(git push --force*)",
+      "Bash(*.claude/secrets*)",
+      "Bash(*.ssh/*)",
+      "Bash(*credentials*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/andrew/.claude/hooks/ma-guard.py",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

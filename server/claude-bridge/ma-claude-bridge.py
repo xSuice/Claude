@@ -26,7 +26,10 @@ MODES = {
     'lesen': ('default', ['Read', 'Grep', 'Glob'] + READ_BASH),
     'notizen': ('acceptEdits', ['Read', 'Grep', 'Glob', 'Edit', 'Write'] + READ_BASH),
     # wie am PC: Dateien aendern und beliebige Befehle als andrew (ohne sudo). Gesperrtes steht in ~/.claude/settings.json (deny).
-    'voll': ('acceptEdits', ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'Skill', 'Task']),
+    # Wie am PC: alle Werkzeuge (auch Web und Verbindungen), ohne Rueckfragen. Grenzen: kein sudo (NoNewPrivileges),
+    # deny-Regeln in ~/.claude/settings.json, Hook ma-guard.py sperrt Senden/Loeschen/Kaufen ueber Verbindungen.
+    'voll': ('bypassPermissions', None),
+    'voll_senden': ('bypassPermissions', None),
 }
 MODELS = ('haiku', 'sonnet', 'opus')
 SESSION = re.compile(r'[0-9a-f-]{36}\Z')
@@ -51,7 +54,9 @@ class Handler(socketserver.StreamRequestHandler):
             if not cwd or not mode:
                 return self.reply({'type': 'bridge_error', 'error': 'Ungueltige Auswahl'})
             args = [CLAUDE, '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--model', model,
-                    '--permission-mode', mode[0], '--allowedTools', ','.join(mode[1]), '--max-turns', '30' if req.get('mode') == 'voll' else '12']
+                    '--permission-mode', mode[0], '--max-turns', '40' if str(req.get('mode', '')).startswith('voll') else '12']
+            if mode[1]:
+                args += ['--allowedTools', ','.join(mode[1])]
             sid = req.get('session')
             if isinstance(sid, str) and SESSION.fullmatch(sid):
                 args += ['--resume', sid]
@@ -62,6 +67,9 @@ class Handler(socketserver.StreamRequestHandler):
         proc = None
         try:
             env = dict(os.environ, HOME='/home/andrew', PATH='/home/andrew/.local/bin:/usr/local/bin:/usr/bin:/bin')
+            env.pop('MA_ALLOW_SEND', None)
+            if req.get('mode') == 'voll_senden':
+                env['MA_ALLOW_SEND'] = '1'
             proc = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             proc.stdin.write(prompt.encode())
             proc.stdin.close()

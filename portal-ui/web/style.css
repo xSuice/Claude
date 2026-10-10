@@ -183,3 +183,5 @@ option { background: #10131b; }
   .md, .vtext { color: #000; } .md .wl { color: #000; text-decoration: underline; }
   .pages img { box-shadow: none; border: 0; page-break-after: always; }
 }
+
+.ftag { min-width: 64px; justify-content: flex-start; } .ftag small { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }

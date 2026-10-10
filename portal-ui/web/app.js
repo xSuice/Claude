@@ -20,6 +20,13 @@ const ICONS = {
   sync: '<path d="M20 11a8 8 0 00-14-4M4 4v4h4M4 13a8 8 0 0014 4M20 20v-4h-4"/>',
   claude: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
   send: '<path d="M4 12l16-8-6 16-3-7z"/>',
+  fimg: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/>',
+  ffilm: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
+  fmusic: '<path d="M9 18V6l11-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  fzip: '<path d="M6 3h9l4 4v14H6zM11 5v2M11 9v2M11 13v2"/>',
+  fcode: '<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/>',
+  fsheet: '<rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M4 9h16M4 15h16M10 3v18"/>',
+  fpdf: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 14h6M9 17h4"/>',
   logo: '<path d="M12 2.5c.9 3 4.2 4.6 4.2 9a4.2 4.2 0 01-8.4 0c0-1.8.8-3 1.7-4 .3 1.1.9 1.7 1.5 1.9C10.8 7.6 11.1 5 12 2.5z"/>'
 };
 const ico = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -154,6 +161,19 @@ async function training() {
   render();
 }
 
+const FTYPES = [
+  [/^(md|markdown|txt|rtf|doc|docx|odt|log)$/, 'notes', 'Text'], [/^pdf$/, 'fpdf', 'PDF'],
+  [/^(xls|xlsx|ods|csv)$/, 'fsheet', 'Tabelle'], [/^(ppt|pptx|odp)$/, 'fpdf', 'Präsentation'],
+  [/^(png|jpe?g|gif|webp|svg|bmp|tiff?|heic|ico)$/, 'fimg', 'Bild'], [/^(mp4|webm|mov|mkv|avi)$/, 'ffilm', 'Video'],
+  [/^(mp3|wav|ogg|m4a|flac|aac)$/, 'fmusic', 'Audio'], [/^(zip|7z|rar|tar|gz|tgz|xz|bz2)$/, 'fzip', 'Archiv'],
+  [/^(py|js|ts|sh|bash|ps1|bat|json|ya?ml|toml|ini|conf|xml|html|css|sql|java|c|h|cpp|go|rs|service|timer|base|canvas)$/, 'fcode', 'Code']];
+function ftag(f) {
+  if (f.directory) return '<span class="tag">' + ico('files') + '</span>';
+  const ext = (f.name.includes('.') ? f.name.split('.').pop() : '').toLowerCase();
+  const t = FTYPES.find(([re]) => re.test(ext));
+  return '<span class="tag ftag" title="' + esc(t ? t[2] : 'Datei') + '">' + ico(t ? t[1] : 'notes') + '<small>' + esc((ext || 'datei').slice(0, 5)) + '</small></span>';
+}
+
 /* ---------- Dateien ---------- */
 async function files() {
   const q = new URLSearchParams(location.hash.split('?')[1] || ''); const path = q.get('p') || '';
@@ -163,7 +183,7 @@ async function files() {
   $('#cr').onclick = e => { const b = e.target.closest('button'); if (b) location.hash = '#/files' + (b.dataset.p ? '?p=' + encodeURIComponent(b.dataset.p) : ''); };
   try {
     const d = await api('/api/files?path=' + encodeURIComponent(path));
-    $('#fl').innerHTML = d.entries.length ? d.entries.map(f => `<div class="row" data-n="${esc(f.name)}" data-d="${f.directory ? 1 : 0}"><span class="tag">${ico(f.directory ? 'files' : 'notes')}</span><div class="grow"><b>${esc(f.name)}</b><span>${f.directory ? 'Ordner' : fmtBytes(f.size)}</span></div>${f.directory ? '' : `<a class="btn small ghost" href="/api/file?path=${encodeURIComponent((path ? path + '/' : '') + f.name)}">${ico('down')} Laden</a>`}</div>`).join('') : '<div class="empty">Dieser Ordner ist leer.</div>';
+    $('#fl').innerHTML = d.entries.length ? d.entries.map(f => `<div class="row" data-n="${esc(f.name)}" data-d="${f.directory ? 1 : 0}">${ftag(f)}<div class="grow"><b>${esc(f.name)}</b><span>${f.directory ? 'Ordner' : fmtBytes(f.size)}</span></div>${f.directory ? '' : `<a class="btn small ghost" href="/api/file?path=${encodeURIComponent((path ? path + '/' : '') + f.name)}">${ico('down')} Laden</a>`}</div>`).join('') : '<div class="empty">Dieser Ordner ist leer.</div>';
     $('#fl').onclick = e => { const r = e.target.closest('.row'); if (!r || e.target.closest('a')) return; const full = (path ? path + '/' : '') + r.dataset.n; if (r.dataset.d === '1') location.hash = '#/files?p=' + encodeURIComponent(full); else openViewer(full, r.dataset.n); };
   } catch (er) { $('#fl').innerHTML = `<div class="empty">${esc(er.message)}</div>`; }
 }
@@ -267,7 +287,7 @@ async function claude() {
   view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cnew">Neuer Chat</button>') +
     '<div class="cwrap"><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
     '<div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
-    '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option></select></label>' +
+    '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
     '<label>Modell<select name="model"><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
     '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude …" required></textarea><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();
@@ -278,6 +298,7 @@ async function claude() {
     if (!p || claudeState.busy) return;
     $('#csend').disabled = true; e.target.prompt.value = '';
     claudeSend(p, { dir: f.get('dir'), mode: f.get('mode'), model: f.get('model') });
+    if (f.get('mode') === 'voll_senden') e.target.mode.value = 'voll';
   };
   $('#cf').prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cf').requestSubmit(); } });
 }
