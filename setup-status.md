@@ -243,3 +243,5 @@ Backups: `~/.claude/settings.json.bak-20261010-phase5`, `router-config.json.bak-
 
 ### MA Home Desktop-App (2026-10-10)
 - app/desktop (Electron), Claude Code 2.1.296 auf dem Server installiert (~/.local/bin/claude, offizieller Installer), Anmeldung durch Philipp offen. Getestet: Start, Serverstatus, Chat bis zur Meldung "Nicht angemeldet".
+
+- GitHub: https://github.com/xSuice/Claude (main), Stand 2026-10-10 hochgeladen. Neu hochladen: git add -A && git commit && git push.
