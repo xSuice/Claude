@@ -1,0 +1,13 @@
+#!/bin/bash
+# Fuehrt EINEN Befehl im tmux-Terminal "ma-root" aus, in dem Andrew sudo mit Passwort freigeschaltet hat.
+# Aufruf: rr 'sudo ufw status'   (sudo muss im Befehl stehen; ohne gueltiges Ticket schlaegt sudo fehl)
+# Ausgabe und Exitcode kommen zurueck. Beenden durch Andrew: tmux kill-session -t ma-root
+set -u
+tmux has-session -t ma-root 2>/dev/null || { echo "rr: Terminal ma-root fehlt (nicht freigeschaltet oder beendet)." >&2; exit 125; }
+D=$HOME/.rr; mkdir -p "$D"; chmod 700 "$D"
+ID=$(date +%s%N); O=$D/$ID.out
+tmux send-keys -t ma-root -l "{ $1 ; } > $O 2>&1; echo \$? > $O.rc"
+tmux send-keys -t ma-root Enter
+for _ in $(seq 1 ${RR_TIMEOUT:-180}); do [ -f "$O.rc" ] && break; sleep 1; done
+[ -f "$O.rc" ] || { echo "rr: Zeitueberschreitung (Befehl laeuft evtl. noch)." >&2; exit 124; }
+cat "$O"; rc=$(cat "$O.rc"); rm -f "$O" "$O.rc"; exit "$rc"

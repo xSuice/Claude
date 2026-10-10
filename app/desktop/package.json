@@ -1,0 +1,16 @@
+{
+  "name": "ma-home-desktop",
+  "version": "0.1.0",
+  "description": "MA Home: eigene Desktop-App (Chat mit Claude auf dem MA-Server, Portal, Status)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-packager . \"MA Home\" --platform=win32 --arch=x64 --out=dist --overwrite --asar"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^44.7.0"
+  }
+}

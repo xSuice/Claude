@@ -1,0 +1,14 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.claude/settings.local.json
+.claude/*.local.*
+*.key
+*.pass
+*.env
+.env*
+secrets/
+*.log
+.router/
+server-snapshot/pc-dns-backup.json

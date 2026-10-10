@@ -1,0 +1,9 @@
+﻿{
+  "default_model": "sonnet",
+  "models": {
+    "haiku": "haiku",
+    "sonnet": "sonnet",
+    "opus": "opus"
+  },
+  "logging": true
+}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'none'">
+<title>MA Home</title>
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="desk">
+<div class="dshell">
+  <aside class="dside">
+    <div class="brand"><div class="logo" id="logo"></div><span>MA Home</span></div>
+    <button class="btn" id="newChat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Neuer Chat</button>
+    <div class="chatlist" id="chatlist"></div>
+    <div class="spacer"></div>
+    <div class="srv" id="srv"><span class="pill dot off">Server …</span></div>
+  </aside>
+  <section class="dmain">
+    <div class="tabs" id="tabs">
+      <button data-v="chat" aria-current="page">Claude</button><button data-v="portal">Portal</button><button data-v="server">Server</button>
+    </div>
+    <div class="view" id="v-chat">
+      <div class="msgs" id="msgs"></div>
+      <div class="composer">
+        <div class="opts">
+          <label>Ordner<select id="dir"></select></label>
+          <label>Rechte<select id="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option></select></label>
+          <label>Modell<select id="model"><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label>
+        </div>
+        <div class="inp"><textarea id="prompt" rows="2" placeholder="Frag Claude etwas oder gib einen Auftrag … (Strg+Enter sendet)"></textarea>
+        <button class="btn" id="send">Senden</button><button class="btn ghost" id="stop" hidden>Stopp</button></div>
+      </div>
+    </div>
+    <div class="view" id="v-portal" hidden><webview id="portal" allowpopups="false"></webview></div>
+    <div class="view" id="v-server" hidden><div class="srvbody" id="srvbody"></div></div>
+  </section>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

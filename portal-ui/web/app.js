@@ -1,0 +1,200 @@
+/* MA Home – Oberfläche (ohne Bibliotheken). Nutzt die vorhandene API von portal.py. */
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const view = $('#view');
+const ICONS = {
+  home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>',
+  tasks: '<path d="M9 11l3 3 8-8M4 12v7a1 1 0 001 1h14"/>',
+  notes: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5"/>',
+  money: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/>',
+  training: '<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/>',
+  files: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+  system: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  check: '<path d="M5 12l5 5 9-10"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  down: '<path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"/>',
+  ha: '<path d="M3 11l9-8 9 8M6 10v9h12v-9M10 19v-5h4v5"/>',
+  bell: '<path d="M6 16V11a6 6 0 1112 0v5l2 2H4zM10 20a2 2 0 004 0"/>',
+  sync: '<path d="M20 11a8 8 0 00-14-4M4 4v4h4M4 13a8 8 0 0014 4M20 20v-4h-4"/>',
+  logo: '<path d="M4 18V9l8-5 8 5v9M9 18v-6h6v6"/>'
+};
+const ico = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtBytes = n => n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? Math.round(n / 1e3) + ' KB' : n + ' B';
+const fmtUp = s => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d} T ${h} Std` : h ? `${h} Std ${m} Min` : `${m} Min`; };
+const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '';
+
+let me = { user: '', admin: false, domain: '' };
+let toastTimer;
+function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : ''); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = 'toast', 3200); }
+
+async function api(path, opts = {}) {
+  const o = { credentials: 'same-origin', headers: {}, ...opts };
+  if (opts.body !== undefined) { o.method = opts.method || 'POST'; o.body = JSON.stringify(opts.body); o.headers = { 'Content-Type': 'application/json', 'X-MA-Request': '1' }; }
+  else if (opts.method && opts.method !== 'GET') o.headers = { 'Content-Type': 'application/json', 'X-MA-Request': '1' };
+  const r = await fetch(path, o);
+  let data = null; try { data = await r.json(); } catch (e) { /* leer */ }
+  if (!r.ok) throw new Error((data && data.error) || `Fehler ${r.status}`);
+  return data;
+}
+const items = k => api('/api/items/' + k).then(d => d.items);
+
+const TABS = [['home', 'Heute'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['files', 'Dateien'], ['system', 'System']];
+function buildNav() {
+  $('#nav').innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${ico(id)}<span>${name}</span></button>`).join('');
+  $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) location.hash = '#/' + b.dataset.t; });
+}
+function head(title, sub, extra = '') { return `<div class="top"><div><h1>${title}</h1><div class="sub">${sub || ''}</div></div>${extra}</div>`; }
+const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Hallo' : h < 22 ? 'Guten Abend' : 'Gute Nacht'; };
+
+/* ---------- Heute ---------- */
+async function home() {
+  view.innerHTML = head('Heute', new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })) + '<div class="skeleton"></div>';
+  const [st, tasks, money, tr] = await Promise.all([
+    api('/api/status').catch(() => null), items('tasks').catch(() => []), items('money').catch(() => []), items('training').catch(() => [])]);
+  const open = tasks.filter(t => !t.done).sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1);
+  const month = today().slice(0, 7);
+  const sum = money.filter(m => m.date.startsWith(month)).reduce((s, m) => s + m.cents, 0) / 100;
+  const dom = me.domain.replace(/^https?:\/\/(?:[^.]+\.)?/, '').replace(/\/$/, '') || 'ma-server.duckdns.org';
+  const bk = st && st.backup_status && st.backup_status.state;
+  const pills = st ? `<span class="pill dot">Server online</span><span class="pill">Laufzeit ${fmtUp(st.uptime)}</span>` + (bk ? `<span class="pill ${/^OK/.test(bk) ? 'dot' : 'dot off'}">Backup: ${esc(String(bk).slice(0, 38))}</span>` : '') : '<span class="pill dot off">Status nicht abrufbar</span>';
+  const bar = (p, hot) => `<div class="bar ${hot ? 'hot' : ''}"><i data-p="${Math.round(p)}"></i></div>`;
+  view.innerHTML = `<div class="hero"><h2>${greeting()}, ${esc(me.user)}.</h2><p>${open.length ? `${open.length} offene Aufgabe${open.length > 1 ? 'n' : ''}` + (open[0].due ? `, als Nächstes: ${esc(open[0].title)} (${fmtDate(open[0].due)})` : '') : 'Keine offenen Aufgaben. Alles erledigt.'}</p><div class="pills">${pills}</div></div>
+  <div class="grid">
+    ${st ? `<div class="card"><h2>Speicher</h2><div class="stat">${fmtBytes(st.disk_total - st.disk_used)} <small>frei</small></div>${bar(st.disk_used / st.disk_total * 100, st.disk_used / st.disk_total > .85)}<div class="sub">${fmtBytes(st.disk_used)} von ${fmtBytes(st.disk_total)}</div></div>
+    <div class="card"><h2>Arbeitsspeicher</h2><div class="stat">${Math.round(st.ram_used / st.ram_total * 100)}<small> %</small></div>${bar(st.ram_used / st.ram_total * 100, st.ram_used / st.ram_total > .9)}<div class="sub">${fmtBytes(st.ram_used)} von ${fmtBytes(st.ram_total)}</div></div>
+    <div class="card"><h2>Prozessor</h2><div class="stat">${Math.round(st.cpu)}<small> %</small></div>${bar(st.cpu, st.cpu > 85)}<div class="sub">${st.busy ? 'ein Auftrag läuft' : 'bereit'}</div></div>` : ''}
+    <div class="card"><h2>${ico('money')} Dieser Monat</h2><div class="stat ${sum >= 0 ? 'money-pos' : 'money-neg'}">${sum.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</div><div class="sub">Summe der Buchungen</div></div>
+    <div class="card"><h2>${ico('training')} Training</h2><div class="stat">${tr.length ? esc(tr[0].exercise) : '–'}</div><div class="sub">${tr.length ? `zuletzt ${fmtDate(tr[0].date)}, ${tr[0].sets}×${tr[0].reps} ${tr[0].kg > 0 ? tr[0].kg + ' kg' : ''}` : 'noch kein Eintrag'}</div></div>
+  </div>
+  <div class="card mt"><h2>Meine Apps</h2><div class="apps">
+    <a class="app" href="https://ha.${dom}" target="_blank" rel="noopener"><div class="ic c1">${ico('ha')}</div><b>Home Assistant</b><span>Smart Home</span></a>
+    <a class="app" href="https://ntfy.${dom}" target="_blank" rel="noopener"><div class="ic c3">${ico('bell')}</div><b>Benachrichtigungen</b><span>ntfy</span></a>
+    <a class="app" href="https://sync.${dom}" target="_blank" rel="noopener"><div class="ic c2">${ico('sync')}</div><b>Notizen-Sync</b><span>CouchDB</span></a>
+    <a class="app" href="https://claude.ai/code" target="_blank" rel="noopener"><div class="ic c3">${ico('logo')}</div><b>Claude</b><span>Aufgaben &amp; Fragen</span></a>
+    <a class="app" href="#/files"><div class="ic c4">${ico('files')}</div><b>Dateien</b><span>Ablage &amp; Backup</span></a>
+  </div></div>`;
+  view.querySelectorAll('.bar i').forEach(i => requestAnimationFrame(() => i.style.setProperty('--p', i.dataset.p)));
+}
+
+/* ---------- Aufgaben ---------- */
+async function tasks() {
+  const render = async () => {
+    const list = (await items('tasks')).sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
+    $('#list').innerHTML = list.length ? list.map(t => `<div class="row ${t.done ? 'done' : ''}" data-id="${t.id}"><button class="check ${t.done ? 'on' : ''}" data-a="toggle" aria-label="Erledigt">${t.done ? ico('check') : ''}</button><div class="grow"><b>${esc(t.title)}</b>${t.due ? `<span>fällig ${fmtDate(t.due)}</span>` : ''}</div><button class="icon-btn" data-a="del" aria-label="Löschen">${ico('trash')}</button></div>`).join('') : '<div class="empty">Keine Aufgaben. Leg unten eine an.</div>';
+    $('#list').onclick = async e => {
+      const b = e.target.closest('button'); if (!b) return; const id = b.closest('.row').dataset.id; const t = list.find(x => x.id === id);
+      try {
+        if (b.dataset.a === 'toggle') await api(`/api/items/tasks/${id}`, { method: 'PUT', body: { title: t.title, due: t.due || '', done: !t.done } });
+        else await api(`/api/items/tasks/${id}`, { method: 'DELETE', body: undefined });
+        render();
+      } catch (er) { toast(er.message, 1); }
+    };
+  };
+  view.innerHTML = head('Aufgaben', 'Was ansteht') + `<form class="form" id="f"><label>Neue Aufgabe<input name="title" required maxlength="240" placeholder="z. B. Fahrschule anrufen"></label><label>Fällig<input type="date" name="due"></label><button class="btn">${ico('plus')} Hinzufügen</button></form><div class="list" id="list"></div>`;
+  $('#f').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); try { await api('/api/items/tasks', { body: { title: f.get('title'), due: f.get('due') || '', done: false } }); e.target.reset(); render(); } catch (er) { toast(er.message, 1); } };
+  render();
+}
+
+/* ---------- Notizen ---------- */
+async function notes() {
+  let sel = null;
+  const render = async () => {
+    const list = await items('notes');
+    $('#nlist').innerHTML = list.length ? list.map(n => `<div class="row" data-id="${n.id}"><div class="grow"><b>${esc(n.title)}</b><span>${esc(n.content.slice(0, 70))}</span></div><button class="icon-btn" data-a="del" aria-label="Löschen">${ico('trash')}</button></div>`).join('') : '<div class="empty">Noch keine Notizen.</div>';
+    $('#nlist').onclick = async e => {
+      const r = e.target.closest('.row'); if (!r) return; const id = r.dataset.id;
+      if (e.target.closest('[data-a="del"]')) { try { await api(`/api/items/notes/${id}`, { method: 'DELETE', body: undefined }); if (sel === id) sel = null; edit(); render(); } catch (er) { toast(er.message, 1); } return; }
+      sel = id; edit(list.find(n => n.id === id));
+    };
+  };
+  const edit = n => {
+    $('#ed').innerHTML = `<form class="form col" id="nf"><label>Titel<input name="title" required maxlength="240" value="${esc(n ? n.title : '')}"></label><label>Text<textarea name="content" maxlength="20000">${esc(n ? n.content : '')}</textarea></label><div><button class="btn">${ico('check')} Speichern</button></div></form>`;
+    $('#nf').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); const body = { title: f.get('title'), content: f.get('content') };
+      try { if (sel) await api(`/api/items/notes/${sel}`, { method: 'PUT', body }); else { const r = await api('/api/items/notes', { body }); sel = r.id; } toast('Gespeichert'); render(); } catch (er) { toast(er.message, 1); } };
+  };
+  view.innerHTML = head('Notizen', 'Kurz festhalten', `<button class="btn" id="new">${ico('plus')} Neu</button>`) + '<div class="grid wide"><div class="list" id="nlist"></div><div class="card" id="ed"></div></div>';
+  $('#new').onclick = () => { sel = null; edit(); };
+  edit(); render();
+}
+
+/* ---------- Geld ---------- */
+async function money() {
+  const render = async () => {
+    const list = (await items('money')).sort((a, b) => a.date < b.date ? 1 : -1);
+    const total = list.reduce((s, m) => s + m.cents, 0) / 100;
+    $('#msum').innerHTML = `<span class="${total >= 0 ? 'money-pos' : 'money-neg'}">${total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</span> <small>Gesamt</small>`;
+    $('#mlist').innerHTML = list.length ? list.map(m => `<div class="row" data-id="${m.id}"><div class="grow"><b>${esc(m.title)}</b><span>${fmtDate(m.date)}${m.category ? ' · ' + esc(m.category) : ''}</span></div><span class="${m.cents >= 0 ? 'money-pos' : 'money-neg'}">${(m.cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</span><button class="icon-btn" aria-label="Löschen">${ico('trash')}</button></div>`).join('') : '<div class="empty">Keine Buchungen.</div>';
+    $('#mlist').onclick = async e => { const b = e.target.closest('.icon-btn'); if (!b) return; try { await api(`/api/items/money/${b.closest('.row').dataset.id}`, { method: 'DELETE', body: undefined }); render(); } catch (er) { toast(er.message, 1); } };
+  };
+  view.innerHTML = head('Geld', 'Einnahmen (+) und Ausgaben (−)', '<div class="stat" id="msum"></div>') + `<form class="form" id="f"><label>Wofür<input name="title" required maxlength="240"></label><label>Betrag €<input name="amount" required inputmode="decimal" placeholder="-12,50"></label><label>Datum<input type="date" name="date" value="${today()}" required></label><label>Kategorie<input name="category" maxlength="80"></label><button class="btn">${ico('plus')} Buchen</button></form><div class="list" id="mlist"></div>`;
+  $('#f').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); const amount = String(f.get('amount')).replace(',', '.');
+    try { await api('/api/items/money', { body: { title: f.get('title'), amount, date: f.get('date'), category: f.get('category') } }); e.target.reset(); e.target.date.value = today(); render(); } catch (er) { toast(er.message, 1); } };
+  render();
+}
+
+/* ---------- Training ---------- */
+async function training() {
+  const render = async () => {
+    const list = (await items('training')).sort((a, b) => a.date < b.date ? 1 : -1);
+    $('#tlist').innerHTML = list.length ? list.map(t => `<div class="row" data-id="${t.id}"><div class="grow"><b>${esc(t.exercise)}</b><span>${fmtDate(t.date)} · ${t.sets}×${t.reps}${t.kg > 0 ? ' · ' + t.kg + ' kg' : ''}${t.note ? ' · ' + esc(t.note) : ''}</span></div><button class="icon-btn" aria-label="Löschen">${ico('trash')}</button></div>`).join('') : '<div class="empty">Noch kein Training eingetragen.</div>';
+    $('#tlist').onclick = async e => { const b = e.target.closest('.icon-btn'); if (!b) return; try { await api(`/api/items/training/${b.closest('.row').dataset.id}`, { method: 'DELETE', body: undefined }); render(); } catch (er) { toast(er.message, 1); } };
+  };
+  view.innerHTML = head('Training', 'Sätze und Gewichte') + `<form class="form" id="f"><label>Übung<input name="exercise" required maxlength="240"></label><label>Datum<input type="date" name="date" value="${today()}" required></label><label>Sätze<input type="number" name="sets" min="1" value="3" required></label><label>Wdh.<input type="number" name="reps" min="1" value="10" required></label><label>kg<input name="kg" inputmode="decimal" value="0"></label><label>Notiz<input name="note" maxlength="2000"></label><button class="btn">${ico('plus')} Eintragen</button></form><div class="list" id="tlist"></div>`;
+  $('#f').onsubmit = async e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); f.kg = String(f.kg).replace(',', '.');
+    try { await api('/api/items/training', { body: f }); toast('Eingetragen'); render(); } catch (er) { toast(er.message, 1); } };
+  render();
+}
+
+/* ---------- Dateien ---------- */
+async function files() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || ''); const path = q.get('p') || '';
+  view.innerHTML = head('Dateien', 'Deine Ablage auf dem Server') + '<div class="crumbs" id="cr"></div><div class="list" id="fl"><div class="skeleton"></div></div>';
+  const parts = path ? path.split('/') : [];
+  $('#cr').innerHTML = `<button data-p="">Start</button>` + parts.map((p, i) => ` / <button data-p="${esc(parts.slice(0, i + 1).join('/'))}">${esc(p)}</button>`).join('');
+  $('#cr').onclick = e => { const b = e.target.closest('button'); if (b) location.hash = '#/files' + (b.dataset.p ? '?p=' + encodeURIComponent(b.dataset.p) : ''); };
+  try {
+    const d = await api('/api/files?path=' + encodeURIComponent(path));
+    $('#fl').innerHTML = d.entries.length ? d.entries.map(f => `<div class="row" data-n="${esc(f.name)}" data-d="${f.directory ? 1 : 0}"><span class="tag">${ico(f.directory ? 'files' : 'notes')}</span><div class="grow"><b>${esc(f.name)}</b><span>${f.directory ? 'Ordner' : fmtBytes(f.size)}</span></div>${f.directory ? '' : `<a class="btn small ghost" href="/api/file?path=${encodeURIComponent((path ? path + '/' : '') + f.name)}">${ico('down')} Laden</a>`}</div>`).join('') : '<div class="empty">Dieser Ordner ist leer.</div>';
+    $('#fl').onclick = e => { const r = e.target.closest('.row'); if (r && r.dataset.d === '1' && !e.target.closest('a')) location.hash = '#/files?p=' + encodeURIComponent((path ? path + '/' : '') + r.dataset.n); };
+  } catch (er) { $('#fl').innerHTML = `<div class="empty">${esc(er.message)}</div>`; }
+}
+
+/* ---------- System ---------- */
+async function system() {
+  view.innerHTML = head('System', 'Zustand des Servers') + '<div class="skeleton"></div>';
+  let st; try { st = await api('/api/status'); } catch (er) { view.innerHTML = head('System') + `<div class="empty">${esc(er.message)}</div>`; return; }
+  const bk = st.backup_status;
+  const cont = (st.containers || []).map(c => `<div class="row"><span class="tag ${c.state === 'running' ? 'ok' : 'bad'}">${esc(c.state)}</span><div class="grow"><b>${esc(c.name)}</b>${c.oom ? '<span>Speicher knapp (OOM)</span>' : ''}</div>${me.admin && ['filebrowser', 'ntfy', 'couchdb'].includes(c.name) ? `<button class="btn small ghost" data-s="${esc(c.name)}">Neu starten</button>` : ''}</div>`).join('');
+  view.innerHTML = head('System', 'Zustand des Servers') + `<div class="grid">
+    <div class="card"><h2>Laufzeit</h2><div class="stat">${fmtUp(st.uptime)}</div></div>
+    <div class="card"><h2>Drucker</h2><span class="tag ${st.printer ? 'ok' : 'warn'}">${st.printer ? 'bereit' : 'nicht bereit'}</span> <span class="tag ${st.scanner ? 'ok' : 'warn'}">Scanner ${st.scanner ? 'ja' : 'nein'}</span></div>
+    <div class="card"><h2>Backup</h2>${bk ? `<span class="tag ${/^OK/.test(bk.state) ? 'ok' : 'warn'}">${esc(bk.state)}</span><div class="sub">${bk.time ? new Date(bk.time).toLocaleString('de-DE') : ''}</div>` : '<span class="tag warn">nicht eingerichtet</span>'}</div></div>
+  ${cont ? `<div class="card mt"><h2>Dienste</h2><div class="list">${cont}</div></div>` : ''}
+  <p class="sub"><a href="/api/export">Meine Daten exportieren (JSON)</a></p>`;
+  view.onclick = async e => { const b = e.target.closest('[data-s]'); if (!b) return; b.disabled = true; try { await api('/api/service', { body: { service: b.dataset.s, verb: 'restart' } }); toast(b.dataset.s + ' startet neu'); } catch (er) { toast(er.message, 1); } b.disabled = false; };
+}
+
+const ROUTES = { home, tasks, notes, money, training, files, system };
+async function route() {
+  const id = (location.hash.slice(2).split('?')[0]) || 'home';
+  const fn = ROUTES[id] || home;
+  document.querySelectorAll('#nav button').forEach(b => b.removeAttribute('aria-current'));
+  const cur = document.querySelector(`#nav button[data-t="${ROUTES[id] ? id : 'home'}"]`); if (cur) cur.setAttribute('aria-current', 'page');
+  view.onclick = null;
+  try { await fn(); } catch (er) { view.innerHTML = `<div class="empty">${esc(er.message)}</div>`; }
+  window.scrollTo(0, 0);
+}
+
+(async () => {
+  $('#logo').innerHTML = ico('logo');
+  buildNav();
+  try { me = await api('/api/me'); } catch (er) { view.innerHTML = `<div class="empty">Nicht angemeldet oder Server nicht erreichbar.<br>${esc(er.message)}</div>`; return; }
+  $('#whoName').textContent = me.user; $('#whoRole').textContent = me.admin ? 'Administrator' : 'Benutzer'; $('#avatar').textContent = me.user.slice(0, 1).toUpperCase();
+  window.addEventListener('hashchange', route);
+  route();
+})();
+})();
