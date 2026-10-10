@@ -122,6 +122,11 @@ def push_config(changes):
         ".claude/settings.json": open(os.path.join(CFG, "settings.json"), "rb").read().replace(b"\r\n", b"\n"),
         ".claude/hooks/ma-guard.py": open(os.path.join(CFG, "hooks", "ma-guard.py"), "rb").read().replace(b"\r\n", b"\n"),
     }
+    for base, prefix in ((os.path.join(CFG, "skills"), ".claude/skills/"), (os.path.expanduser("~/.claude/agents"), ".claude/agents/")):
+        for root, _d, files in os.walk(base):
+            for f in files:
+                full = os.path.join(root, f)
+                want[prefix + os.path.relpath(full, base).replace("\\", "/")] = open(full, "rb").read().replace(b"\r\n", b"\n")
     have = json.loads(ssh(HAVE_CMD % json.dumps(list(want))))
     send = {p: b for p, b in want.items() if hashlib.sha1(b).hexdigest() != have.get(p)}
     if send and not DRY:
@@ -130,7 +135,7 @@ def push_config(changes):
             for p, b in send.items():
                 ti = tarfile.TarInfo(p); ti.size = len(b); ti.mode = 0o755 if p.endswith(".py") else 0o644; ti.mtime = time.time()
                 tf.addfile(ti, io.BytesIO(b))
-        ssh("mkdir -p ~/.claude/hooks && tar -xf - -C ~", data=buf.getvalue())
+        ssh("mkdir -p ~/.claude/hooks ~/.claude/skills ~/.claude/agents && tar -xf - -C ~", data=buf.getvalue())
     changes += [f"Regeln/Einstellung zum Server: {p}" for p in send]
 
 
@@ -198,6 +203,11 @@ def main():
         write_report(rep, changes, pull, push, conflicts)
     log(f"OK geholt={len(pull)} gesendet={len(push)} konflikte={len(conflicts)} config={len(changes)}")
     print(f"geholt {len(pull)}, gesendet {len(push)}, Konflikte {len(conflicts)}, Regeln {len(changes)}")
+    if not DRY:
+        try:
+            subprocess.run([sys.executable, "-I", os.path.join(os.path.dirname(os.path.abspath(__file__)), "server-spiegel.py")], capture_output=True, timeout=400)
+        except Exception as e:
+            log(f"Vollspiegel fehlgeschlagen: {e!r}")
     return 0
 
 
