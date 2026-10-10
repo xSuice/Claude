@@ -164,7 +164,7 @@ async function files() {
   try {
     const d = await api('/api/files?path=' + encodeURIComponent(path));
     $('#fl').innerHTML = d.entries.length ? d.entries.map(f => `<div class="row" data-n="${esc(f.name)}" data-d="${f.directory ? 1 : 0}"><span class="tag">${ico(f.directory ? 'files' : 'notes')}</span><div class="grow"><b>${esc(f.name)}</b><span>${f.directory ? 'Ordner' : fmtBytes(f.size)}</span></div>${f.directory ? '' : `<a class="btn small ghost" href="/api/file?path=${encodeURIComponent((path ? path + '/' : '') + f.name)}">${ico('down')} Laden</a>`}</div>`).join('') : '<div class="empty">Dieser Ordner ist leer.</div>';
-    $('#fl').onclick = e => { const r = e.target.closest('.row'); if (r && r.dataset.d === '1' && !e.target.closest('a')) location.hash = '#/files?p=' + encodeURIComponent((path ? path + '/' : '') + r.dataset.n); };
+    $('#fl').onclick = e => { const r = e.target.closest('.row'); if (!r || e.target.closest('a')) return; const full = (path ? path + '/' : '') + r.dataset.n; if (r.dataset.d === '1') location.hash = '#/files?p=' + encodeURIComponent(full); else openViewer(full, r.dataset.n); };
   } catch (er) { $('#fl').innerHTML = `<div class="empty">${esc(er.message)}</div>`; }
 }
 
@@ -281,6 +281,65 @@ async function claude() {
   };
   $('#cf').prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cf').requestSubmit(); } });
 }
+
+/* ---------- Dateivorschau ---------- */
+const TEXT_EXT = ['txt', 'log', 'json', 'yml', 'yaml', 'py', 'js', 'ts', 'sh', 'bash', 'csv', 'conf', 'ini', 'xml', 'html', 'css', 'sql', 'toml', 'md', 'markdown', 'canvas', 'base', 'ps1', 'bat', 'java', 'c', 'h', 'cpp', 'go', 'rs', 'service', 'timer', 'env.example'];
+const IMG_EXT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp' };
+function mdDoc(src) {
+  let fm = '';
+  src = src.replace(/^---\n([\s\S]*?)\n---\n?/, (_m, y) => { fm = '<pre class="fm">' + esc(y) + '</pre>'; return ''; });
+  const blocks = [];
+  let t = esc(src).replace(/```[^\n]*\n([\s\S]*?)```/g, (_m, c) => { blocks.push('<pre><code>' + c + '</code></pre>'); return '\u0000' + (blocks.length - 1) + '\u0000'; });
+  t = t.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '<span class="wl">$2</span>').replace(/\[\[([^\]]+)\]\]/g, '<span class="wl">$1</span>');
+  t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
+  const out = [];
+  let list = null;
+  const flush = () => { if (list) { out.push('<' + list.t + '>' + list.items.join('') + '</' + list.t + '>'); list = null; } };
+  for (const line of t.split('\n')) {
+    let m;
+    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { flush(); out.push('<h' + m[1].length + '>' + m[2] + '</h' + m[1].length + '>'); }
+    else if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { flush(); out.push('<hr>'); }
+    else if ((m = line.match(/^\s*[-*]\s+(?:\[( |x)\]\s+)?(.*)$/))) { if (!list || list.t !== 'ul') { flush(); list = { t: 'ul', items: [] }; } list.items.push('<li>' + (m[1] ? (m[1] === 'x' ? '☑ ' : '☐ ') : '') + m[2] + '</li>'); }
+    else if ((m = line.match(/^\s*\d+\.\s+(.*)$/))) { if (!list || list.t !== 'ol') { flush(); list = { t: 'ol', items: [] }; } list.items.push('<li>' + m[1] + '</li>'); }
+    else if ((m = line.match(/^&gt;\s?(.*)$/))) { flush(); out.push('<blockquote>' + m[1] + '</blockquote>'); }
+    else if (!line.trim()) { flush(); }
+    else { flush(); out.push('<p>' + line + '</p>'); }
+  }
+  flush();
+  return fm + out.join('').replace(/\u0000(\d+)\u0000/g, (_m, i) => blocks[+i]);
+}
+function closeViewer() { const v = $('#viewer'); if (v) { if (v.dataset.url) URL.revokeObjectURL(v.dataset.url); v.remove(); } }
+async function openViewer(path, name) {
+  closeViewer();
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const dl = '/api/file?path=' + encodeURIComponent(path);
+  const v = document.createElement('div');
+  v.id = 'viewer'; v.className = 'viewer';
+  v.innerHTML = '<div class="vhead"><b>' + esc(name) + '</b><span class="vsp"></span><a class="btn small ghost" href="' + dl + '">' + ico('down') + ' Laden</a><button class="btn small ghost" id="vclose">Schließen</button></div><div class="vbody" id="vbody"><div class="skeleton"></div></div>';
+  document.body.appendChild(v);
+  $('#vclose').onclick = closeViewer;
+  const body = $('#vbody');
+  try {
+    const r = await fetch(dl, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('Datei nicht lesbar (' + r.status + ')');
+    const blob = await r.blob();
+    if (IMG_EXT[ext]) {
+      const url = URL.createObjectURL(new Blob([blob], { type: IMG_EXT[ext] })); v.dataset.url = url;
+      body.innerHTML = '<img class="vimg" alt="' + esc(name) + '" src="' + url + '">';
+    } else if (ext === 'pdf') {
+      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' })); v.dataset.url = url;
+      body.innerHTML = '<iframe class="vpdf" src="' + url + '" title="' + esc(name) + '"></iframe><div class="sub">Wird die PDF nicht angezeigt, nutze „Laden“.</div>';
+    } else if (TEXT_EXT.includes(ext) || (!ext && blob.size < 200000)) {
+      if (blob.size > 3 * 1024 * 1024) throw new Error('Datei ist zu groß für die Vorschau (' + fmtBytes(blob.size) + '). Bitte laden.');
+      const text = await blob.text();
+      body.innerHTML = (ext === 'md' || ext === 'markdown') ? '<article class="md">' + mdDoc(text) + '</article>' : '<pre class="vtext">' + esc(text) + '</pre>';
+    } else {
+      body.innerHTML = '<div class="empty">Für diesen Dateityp gibt es keine Vorschau (.' + esc(ext) + ', ' + fmtBytes(blob.size) + ').<br>Nutze „Laden“.</div>';
+    }
+  } catch (er) { body.innerHTML = '<div class="empty">' + esc(er.message) + '</div>'; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeViewer(); });
 
 const ROUTES = { home, tasks, notes, money, training, claude, files, system };
 async function route() {

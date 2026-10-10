@@ -152,3 +152,21 @@ option { background: #10131b; }
 .candle { display: block; width: 26px; margin: 0 auto 12px; color: var(--silver); opacity: .75; }
 .candle svg { width: 26px; height: 34px; stroke-width: 1.4; }
 .hero::after { background: radial-gradient(circle, rgba(255,255,255,.26) 1.1px, transparent 1.7px) 0 0 / 7px 7px, repeating-linear-gradient(135deg, rgba(229,23,63,.10) 0 8px, transparent 8px 22px); }
+
+/* Dateivorschau */
+.viewer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--bg); }
+.vhead { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; border-bottom: 1px solid var(--line2); }
+.vhead b { font: 600 13px var(--mono); letter-spacing: .06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vsp { flex: 1; }
+.vbody { flex: 1; overflow: auto; padding: 18px clamp(14px, 4vw, 40px) 40px; }
+.vtext { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.55 var(--mono); color: #dfe3ee; }
+.vimg { max-width: 100%; max-height: calc(100vh - 110px); display: block; margin: 0 auto; border: 1px solid var(--line2); }
+.vpdf { width: 100%; height: calc(100vh - 120px); border: 1px solid var(--line2); background: #fff; }
+.md { max-width: 860px; margin: 0 auto; line-height: 1.7; }
+.md h1, .md h2, .md h3 { letter-spacing: -.01em; margin: 1.4em 0 .5em; } .md h1 { font-size: 28px; border-bottom: 1px solid var(--line2); padding-bottom: 8px; } .md h2 { font-size: 22px; } .md h3 { font-size: 18px; color: var(--silver); }
+.md p { margin: 0 0 .9em; } .md ul, .md ol { margin: 0 0 1em; padding-left: 1.4em; }
+.md blockquote { margin: 0 0 1em; padding: 6px 14px; border-left: 2px solid var(--red); color: var(--silver); background: rgba(229,23,63,.06); }
+.md pre { background: #05060a; border: 1px solid var(--line); padding: 10px 12px; overflow: auto; font: 13px/1.45 var(--mono); }
+.md code { font: 13px var(--mono); background: rgba(190,200,225,.1); padding: 1px 5px; } .md pre code { background: none; padding: 0; }
+.md hr { border: 0; border-top: 1px solid var(--line2); margin: 1.4em 0; }
+.md .wl { color: var(--red2); } .md .fm { color: var(--muted); font-size: 12px; border-style: dashed; }
