@@ -27,6 +27,7 @@ const ICONS = {
   fcode: '<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/>',
   fsheet: '<rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M4 9h16M4 15h16M10 3v18"/>',
   fpdf: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 14h6M9 17h4"/>',
+  wissen: '<circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="8" r="2.2"/><circle cx="9" cy="18" r="2.2"/><circle cx="19" cy="19" r="1.6"/><path d="M8 7l8 1M7 8l1.6 8M11 17.6l6.4 1M17.6 10l1 7"/>',
   logo: '<path d="M12 2.5c.9 3 4.2 4.6 4.2 9a4.2 4.2 0 01-8.4 0c0-1.8.8-3 1.7-4 .3 1.1.9 1.7 1.5 1.9C10.8 7.6 11.1 5 12 2.5z"/>'
 };
 const ico = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -55,7 +56,7 @@ async function api(path, opts = {}) {
 }
 const items = k => api('/api/items/' + k).then(d => d.items);
 
-const TABS = [['home', 'Lage'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['claude', 'Claude'], ['files', 'Dateien'], ['system', 'System']];
+const TABS = [['home', 'Lage'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['claude', 'Claude'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['system', 'System']];
 function buildNav() {
   $('#nav').innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${ico(id)}<span>${name}</span></button>`).join('');
   $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) location.hash = '#/' + b.dataset.t; });
@@ -311,7 +312,7 @@ function mdDoc(src) {
   src = src.replace(/^---\n([\s\S]*?)\n---\n?/, (_m, y) => { fm = '<pre class="fm">' + esc(y) + '</pre>'; return ''; });
   const blocks = [];
   let t = esc(src).replace(/```[^\n]*\n([\s\S]*?)```/g, (_m, c) => { blocks.push('<pre><code>' + c + '</code></pre>'); return '\u0000' + (blocks.length - 1) + '\u0000'; });
-  t = t.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '<span class="wl">$2</span>').replace(/\[\[([^\]]+)\]\]/g, '<span class="wl">$1</span>');
+  t = t.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '<span class="wl" data-t="$1">$2</span>').replace(/\[\[([^\]]+)\]\]/g, '<span class="wl" data-t="$1">$1</span>');
   t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
   const out = [];
@@ -400,7 +401,86 @@ async function openViewer(path, name) {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeViewer(); });
 
-const ROUTES = { home, tasks, notes, money, training, claude, files, system };
+/* ---------- Wissen (Graph wie in Obsidian) ---------- */
+let graphCache = null;
+async function loadGraph(force) {
+  if (graphCache && !force) return graphCache;
+  const r = await fetch('/api/file?path=' + encodeURIComponent('Bibliothek/vault-graph.json'), { credentials: 'same-origin' });
+  if (!r.ok) throw new Error('Graph nicht verfügbar (' + r.status + '). Ist die Bibliothek im Portal eingebunden?');
+  graphCache = await r.json();
+  graphCache.byName = {};
+  graphCache.nodes.forEach((n, i) => { const k = n.n.toLowerCase(); if (!(k in graphCache.byName)) graphCache.byName[k] = i; graphCache.byName[n.p.slice(0, -3).toLowerCase()] = i; });
+  return graphCache;
+}
+function openNote(i) { const g = graphCache, n = g.nodes[i]; openViewer(g.basis + '/' + n.p, n.n + '.md'); }
+document.addEventListener('click', async e => {
+  const w = e.target.closest('.wl'); if (!w) return;
+  try { const g = await loadGraph(); const k = (w.dataset.t || w.textContent).toLowerCase().replace(/\.md$/, ''); const i = g.byName[k] ?? g.byName[k.split('/').pop()]; if (i !== undefined) openNote(i); else toast('Notiz „' + w.textContent + '“ nicht gefunden', 1); } catch (er) { toast(er.message, 1); }
+});
+const GCOL = ['#e5173f', '#3d8bfd', '#2fbf71', '#f59e0b', '#a78bfa', '#22c1c3', '#c9ced9', '#ff7ab6', '#84cc16', '#fb923c'];
+async function wissen() {
+  view.innerHTML = head('Wissen', 'Deine Notizen und ihre Verbindungen', '<div class="gtools"><input id="gq" placeholder="Notiz suchen …"><button class="btn small ghost" id="greset">Ansicht zurücksetzen</button></div>') +
+    '<div class="gwrap"><canvas id="gc"></canvas><div class="gtip" id="gtip" hidden></div><div class="glegend" id="glegend"></div><div class="ginfo" id="ginfo"></div></div>';
+  let g;
+  try { g = await loadGraph(true); } catch (er) { $('.gwrap').innerHTML = '<div class="empty">' + esc(er.message) + '</div>'; return; }
+  const cv = $('#gc'), ctx = cv.getContext('2d'), wrap = $('.gwrap');
+  const groups = [...new Set(g.nodes.map(n => n.g))].sort();
+  const col = Object.fromEntries(groups.map((x, i) => [x, GCOL[i % GCOL.length]]));
+  $('#glegend').innerHTML = groups.map(x => '<span><i data-c="' + col[x] + '"></i>' + esc(x) + '</span>').join('');
+  document.querySelectorAll('#glegend i').forEach(i => { i.style.background = i.dataset.c; });
+  $('#ginfo').textContent = g.nodes.length + ' Notizen · ' + g.links.length + ' Verbindungen · Stand ' + g.stand;
+  const N = g.nodes.length, adj = Array.from({ length: N }, () => []);
+  g.links.forEach(([a, b]) => { adj[a].push(b); adj[b].push(a); });
+  const P = g.nodes.map((n, i) => { const a = i * 2.399963, r = 14 * Math.sqrt(i + 1); return { x: Math.cos(a) * r, y: Math.sin(a) * r, vx: 0, vy: 0, r: 2.6 + Math.sqrt(n.d) * 1.25 }; });
+  let W = 0, H = 0, dpr = window.devicePixelRatio || 1, cam = { x: 0, y: 0, k: 0.9 }, alpha = 1, hover = -1, drag = null, query = '';
+  const resize = () => { W = wrap.clientWidth; H = wrap.clientHeight; cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; };
+  resize(); new ResizeObserver(resize).observe(wrap);
+  const toWorld = (sx, sy) => ({ x: (sx - W / 2) / cam.k + cam.x, y: (sy - H / 2) / cam.k + cam.y });
+  function step() {
+    if (alpha < 0.005) return;
+    for (let i = 0; i < N; i++) { const p = P[i]; for (let j = i + 1; j < N; j++) { const q = P[j]; let dx = p.x - q.x, dy = p.y - q.y, d2 = dx * dx + dy * dy + 0.01; if (d2 > 90000) continue; const f = 900 / d2 * alpha; dx *= f; dy *= f; p.vx += dx; p.vy += dy; q.vx -= dx; q.vy -= dy; } }
+    g.links.forEach(([a, b]) => { const p = P[a], q = P[b]; const dx = q.x - p.x, dy = q.y - p.y, d = Math.sqrt(dx * dx + dy * dy) || 1, f = (d - 46) * 0.02 * alpha; p.vx += dx / d * f; p.vy += dy / d * f; q.vx -= dx / d * f; q.vy -= dy / d * f; });
+    for (let i = 0; i < N; i++) { const p = P[i]; if (drag && drag.i === i) continue; p.vx -= p.x * 0.004 * alpha; p.vy -= p.y * 0.004 * alpha; p.x += p.vx; p.y += p.vy; p.vx *= 0.6; p.vy *= 0.6; }
+    alpha *= 0.985;
+  }
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    ctx.translate(W / 2, H / 2); ctx.scale(cam.k, cam.k); ctx.translate(-cam.x, -cam.y);
+    const hl = hover >= 0 ? new Set([hover, ...adj[hover]]) : null;
+    const match = query ? new Set(g.nodes.map((n, i) => n.n.toLowerCase().includes(query) ? i : -1).filter(i => i >= 0)) : null;
+    ctx.lineWidth = 0.7 / cam.k;
+    g.links.forEach(([a, b]) => { const on = hl && (a === hover || b === hover); ctx.strokeStyle = on ? 'rgba(255,59,92,.85)' : hl || match ? 'rgba(190,200,225,.05)' : 'rgba(190,200,225,.16)'; ctx.beginPath(); ctx.moveTo(P[a].x, P[a].y); ctx.lineTo(P[b].x, P[b].y); ctx.stroke(); });
+    g.nodes.forEach((n, i) => {
+      const p = P[i], dim = (hl && !hl.has(i)) || (match && !match.has(i));
+      ctx.globalAlpha = dim ? 0.18 : 1; ctx.fillStyle = col[n.g]; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+      if (i === hover || (match && match.has(i))) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4 / cam.k; ctx.stroke(); }
+      const showLabel = !dim && (cam.k > 1.6 || n.d > 14 || i === hover || (hl && hl.has(i)) || (match && match.has(i)));
+      if (showLabel) { ctx.fillStyle = '#e7eaf2'; ctx.font = (11 / cam.k) + 'px system-ui, sans-serif'; ctx.fillText(n.n, p.x + p.r + 3 / cam.k, p.y + 4 / cam.k); }
+    });
+    ctx.globalAlpha = 1;
+  }
+  function loop() { if (!document.body.contains(cv)) return; step(); draw(); requestAnimationFrame(loop); }
+  loop();
+  const pick = (sx, sy) => { const w = toWorld(sx, sy); let best = -1, bd = 1e9; P.forEach((p, i) => { const d = (p.x - w.x) ** 2 + (p.y - w.y) ** 2; if (d < bd && d < (p.r + 6 / cam.k) ** 2) { bd = d; best = i; } }); return best; };
+  const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  let moved = false;
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); const m = pos(e), i = pick(m.x, m.y); moved = false; drag = i >= 0 ? { i } : { pan: true, sx: m.x, sy: m.y, cx: cam.x, cy: cam.y }; });
+  cv.addEventListener('pointermove', e => {
+    const m = pos(e);
+    if (drag && drag.i !== undefined) { const w = toWorld(m.x, m.y); P[drag.i].x = w.x; P[drag.i].y = w.y; alpha = Math.max(alpha, 0.3); moved = true; return; }
+    if (drag && drag.pan) { cam.x = drag.cx - (m.x - drag.sx) / cam.k; cam.y = drag.cy - (m.y - drag.sy) / cam.k; moved = true; return; }
+    hover = pick(m.x, m.y); const tip = $('#gtip');
+    if (hover >= 0) { const n = g.nodes[hover]; tip.hidden = false; tip.textContent = n.n + ' · ' + n.d + ' Verbindungen · ' + n.g; tip.style.left = (m.x + 14) + 'px'; tip.style.top = (m.y + 10) + 'px'; } else tip.hidden = true;
+    cv.style.cursor = hover >= 0 ? 'pointer' : 'grab';
+  });
+  cv.addEventListener('pointerup', e => { const m = pos(e); if (drag && drag.i !== undefined && !moved) openNote(drag.i); drag = null; });
+  cv.addEventListener('wheel', e => { e.preventDefault(); const m = pos(e), before = toWorld(m.x, m.y); cam.k = Math.min(6, Math.max(0.15, cam.k * (e.deltaY < 0 ? 1.15 : 0.87))); const after = toWorld(m.x, m.y); cam.x += before.x - after.x; cam.y += before.y - after.y; }, { passive: false });
+  $('#gq').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); if (query) { const i = g.nodes.findIndex(n => n.n.toLowerCase().includes(query)); if (i >= 0) { cam.x = P[i].x; cam.y = P[i].y; cam.k = Math.max(cam.k, 1.6); } } });
+  $('#gq').addEventListener('keydown', e => { if (e.key === 'Enter') { const i = g.nodes.findIndex(n => n.n.toLowerCase().includes(query)); if (i >= 0) openNote(i); } });
+  $('#greset').onclick = () => { cam = { x: 0, y: 0, k: 0.9 }; query = ''; $('#gq').value = ''; alpha = 0.6; };
+}
+
+const ROUTES = { home, tasks, notes, money, training, claude, wissen, files, system };
 async function route() {
   const id = (location.hash.slice(2).split('?')[0]) || 'home';
   const fn = ROUTES[id] || home;

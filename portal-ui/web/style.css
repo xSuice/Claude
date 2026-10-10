@@ -185,3 +185,14 @@ option { background: #10131b; }
 }
 
 .ftag { min-width: 64px; justify-content: flex-start; } .ftag small { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+/* Wissen (Graph) */
+.gtools { display: flex; gap: 8px; flex-wrap: wrap; } .gtools input { width: 220px; }
+.gwrap { position: relative; height: calc(100vh - 170px); min-height: 420px; border: 1px solid var(--line); background: radial-gradient(60rem 30rem at 50% 50%, rgba(229,23,63,.06), transparent 70%), #05060a; overflow: hidden; touch-action: none; }
+.gwrap canvas { display: block; cursor: grab; }
+.gtip { position: absolute; pointer-events: none; padding: 5px 9px; background: var(--panel2); border: 1px solid var(--red); font: 12px var(--mono); color: var(--text); white-space: nowrap; }
+.glegend { position: absolute; left: 10px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px 12px; max-width: 70%; font: 11px var(--mono); color: var(--muted); }
+.glegend i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; }
+.ginfo { position: absolute; right: 10px; top: 8px; font: 11px var(--mono); color: var(--muted); }
+.md .wl { cursor: pointer; border-bottom: 1px dotted var(--red2); }
+@media (max-width: 820px) { .gwrap { height: calc(100vh - 250px); } .nav { overflow-x: auto; justify-content: flex-start; } .nav button { min-width: 54px; } .gtools input { width: 150px; } }

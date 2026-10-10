@@ -15,7 +15,7 @@ id -nG ma-web | grep -qw andrew || usermod -aG andrew ma-web
 chmod -R g+rX /srv/ma-home/library
 for u in $USERS; do
   D=/srv/ma-home/files/$u
-  install -d -o ma-web -g ma-web -m 750 "$D" "$D/Bibliothek" "$D/Backup-USB"
+  for x in "$D" "$D/Bibliothek" "$D/Backup-USB"; do mountpoint -q "$x" || install -d -o ma-web -g ma-web -m 750 "$x"; done
   grep -q " $D/Bibliothek " /etc/fstab || echo "/srv/ma-home/library $D/Bibliothek none bind,nofail 0 0" >> /etc/fstab
   grep -q " $D/Backup-USB " /etc/fstab || echo "/mnt/ma-backup $D/Backup-USB none bind,nofail 0 0" >> /etc/fstab
   systemctl daemon-reload
@@ -30,7 +30,7 @@ FB=/srv/ma-home/files
 for d in inbox documents media archive review; do
   [ -d /srv/ma-home/library/$d ] && chmod -R g+rwX /srv/ma-home/library/$d && find /srv/ma-home/library/$d -type d -exec chmod g+s {} +
 done
-install -d -o ma-web -g ma-web -m 750 "$FB/Bibliothek"
+mountpoint -q "$FB/Bibliothek" || install -d -o ma-web -g ma-web -m 750 "$FB/Bibliothek"
 grep -q " $FB/Bibliothek " /etc/fstab || echo "/srv/ma-home/library $FB/Bibliothek none bind,nofail 0 0" >> /etc/fstab
 systemctl daemon-reload
 mountpoint -q "$FB/Bibliothek" || mount "$FB/Bibliothek"
