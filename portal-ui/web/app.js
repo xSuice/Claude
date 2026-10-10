@@ -309,6 +309,35 @@ function mdDoc(src) {
   flush();
   return fm + out.join('').replace(/\u0000(\d+)\u0000/g, (_m, i) => blocks[+i]);
 }
+
+const SERVER_DOC = ['pdf', 'doc', 'docx', 'odt', 'ppt', 'pptx', 'odp', 'xls', 'xlsx', 'ods', 'txt', 'rtf', 'png', 'jpg', 'jpeg', 'tif', 'tiff'];
+const OFFICE_EXT = ['doc', 'docx', 'odt', 'ppt', 'pptx', 'odp', 'xls', 'xlsx', 'ods', 'rtf', 'tif', 'tiff'];
+const MEDIA_EXT = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska' };
+async function serverJob(kind, path, onState) {
+  const key = crypto.randomUUID();
+  await api('/api/jobs', { body: { kind, path, key } });
+  for (let i = 0; i < 300; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const st = await api('/api/jobs/' + key);
+    if (onState) onState(st);
+    if (st.state === 'done') return { id: key, ...st };
+    if (st.state === 'error') throw new Error(st.message || 'Auftrag fehlgeschlagen');
+  }
+  throw new Error('Zeitüberschreitung beim Server-Auftrag');
+}
+async function serverPreview(path, body) {
+  body.innerHTML = '<div class="empty">Der Server wandelt die Datei um …</div>';
+  const r = await serverJob('preview', path, st => { if (st.state === 'running') body.innerHTML = '<div class="empty">Der Server wandelt die Datei um … (läuft)</div>'; });
+  body.innerHTML = '<div class="pages">' + Array.from({ length: r.pages }, (_, i) => '<img loading="lazy" alt="Seite ' + (i + 1) + '" src="/api/jobs/' + r.id + '/page?n=' + (i + 1) + '">').join('') + '</div>' +
+    (r.total_pages > r.pages ? '<div class="sub">Vorschau zeigt ' + r.pages + ' von ' + r.total_pages + ' Seiten. Drucken druckt alle.</div>' : '');
+}
+async function serverPrint(path, btn) {
+  btn.disabled = true; toast('Druckauftrag wird vorbereitet …');
+  try { const r = await serverJob('print', path); toast(r.message ? 'Gedruckt: ' + r.message : 'An den Drucker gesendet'); }
+  catch (er) { toast(er.message, 1); }
+  btn.disabled = false;
+}
+
 function closeViewer() { const v = $('#viewer'); if (v) { if (v.dataset.url) URL.revokeObjectURL(v.dataset.url); v.remove(); } }
 async function openViewer(path, name) {
   closeViewer();
@@ -316,9 +345,12 @@ async function openViewer(path, name) {
   const dl = '/api/file?path=' + encodeURIComponent(path);
   const v = document.createElement('div');
   v.id = 'viewer'; v.className = 'viewer';
-  v.innerHTML = '<div class="vhead"><b>' + esc(name) + '</b><span class="vsp"></span><a class="btn small ghost" href="' + dl + '">' + ico('down') + ' Laden</a><button class="btn small ghost" id="vclose">Schließen</button></div><div class="vbody" id="vbody"><div class="skeleton"></div></div>';
+  v.innerHTML = '<div class="vhead"><b>' + esc(name) + '</b><span class="vsp"></span>' + (SERVER_DOC.includes(ext) ? '<button class="btn small ghost" id="vprint">Drucken (Samsung)</button>' : '') + '<button class="btn small ghost" id="vbprint">Druckansicht</button><a class="btn small ghost" href="' + dl + '">' + ico('down') + ' Laden</a><button class="btn small ghost" id="vclose">Schließen</button></div><div class="vbody" id="vbody"><div class="skeleton"></div></div>';
   document.body.appendChild(v);
   $('#vclose').onclick = closeViewer;
+  if ($('#vprint')) $('#vprint').onclick = e => serverPrint(path, e.currentTarget);
+  $('#vbprint').onclick = () => window.print();
+  if (OFFICE_EXT.includes(ext)) { try { await serverPreview(path, $('#vbody')); } catch (er) { $('#vbody').innerHTML = '<div class="empty">' + esc(er.message) + '</div>'; } return; }
   const body = $('#vbody');
   try {
     const r = await fetch(dl, { credentials: 'same-origin' });
@@ -334,8 +366,14 @@ async function openViewer(path, name) {
       if (blob.size > 3 * 1024 * 1024) throw new Error('Datei ist zu groß für die Vorschau (' + fmtBytes(blob.size) + '). Bitte laden.');
       const text = await blob.text();
       body.innerHTML = (ext === 'md' || ext === 'markdown') ? '<article class="md">' + mdDoc(text) + '</article>' : '<pre class="vtext">' + esc(text) + '</pre>';
+    } else if (MEDIA_EXT[ext]) {
+      const url = URL.createObjectURL(new Blob([blob], { type: MEDIA_EXT[ext] })); v.dataset.url = url;
+      body.innerHTML = MEDIA_EXT[ext].startsWith('audio') ? '<audio class="vmedia" controls src="' + url + '"></audio>' : '<video class="vmedia" controls playsinline src="' + url + '"></video>';
     } else {
-      body.innerHTML = '<div class="empty">Für diesen Dateityp gibt es keine Vorschau (.' + esc(ext) + ', ' + fmtBytes(blob.size) + ').<br>Nutze „Laden“.</div>';
+      const head = new Uint8Array(await blob.slice(0, 4096).arrayBuffer());
+      const binary = head.some(b => b === 0);
+      if (!binary && blob.size < 3 * 1024 * 1024) body.innerHTML = '<pre class="vtext">' + esc(await blob.text()) + '</pre>';
+      else body.innerHTML = '<div class="empty">Diese Datei ist ein Binärformat (.' + esc(ext) + ', ' + fmtBytes(blob.size) + ') ohne Vorschau.<br>Nutze „Laden“.</div>';
     }
   } catch (er) { body.innerHTML = '<div class="empty">' + esc(er.message) + '</div>'; }
 }

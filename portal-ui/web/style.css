@@ -170,3 +170,16 @@ option { background: #10131b; }
 .md code { font: 13px var(--mono); background: rgba(190,200,225,.1); padding: 1px 5px; } .md pre code { background: none; padding: 0; }
 .md hr { border: 0; border-top: 1px solid var(--line2); margin: 1.4em 0; }
 .md .wl { color: var(--red2); } .md .fm { color: var(--muted); font-size: 12px; border-style: dashed; }
+
+.pages { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.pages img { max-width: min(100%, 900px); background: #fff; border: 1px solid var(--line2); box-shadow: 0 10px 30px -12px #000; }
+.vmedia { display: block; width: min(100%, 960px); margin: 20px auto; }
+.vhead { flex-wrap: wrap; }
+@media print {
+  body > *:not(.viewer) { display: none !important; }
+  .viewer { position: static; background: #fff; color: #000; }
+  .vhead { display: none !important; }
+  .vbody { overflow: visible; padding: 0; }
+  .md, .vtext { color: #000; } .md .wl { color: #000; text-decoration: underline; }
+  .pages img { box-shadow: none; border: 0; page-break-after: always; }
+}
