@@ -76,7 +76,7 @@ async function home() {
     <a class="app" href="https://ha.${dom}" target="_blank" rel="noopener"><div class="ic c1">${ico('ha')}</div><b>Home Assistant</b><span>Smart Home</span></a>
     <a class="app" href="https://ntfy.${dom}" target="_blank" rel="noopener"><div class="ic c3">${ico('bell')}</div><b>Benachrichtigungen</b><span>ntfy</span></a>
     <a class="app" href="https://sync.${dom}" target="_blank" rel="noopener"><div class="ic c2">${ico('sync')}</div><b>Notizen-Sync</b><span>CouchDB</span></a>
-    <a class="app" href="https://claude.ai/code" target="_blank" rel="noopener"><div class="ic c3">${ico('logo')}</div><b>Claude</b><span>Aufgaben &amp; Fragen</span></a>
+    <a class="app" href="#/claude"><div class="ic c3">${ico('claude')}</div><b>Claude</b><span>Chat auf dem Server</span></a>
     <a class="app" href="#/files"><div class="ic c4">${ico('files')}</div><b>Dateien</b><span>Ablage &amp; Backup</span></a>
   </div></div>`;
   view.querySelectorAll('.bar i').forEach(i => requestAnimationFrame(() => i.style.setProperty('--p', i.dataset.p)));

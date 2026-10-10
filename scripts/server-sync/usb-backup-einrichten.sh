@@ -20,7 +20,7 @@ grep -q "$UUID" /etc/fstab || echo "UUID=$UUID /mnt/ma-backup ext4 defaults,nofa
 systemctl daemon-reload
 mount /mnt/ma-backup
 install -d -m 700 /mnt/ma-backup/restic-repo
-install -d -m 700 /etc/ma-home
+install -d /etc/ma-home   # KEIN -m: sonst werden die Rechte (750 root:ma-web) veraendert und das Portal verliert den Zugriff
 if [ ! -f /etc/ma-home/backup.pass ]; then
   umask 077; head -c 32 /dev/urandom | base64 > /etc/ma-home/backup.pass
 fi
