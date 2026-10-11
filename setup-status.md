@@ -251,3 +251,12 @@ Backups: `~/.claude/settings.json.bak-20261010-phase5`, `router-config.json.bak-
 - Folge: Neue Sitzung pro Thema statt einer endlosen. Mail- und Kalenderroutine auf 21:45 und 22:15 verschoben (nach dem Limit-Reset um 21:20).
 
 - Automatische Sitzungsübergabe: Hooks `kontext-waechter.py` (UserPromptSubmit, ab 450 000 Token) und `uebergabe-laden.py` (SessionStart), Skill `uebergabe`, `clear_session` auf "self". Hooks liegen in ~/.claude/hooks, Sicherungen settings.json.bak-20261010-hook(2).
+
+### Vollautomatik (2026-10-11, auf Philipps Auftrag "alles vollautomatisch")
+- **Auto-Deploy:** `server/deploy/ma-deploy` (root, `/usr/local/sbin`, sudoers `/etc/sudoers.d/ma-deploy`, nur dieser Befehl) kopiert eine feste Dateiliste aus `~/deploy-staging`. PC-Seite `scripts/server-sync/deploy.py` liefert nur COMMITTETE Stände (git HEAD), stündlich über `claude-abgleich.py`. Erster echter Lauf ok (Router + Oberfläche). Rückgängig: `sudo rm /etc/sudoers.d/ma-deploy /usr/local/sbin/ma-deploy`.
+- **Paritäts-Check** (`paritaet-check.py`, täglich): Dateien, Hooks, Timer, Cron, PC-Aufgaben, Vault-Zahl, Git-Hinweise; Ergebnis im Morgenbrief.
+- **Wachhund/Sicherheitsbericht:** `server/automatik/` (`ma-watchdog` alle 5 Min, `ma-sicherheitsbericht` sonntags 05:00, root-eigen, Einrichtung `automatik-einrichten.sh` einmalig mit Sudo; schaltet zudem bluetooth, ModemManager, apport, motd-news, ua-timer ab). Status unter `/var/lib/ma-watchdog/`.
+- **Fristen-Erinnerung:** `fristen-erinnerung.py`, cron 07:30 und 17:30, ntfy erst mit `~/.ntfy-token`.
+- **Token sparen:** Kontext-Wächter warnt ab 250 000, Auto-Übergabe ab 300 000 (vorher 350/450 k).
+- **PC:** Sync-Aufgaben holen verpasste Läufe nach; Ollama und Obsidian starten per Autostart-Ordner.
+- Offen: ntfy-Token, Android-SDK-Lizenzen, Bibliothekar mit Tagesbudget, Entscheidungen Caddy/Blocky/Backup-Ausnahme, Docker-Logbegrenzung, Statusseite im Portal.
