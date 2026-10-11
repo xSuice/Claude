@@ -106,6 +106,18 @@ m = re.search(r'Stand ([\d\- :]+): \*\*(.+?)\*\*', par)
 if m:
     todo = [x[2:] for x in section(par, 'Zu tun').splitlines() if x.startswith('- ')]
     lines.append(f'**Parität PC↔Server ({m.group(1)}):** {m.group(2)}' + (' — ' + '; '.join(short(clean(x), 70) for x in todo[:3]) if todo else ''))
+for fn, label in (('status.txt', 'Wachhund'), ('sicherheit.kurz', 'Sicherheit (wöchentlich)')):
+    try:
+        t = open('/var/lib/ma-watchdog/' + fn, encoding='utf-8').read().strip().splitlines()
+    except OSError:
+        continue
+    if fn == 'status.txt':
+        probs = [x for x in t if x.startswith('PROBLEM')]
+        stand = t[0].replace('Stand ', '')[:16]
+    else:
+        probs = t[1:]
+        stand = t[0].split()[0]
+    lines.append(f'**{label}:** ' + ('⚠ ' + '; '.join(probs[:3]) if probs else 'ok') + f' ({stand})')
 brief = '\n'.join(lines)
 head = '---\ntyp: morgenbrief\nquelle: morgenbrief.py (täglich 06:55, ohne Modell)\ndatenklasse: B\n---\n# Morgenbrief\nÜbergeordnet: [[Fristen-Uebersicht]] · [[Mail-Tagesbericht]] · [[Server-Abgleich]] · [[Index]]\n\n'
 old = read('Morgenbrief.md')

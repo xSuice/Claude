@@ -29,6 +29,7 @@ USER_FILES = {                                         # Repo-Pfad -> Pfad im Ho
     'scripts/server-sync/morgenbrief.py': 'MA-Server/scripts/server-sync/morgenbrief.py',
     'scripts/server-sync/vault-graph-export.py': 'MA-Server/scripts/server-sync/vault-graph-export.py',
     'scripts/ext-ai/ask.py': 'MA-Server/scripts/ext-ai/ask.py',
+    'scripts/server-sync/fristen-erinnerung.py': 'MA-Server/scripts/server-sync/fristen-erinnerung.py',
 }
 
 

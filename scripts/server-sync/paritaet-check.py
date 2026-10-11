@@ -35,8 +35,8 @@ PC_ONLY_HOOKS = {'kontext-waechter.py': 'Token-Zähler der PC-Sitzung', 'ueberga
                  'coach_gate_launcher.mjs': 'fixmyprompt-Plugin (PC)'}
 # Jobs: (Name, Höchstalter des letzten Laufs in Stunden)
 PC_TASKS = [('VaultZuServer', 2), ('VaultVomServer', 1.5), ('ClaudeAbgleich', 2), ('VaultDateienZuServer', 26), ('VaultAutopflege', 26), ('MA-Paritaet-Check', 26)]
-SERVER_TIMERS = ['ma-home-maintenance.timer', 'ma-usb-backup.timer']
-SERVER_CRON = ['vault-graph-export.py', 'morgenbrief.py']
+SERVER_TIMERS = ['ma-home-maintenance.timer', 'ma-usb-backup.timer', 'ma-watchdog.timer', 'ma-sicherheitsbericht.timer']
+SERVER_CRON = ['vault-graph-export.py', 'morgenbrief.py', 'fristen-erinnerung.py']
 VAULT = r'C:\Users\andre\Documents\Obsidian Vault'
 SERVER_NOTIZEN = '/srv/ma-home/library/vault-notizen'
 # /opt/ma-home/web ist nur fuer root und ma-web lesbar: deploy-ui.sh schreibt die Pruefsummen der installierten Dateien nach DEPLOYED
