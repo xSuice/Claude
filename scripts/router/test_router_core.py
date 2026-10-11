@@ -21,7 +21,7 @@ MODEL_CASES = [  # (Prompt, erwartetes Modell)  -- uebernommen aus dem alten Rou
     ("Analysiere dieses komplexe Netzwerkproblem.", "opus"),
     ("Analysiere einen schwer reproduzierbaren Race Condition Bug.", "opus"),
     ("Überprüfe diese Architektur auf schwerwiegende Sicherheitsprobleme.", "opus"),
-    ("AI-Council: Soll ich den Server als einzige Umgebung nutzen?", "opus"),
+    ("AI-Council: Prüfe diese Idee aus fünf Rollen und bewerte jede Rolle mit zwei bis vier Sätzen. " * 4 + "Idee: Soll ich den Server als einzige Umgebung nutzen?", "sonnet"),
 ]
 ACCESS_CASES = [  # (Prompt, erwarteter Modus, erwarteter Ordner, Bestaetigung)
     ("Was steht in meinen Notizen zur Fahrschule?", "lesen", "notizen", False),

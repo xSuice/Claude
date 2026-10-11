@@ -27,7 +27,7 @@ OPUS = [r'\bzero[- ]trust\b', r'\bsicherheitsarchitektur\b', r'\bsecurity archit
 ARCH = [r'\barchitektur', r'\barchitecture', r'\bsystem design\b', r'\bdesign.*system']
 SECURITY = [r'\bsicherheit', r'\bsicher(?:e|en|er|es)?\b', r'\bsecurity', r'\bauthentication', r'\bauthorization', r'\bzero trust']
 COMPLEX = [r'\bkomplex', r'\bcomplex', r'\bumfangreich', r'\bdetailliert analys', r'\btiefgehend', r'\bdeep analysis']
-PLANNING = [r'\bcouncil\b', r'\bumbau', r'\bstrategie', r'\bplanung\b', r'\bpl[aä]ne? (?:mir|uns|einen|eine|das|die)\b']
+PLANNING = [r'\bumbau', r'\bstrategie', r'\bplanung\b', r'\bpl[aä]ne? (?:mir|uns|einen|eine|das|die)\b']
 WRITE = [r'\berstell(?:e|en)\b', r'\bschreib(?:e|en)\b', r'\bimplementier', r'\bänder(?:e|n)\b', r'\bmodifizier', r'\breparier', r'\bbeheb',
          r'\bfix(?:e|en)?\b', r'\brefactor', r'\brefaktor', r'\bfüge .* hinzu', r'\bentfern(?:e|en)\b', r'\bkonfigurier', r'\binstallier',
          r'\bmigrier', r'\boptimiere', r'\boptimize', r'\bcreate\b', r'\bwrite\b', r'\bimplement\b', r'\bmodify\b', r'\brepair\b']
@@ -44,8 +44,6 @@ NOT_HAIKU = [r'\berstell', r'\bschreib', r'\bänder', r'\bimplement', r'\brepar'
 def classify(prompt, mode=None, has_images=False):
     """Gibt (modell, grund) zurueck. Rein regelbasiert, kein Modellaufruf."""
     p = _norm(prompt)
-    if prompt.startswith('AI-Council:') or re.search(r'\bcouncil\b', p) and len(p) > 200:
-        return 'opus', 'council'
     if _any(p, OPUS):
         return 'opus', 'high_reasoning'
     if _any(p, ARCH) and _any(p, SECURITY):

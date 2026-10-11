@@ -245,15 +245,17 @@ function claudeRender() {
     if (m.r === 't') return '<div class="ctool">' + esc(m.t) + '</div>';
     if (m.r === 'e') return '<div class="cerr">' + esc(m.t) + '</div>';
     return '<div class="cm' + (m.live ? ' typing' : '') + '">' + mdLite(m.t || '…') + '</div>';
-  }).join('') : '<div class="empty">Frag Claude auf deinem Server.<br>Zum Beispiel: „Wie voll ist die Backup-Platte?“ oder „Was ist neu in meinen Notizen?“<br>Mit „Nur lesen“ kann nichts verändert werden.</div>';
+  }).join('') : '<div class="empty">Frag Claude auf deinem Server.<br>Zum Beispiel: „Wie voll ist die Backup-Platte?“ oder „Was ist neu in meinen Notizen?“<br>Mit „Nur lesen“ kann nichts verändert werden. „/hilfe“ zeigt alle Befehle.</div>';
   box.scrollTop = box.scrollHeight;
 }
-let pendingImgs = [];
+let pendingImgs = [], pendingFiles = [];
 const IMG_BUDGET = 100000; // Zeichen gesamt; das Portal nimmt höchstens 128 KB je Anfrage
 function imgChips() {
   const c = $('#cimgs'); if (!c) return;
-  c.innerHTML = pendingImgs.map((_, i) => '<span class="chip">📎 Bild ' + (i + 1) + ' <b data-i="' + i + '" title="Entfernen">×</b></span>').join('');
-  c.querySelectorAll('b').forEach(b => { b.onclick = () => { pendingImgs.splice(+b.dataset.i, 1); imgChips(); }; });
+  c.innerHTML = pendingImgs.map((_, i) => '<span class="chip">📎 Bild ' + (i + 1) + ' <b data-i="' + i + '" title="Entfernen">×</b></span>').join('') +
+    pendingFiles.map((f, i) => '<span class="chip">📄 ' + esc(f.name) + ' <b data-f="' + i + '" title="Entfernen">×</b></span>').join('');
+  c.querySelectorAll('b[data-i]').forEach(b => { b.onclick = () => { pendingImgs.splice(+b.dataset.i, 1); imgChips(); }; });
+  c.querySelectorAll('b[data-f]').forEach(b => { b.onclick = () => { pendingFiles.splice(+b.dataset.f, 1); imgChips(); }; });
 }
 function imgFit(file, budget) {
   return new Promise((resolve, reject) => {
@@ -286,16 +288,41 @@ async function imgAdd(files) {
     imgChips();
   } catch (er) { toast(er.message, 1); }
 }
+async function fileUpload(file) {
+  if (file.size > 8e6) throw new Error(file.name + ': höchstens 8 MB');
+  const bytes = new Uint8Array(await file.arrayBuffer()), CH = 60000, total = Math.max(1, Math.ceil(bytes.length / CH));
+  let uid = '';
+  for (let i = 0; i < total; i++) {
+    const part = bytes.subarray(i * CH, (i + 1) * CH);
+    let bin = ''; for (let j = 0; j < part.length; j += 8192) bin += String.fromCharCode.apply(null, part.subarray(j, j + 8192));
+    const r = await cop('upload', { uid, fname: file.name, idx: i, total, data: btoa(bin) });
+    if (!r.ok) throw new Error(file.name + ': ' + (r.error || 'Upload fehlgeschlagen'));
+    uid = r.uid;
+    if (r.done) return r.ref;
+  }
+  throw new Error(file.name + ': Upload unvollständig');
+}
+async function attachAdd(files) {
+  const list = [...files], pics = list.filter(f => f.type.startsWith('image/')), others = list.filter(f => !f.type.startsWith('image/'));
+  if (pics.length) await imgAdd(pics);
+  if (!others.length) return;
+  if (pendingFiles.length + others.length > 5) { toast('Höchstens 5 Dateien', 1); return; }
+  for (const f of others) {
+    try { toast(f.name + ' wird hochgeladen …'); pendingFiles.push({ name: f.name, ref: await fileUpload(f) }); imgChips(); toast(f.name + ' angehängt'); }
+    catch (er) { toast(er.message, 1); }
+  }
+}
 async function claudeSend(prompt, opts) {
   const S = claudeState;
   if (S.busy || !prompt) return;
   S.busy = true;
   const imgs = pendingImgs; pendingImgs = []; imgChips();
-  S.msgs.push({ r: 'u', t: (imgs.length ? '📎 ' + imgs.length + ' Bild' + (imgs.length > 1 ? 'er' : '') + '\n' : '') + prompt }, { r: 'a', t: '', live: true });
+  const files = pendingFiles; pendingFiles = []; imgChips();
+  S.msgs.push({ r: 'u', t: (imgs.length ? '📎 ' + imgs.length + ' Bild' + (imgs.length > 1 ? 'er' : '') + '\n' : '') + files.map(x => '📄 ' + x.name + '\n').join('') + prompt }, { r: 'a', t: '', live: true });
   claudeRender();
   const asst = () => S.msgs.slice().reverse().find(m => m.r === 'a');
   try {
-    const r = await fetch('/api/claude', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ prompt, session: S.sid, ...opts, images: imgs }) });
+    const r = await fetch('/api/claude', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ prompt, session: S.sid, ...opts, images: imgs, files: files.map(x => x.ref) }) });
     if (!r.ok) {
       let m = 'Fehler ' + r.status;
       try { m = (await r.json()).error || m; } catch (e) { /* leer */ }
@@ -424,32 +451,89 @@ function vollOk(mode) {
   S.vollOk = true; toast('Voll-Modus: Claude darf Dateien ändern und Befehle ausführen. Zum Bestätigen noch einmal Senden.', 0); return false;
 }
 
+// Auto-Ordner/-Rechte: die Brücke schlägt die kleinsten passenden Rechte vor (router_core.suggest_access). "Voll" wird nie
+// ohne Bestätigung gesendet: die Auswahl wird sichtbar gesetzt und erst der zweite Druck auf Senden schickt ab.
+async function resolveAccess(p, form) {
+  let dir = String(form.dir.value), mode = String(form.mode.value);
+  if (dir !== 'auto' && mode !== 'auto') return { dir, mode, hold: false };
+  let s = { ok: false };
+  try { s = await cop('suggest', { prompt: p }); } catch (er) { /* Brücke nicht erreichbar: sichere Voreinstellung */ }
+  if (!s.ok) { s = { mode: 'lesen', dir: 'notizen', confirm: false }; }
+  if (dir === 'auto') dir = s.dir;
+  if (mode === 'auto') mode = (s.mode === 'voll' && s.dir !== dir) ? 'lesen' : s.mode;
+  const names = { lesen: 'Nur lesen', plan: 'Plan-Modus', notizen: 'Notizen bearbeiten', voll: 'Voll' };
+  if (mode === 'voll' && !claudeState.vollOk) {
+    form.dir.value = dir; form.mode.value = 'voll';
+    claudeState.vollOk = true; toast('Auto schlägt „Voll“ im Ordner „' + dir + '“ vor. Prüfen und zum Bestätigen noch einmal Senden.', 0);
+    return { dir, mode, hold: true };
+  }
+  toast('Auto: ' + (names[mode] || mode) + ' · ' + dir);
+  return { dir, mode, hold: false };
+}
+const SLASH_HELP = ['/hilfe  Befehle zeigen', '/neu  neuer Chat', '/verlaeufe  Verlaufsliste öffnen', '/abbrechen  laufende Aufträge stoppen',
+  '/plan <Text>  nur planen, nichts verändern', '/council <Idee>  Idee aus fünf Rollen prüfen', '/modell auto|haiku|sonnet|opus',
+  '/ordner auto|notizen|bibliothek|maserver|server', '/rechte auto|lesen|plan|notizen|voll'].join('\n');
+// Gibt true zurück, wenn die Eingabe ein Befehl war und danach geleert werden soll.
+async function slashRun(text, form) {
+  const parts = text.slice(1).split(/\s+/), cmd = (parts.shift() || '').toLowerCase(), arg = parts.join(' ').trim(), S = claudeState;
+  const note = t => { S.msgs.push({ r: 't', t }); claudeSave(); claudeRender(); };
+  const setSel = (name, val, allowed) => { if (allowed.includes(val)) { form[name].value = val; toast(name + ': ' + val); } else toast('Erlaubt: ' + allowed.join(', '), 1); };
+  switch (cmd) {
+    case 'hilfe': case 'help': case '?': note(SLASH_HELP); return true;
+    case 'neu': case 'new': if (!S.busy) { claudeState = { msgs: [], sid: null, busy: false }; claudeSave(); claudeRender(); } return true;
+    case 'verlaeufe': case 'verlauf': case 'verläufe': sessionsOpen(); return true;
+    case 'abbrechen': case 'stop': {
+      try { const d = await cop('jobs', {}); for (const j of d.jobs || []) await cop('cancel', { id: j.id }); toast((d.jobs || []).length ? 'Aufträge abgebrochen' : 'Nichts läuft gerade'); } catch (er) { toast(er.message, 1); }
+      jobsRefresh(); return true;
+    }
+    case 'modell': setSel('model', arg, ['auto', 'haiku', 'sonnet', 'opus']); return true;
+    case 'ordner': setSel('dir', arg, ['auto', 'notizen', 'bibliothek', 'maserver', 'server']); return true;
+    case 'rechte': setSel('mode', arg, ['auto', 'lesen', 'plan', 'notizen', 'voll']); return true;
+    case 'plan': case 'council': {
+      if (!arg) { toast('Nach /' + cmd + ' den Text schreiben', 1); return true; }
+      if (S.busy) { toast('Erst den laufenden Auftrag abwarten oder abbrechen', 1); return false; }
+      const a = await resolveAccess(arg, form);
+      if (a.hold) return false;                       // Text bleibt im Feld, der zweite Druck bestätigt
+      $('#csend').disabled = true;
+      const plan = cmd === 'plan';
+      claudeSend(plan ? 'Erstelle nur einen Plan (nichts ausführen, nichts ändern):\n' + arg : COUNCIL(arg), { dir: a.dir, mode: plan ? 'plan' : (a.mode === 'voll_senden' ? 'voll' : a.mode), model: form.model.value });
+      return true;
+    }
+    default: toast('Unbekannter Befehl. /hilfe zeigt alle.', 1); return false;
+  }
+}
+
 async function claude() {
   claudeLoad();
   view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cseb">Verläufe</button> <button class="btn ghost small" id="cnew">Neuer Chat</button>') +
     '<div class="cwrap"><div class="cstat" id="cstat" hidden></div><div class="cses" id="cses" hidden></div><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
-    '<div id="cimgs" class="cimgs"></div><div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
-    '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
+    '<div id="cimgs" class="cimgs"></div><div class="copts"><label>Ordner<select name="dir"><option value="auto">Auto</option><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
+    '<label>Rechte<select name="mode"><option value="auto">Auto (kleinste Rechte)</option><option value="lesen">Nur lesen</option><option value="plan">Nur planen (Plan-Modus)</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
     '<label>Modell<select name="model"><option value="auto">Auto</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
-    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (Bild per Strg+V einfügen)"></textarea><input type="file" id="cfile" accept="image/*" multiple hidden><button class="btn ghost" type="button" id="cattach" title="Bild anhängen">📎</button><button class="btn ghost" type="button" id="ccouncil" title="Prüft deine Idee aus fünf Rollen mit zweiter Runde">Council</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
+    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (/hilfe zeigt Befehle, Dateien per 📎 oder hineinziehen)"></textarea><input type="file" id="cfile" multiple hidden><button class="btn ghost" type="button" id="cattach" title="Bild oder Datei anhängen (bis 8 MB)">📎</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();
   $('#cseb').onclick = sessionsOpen; jobsWatch();
   $('#cnew').onclick = () => { if (claudeState.busy) return; claudeState = { msgs: [], sid: null, busy: false }; claudeSave(); claudeRender(); };
-  $('#cf').onsubmit = e => {
+  $('#cf').onsubmit = async e => {
     e.preventDefault();
-    const f = new FormData(e.target); const p = String(f.get('prompt')).trim();
-    if ((!p && !pendingImgs.length) || claudeState.busy) return;
-    if (!vollOk(String(f.get('mode')))) return;
-    $('#csend').disabled = true; e.target.prompt.value = '';
+    const form = e.target, p = String(form.prompt.value).trim();
+    if ((!p && !pendingImgs.length && !pendingFiles.length) || claudeState.busy) return;
+    if (/^\/[a-zäöü?]/i.test(p) && !p.includes('\n')) { if (await slashRun(p, form)) form.prompt.value = ''; return; }
+    const a = await resolveAccess(p, form);
+    if (a.hold) return;
+    if (!vollOk(a.mode)) return;
+    $('#csend').disabled = true; form.prompt.value = '';
     const auto = COUNCIL_AUTO.test(p) && !p.startsWith('AI-Council:');
     if (auto) toast('Council automatisch gestartet');
-    claudeSend(auto ? COUNCIL(p) : p, { dir: f.get('dir'), mode: f.get('mode') === 'voll_senden' && auto ? 'voll' : f.get('mode'), model: f.get('model') });
-    if (f.get('mode') === 'voll_senden') e.target.mode.value = 'voll';
+    claudeSend(auto ? COUNCIL(p) : p, { dir: a.dir, mode: a.mode === 'voll_senden' && auto ? 'voll' : a.mode, model: form.model.value });
+    if (a.mode === 'voll_senden') form.mode.value = 'voll';
   };
   try { const q = sessionStorage.getItem('ma-claude-q'); if (q) { sessionStorage.removeItem('ma-claude-q'); $('#cf').prompt.value = q; setTimeout(() => $('#cf').requestSubmit(), 150); } } catch (er) { /* ohne Speicher */ }
-  $('#ccouncil').onclick = () => { const f = new FormData($('#cf')); const p = String(f.get('prompt')).trim(); if (!p || claudeState.busy) { toast('Erst die Idee ins Feld schreiben', 1); return; } if (!vollOk(String(f.get('mode')))) return; $('#cf').prompt.value = ''; claudeSend(COUNCIL(p), { dir: f.get('dir'), mode: f.get('mode') === 'voll_senden' ? 'voll' : f.get('mode'), model: f.get('model') }); };
   $('#cattach').onclick = () => $('#cfile').click();
-  $('#cfile').onchange = e => { imgAdd(e.target.files); e.target.value = ''; };
+  $('#cfile').onchange = e => { attachAdd(e.target.files); e.target.value = ''; };
+  const cw = document.querySelector('.cwrap');
+  cw.addEventListener('dragover', e => { if ([...(e.dataTransfer || {}).types || []].includes('Files')) e.preventDefault(); });
+  cw.addEventListener('drop', e => { const fs = [...(e.dataTransfer || {}).files || []]; if (fs.length) { e.preventDefault(); attachAdd(fs); } });
   $('#cf').prompt.addEventListener('paste', e => { const fs = [...(e.clipboardData || {}).files || []]; if (fs.some(f => f.type.startsWith('image/'))) { e.preventDefault(); imgAdd(fs); } });
   $('#cf').prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cf').requestSubmit(); } });
 }
@@ -642,7 +726,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-11-2';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-11-3';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

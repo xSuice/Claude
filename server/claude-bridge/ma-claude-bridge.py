@@ -28,6 +28,7 @@ READ_BASH = [f'Bash({c}:*)' for c in (
     'systemctl is-active', 'journalctl', 'find', 'grep', 'wc', 'stat', 'date', 'lsblk')]
 MODES = {
     'lesen': ('default', ['Read', 'Grep', 'Glob'] + READ_BASH),
+    'plan': ('plan', ['Read', 'Grep', 'Glob'] + READ_BASH),      # Plan-Modus: Claude plant nur, nichts wird veraendert
     'notizen': ('acceptEdits', ['Read', 'Grep', 'Glob', 'Edit', 'Write'] + READ_BASH),
     # wie am PC: Dateien aendern und beliebige Befehle als andrew (ohne sudo). Gesperrtes steht in ~/.claude/settings.json (deny).
     # Wie am PC: alle Werkzeuge (auch Web und Verbindungen), ohne Rueckfragen. Grenzen: kein sudo (NoNewPrivileges),
@@ -38,7 +39,7 @@ MODES = {
 MODELS = ('haiku', 'sonnet', 'opus')
 IMG_DIR = '/home/andrew/.ma-chat-bilder'
 IMG_TYPES = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif'}
-HARD = re.compile(r'council|architektur|umbau|refactor|plane?n?\b|planung|strategie|sicherheitsl|code-?review|debugg?|fehlersuche', re.I)
+HARD = re.compile(r'architektur|umbau|refactor|plane?n?\b|planung|strategie|sicherheitsl|code-?review|debugg?|fehlersuche', re.I)
 
 
 try:                                   # gemeinsame Quelle fuer PC und Server: scripts/router/router_core.py
@@ -52,7 +53,7 @@ def pick_model(prompt, mode, has_images):
     """Auto-Modellwahl (Regel 11: Fable bleibt gesperrt). Opus nur fuer schwere Aufgaben, Haiku nur fuer kurze Fragen."""
     if router_core:
         return router_core.classify(prompt, mode, has_images)[0]
-    if prompt.startswith('AI-Council:') or (HARD.search(prompt) and len(prompt) > 200):
+    if HARD.search(prompt) and len(prompt) > 200:
         return 'opus'
     if len(prompt) < 160 and not has_images and not str(mode).startswith('voll'):
         return 'haiku'
@@ -82,6 +83,77 @@ def save_images(images):
             fh.write(raw)
         paths.append(fp)
     return paths
+UP_DIR = '/home/andrew/.ma-chat-dateien'
+UP_MAX = 8_000_000                          # je Datei
+UP_UID = re.compile(r'[0-9a-f]{12}\Z')
+UPLOADS = {}                                # (uid, name) -> naechster erwarteter Block
+UP_LOCK = threading.Lock()
+
+
+def safe_name(name):
+    n = re.sub(r'[^A-Za-z0-9._ -]', '_', os.path.basename(str(name or '')))[:80].strip(' .')
+    return n or 'datei'
+
+
+def clean_uploads():
+    try:
+        for d in os.listdir(UP_DIR):
+            dp = os.path.join(UP_DIR, d)
+            if os.path.isdir(dp) and time.time() - os.path.getmtime(dp) > 7 * 86400:
+                for f in os.listdir(dp):
+                    os.remove(os.path.join(dp, f))
+                os.rmdir(dp)
+    except OSError:
+        pass
+
+
+def upload_chunk(req):
+    """Nimmt eine Datei in Bloecken (Base64, je unter 90 KB) an. Gibt (ok, info) zurueck; beim letzten Block 'ref' = uid/name."""
+    uid = str(req.get('uid') or '')
+    if not UP_UID.fullmatch(uid):
+        uid = uuid.uuid4().hex[:12]
+    name, idx, total = safe_name(req.get('fname')), int(req.get('idx') or 0), int(req.get('total') or 1)
+    if not 0 <= idx < total <= 120:
+        return {'ok': False, 'error': 'Ungueltiger Block'}
+    raw = base64.b64decode(str(req.get('data') or ''), validate=True)
+    d = os.path.join(UP_DIR, uid)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    os.chmod(UP_DIR, 0o700)
+    part = os.path.join(d, name + '.part')
+    key = (uid, name)
+    with UP_LOCK:
+        if idx == 0:
+            clean_uploads()
+            UPLOADS[key] = 0
+            open(part, 'wb').close()
+        if UPLOADS.get(key) != idx:
+            return {'ok': False, 'error': 'Block ausser der Reihe'}
+        if os.path.getsize(part) + len(raw) > UP_MAX:
+            os.remove(part)
+            UPLOADS.pop(key, None)
+            return {'ok': False, 'error': 'Datei zu gross (hoechstens 8 MB)'}
+        with open(part, 'ab') as fh:
+            fh.write(raw)
+        UPLOADS[key] = idx + 1
+        if idx + 1 == total:
+            os.replace(part, os.path.join(d, name))
+            UPLOADS.pop(key, None)
+            return {'ok': True, 'done': True, 'uid': uid, 'ref': uid + '/' + name}
+    return {'ok': True, 'done': False, 'uid': uid}
+
+
+def upload_paths(refs):
+    """Wandelt 'uid/name'-Verweise in vorhandene Dateipfade um (nur aus dem Upload-Ordner)."""
+    out = []
+    for ref in (refs or [])[:5]:
+        uid, _, name = str(ref).partition('/')
+        if UP_UID.fullmatch(uid) and name == safe_name(name):
+            fp = os.path.join(UP_DIR, uid, name)
+            if os.path.isfile(fp):
+                out.append(fp)
+    return out
+
+
 SESSION = re.compile(r'[0-9a-f-]{36}\Z')
 LIMIT = threading.BoundedSemaphore(2)
 TIMEOUT = 900
@@ -228,6 +300,13 @@ class Handler(socketserver.StreamRequestHandler):
                 if job:
                     kill_group(job['proc'])
                 return self.reply({'type': 'cancel', 'ok': bool(job)})
+            if op == 'suggest':
+                if not router_core:
+                    return self.reply({'type': 'suggest', 'ok': False})
+                mode, folder, confirm = router_core.suggest_access(str(req.get('prompt') or '')[:2000])
+                return self.reply({'type': 'suggest', 'ok': True, 'mode': mode, 'dir': folder, 'confirm': confirm})
+            if op == 'upload':
+                return self.reply({'type': 'upload', **upload_chunk(req)})
             if op == 'sessions':
                 return self.reply({'type': 'sessions', 'sessions': list_sessions(req.get('q'))})
             if op == 'show':
@@ -263,6 +342,9 @@ class Handler(socketserver.StreamRequestHandler):
             img_paths = save_images(req.get('images'))
             if img_paths:
                 prompt += '\n\n[Angehaengte Bilder, bitte mit dem Read-Werkzeug ansehen: ' + ', '.join(img_paths) + ']'
+            file_paths = upload_paths(req.get('files'))
+            if file_paths:
+                prompt += '\n\n[Hochgeladene Dateien, bitte mit dem Read-Werkzeug oder passenden Werkzeugen ansehen: ' + ', '.join(file_paths) + ']'
             model = req.get('model') if req.get('model') in MODELS else pick_model(prompt, req.get('mode'), bool(img_paths))
             if not cwd or not mode:
                 return self.reply({'type': 'bridge_error', 'error': 'Ungueltige Auswahl'})
@@ -272,6 +354,8 @@ class Handler(socketserver.StreamRequestHandler):
                 args += ['--allowedTools', ','.join(mode[1])]
             if img_paths:
                 args += ['--add-dir', IMG_DIR]
+            if file_paths:
+                args += ['--add-dir', UP_DIR]
             if mode[1]:
                 args += ['--strict-mcp-config']   # Lesen/Notizen brauchen keine Verbindungen: spart die lange Werkzeugliste (Token)
             sid = req.get('session')
