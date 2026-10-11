@@ -27,18 +27,19 @@ function saveSettings(o) { try { fs.writeFileSync(settingsFile, JSON.stringify(o
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1180, height: 780, minWidth: 760, minHeight: 520, backgroundColor: '#0d0b1a', title: 'MA Home',
+    width: (loadSettings().bounds || {}).width || 1280, height: (loadSettings().bounds || {}).height || 820, x: (loadSettings().bounds || {}).x, y: (loadSettings().bounds || {}).y, minWidth: 820, minHeight: 560, backgroundColor: '#0d0b1a', title: 'MA Home',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, webviewTag: true, sandbox: true }
   });
   Menu.setApplicationMenu(null);
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.on('close', e => { if (!quitting) { e.preventDefault(); win.hide(); } });
+  win.on('close', () => { if (!win.isMinimized() && !win.isMaximized()) { const st = loadSettings(); st.bounds = win.getBounds(); saveSettings(st); } });
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
 }
 
 function sh(s) { return "'" + String(s).replace(/'/g, "'\''") + "'"; }
 
-ipcMain.handle('config', () => ({ portal: PORTAL, dirs: Object.keys(DIRS), modes: Object.keys(MODES) }));
+ipcMain.handle('config', () => ({ version: app.getVersion(), portal: PORTAL, dirs: Object.keys(DIRS), modes: Object.keys(MODES) }));
 ipcMain.handle('chats:load', () => { try { return JSON.parse(fs.readFileSync(store, 'utf8')); } catch (e) { return []; } });
 ipcMain.handle('chats:save', (_e, data) => { fs.writeFileSync(store, JSON.stringify(data)); return true; });
 
@@ -75,8 +76,20 @@ ipcMain.on('chat:send', (e, { id, prompt, sessionId, dir, mode, model }) => {
 ipcMain.on('chat:stop', (_e, id) => { const p = runs.get(id); if (p) p.kill(); });
 
 ipcMain.handle('status', () => new Promise(resolve => {
-  const cmd = "echo up=$(cut -d' ' -f1 /proc/uptime); df -B1 --output=used,size / | tail -1; free -b | awk '/Mem/{print $3, $2}'; systemctl is-active ma-usb-backup.timer; " +
-    "systemctl show ma-usb-backup.service -p ActiveState -p Result -p ExecMainExitTimestamp | tr '\n' ' '; echo; echo claude=$(" + CLAUDE + " --version 2>&1 | head -c 40)";
+  const cmd = [
+    "echo up=$(cut -d' ' -f1 /proc/uptime)",
+    "echo disk=$(df -B1 --output=used,size / | tail -1)",
+    "echo mem=$(free -b | awk '/Mem/{print $3, $2}')",
+    "echo swap=$(free -b | awk '/Swap/{print $3, $2}')",
+    "echo load=$(cut -d' ' -f1 /proc/loadavg)",
+    "echo timer=$(systemctl is-active ma-usb-backup.timer)",
+    "echo backup=$(systemctl show ma-usb-backup.service -p Result --value)",
+    "echo backupAt=$(systemctl show ma-usb-backup.service -p ExecMainExitTimestamp --value)",
+    "echo claude=$(" + CLAUDE + " --version 2>&1 | head -c 40)",
+    "echo '##W'; cat /var/lib/ma-watchdog/status.txt 2>/dev/null",
+    "echo '##S'; cat /var/lib/ma-watchdog/sicherheit.kurz 2>/dev/null",
+    "echo '##P'; grep -m1 'Stand' /srv/ma-home/library/vault-notizen/_Claude-Memory/Dienste/Paritaet.md 2>/dev/null"
+  ].join('; ');
   const p = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=6', HOST, cmd], { windowsHide: true });
   let out = ''; p.stdout.on('data', d => out += d); p.on('close', code => resolve({ ok: code === 0, out })); p.on('error', () => resolve({ ok: false, out: '' }));
   setTimeout(() => p.kill(), 15000);

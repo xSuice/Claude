@@ -11,28 +11,42 @@
 <div class="dshell">
   <aside class="dside">
     <div class="brand"><div class="logo" id="logo"></div><span>MA Home</span></div>
-    <button class="btn" id="newChat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Neuer Chat</button>
+    <button class="btn" id="newChat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Neuer Chat <kbd>Strg N</kbd></button>
+    <input class="search" id="search" type="search" placeholder="Chats durchsuchen (Strg K)" aria-label="Chats durchsuchen">
     <div class="chatlist" id="chatlist"></div>
     <div class="spacer"></div>
     <div class="srv" id="srv"><span class="pill dot off">Server …</span></div>
+    <div class="sidefoot">
+      <button class="icon" id="theme" title="Hell/Dunkel wechseln" aria-label="Design wechseln"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+      <span class="ver" id="ver"></span>
+    </div>
   </aside>
   <section class="dmain">
     <div class="tabs" id="tabs">
-      <button data-v="chat" aria-current="page">Claude</button><button data-v="portal">Portal</button><button data-v="server">Server</button>
+      <button data-v="portal" aria-current="page">Portal</button><button data-v="chat" title="Direkter Weg per SSH, funktioniert auch wenn das Portal nicht erreichbar ist">Claude (direkt)</button><button data-v="server">Server</button>
+      <div class="spacer"></div><div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
     </div>
-    <div class="view" id="v-chat">
+    <div class="view" id="v-chat" hidden>
+      <div class="chathead" id="chathead" hidden>
+        <div class="ctitle" id="ctitle" title="Doppelklick zum Umbenennen"></div>
+        <button class="icon" id="cdel" title="Chat löschen" aria-label="Chat löschen"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3"/></svg></button>
+      </div>
       <div class="msgs" id="msgs"></div>
+      <button class="tobottom" id="tobottom" hidden aria-label="Nach unten">↓</button>
       <div class="composer">
         <div class="opts">
           <label>Ordner<select id="dir"></select></label>
           <label>Rechte<select id="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option></select></label>
           <label>Modell<select id="model"><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label>
         </div>
-        <div class="inp"><textarea id="prompt" rows="2" placeholder="Frag Claude etwas oder gib einen Auftrag … (Strg+Enter sendet)"></textarea>
-        <button class="btn" id="send">Senden</button><button class="btn ghost" id="stop" hidden>Stopp</button></div>
+        <div class="inp"><textarea id="prompt" rows="1" placeholder="Frag Claude etwas oder gib einen Auftrag …  (Enter sendet, Umschalt+Enter neue Zeile)"></textarea>
+        <button class="btn" id="send">Senden</button><button class="btn ghost" id="stop" hidden>Stopp <kbd>Esc</kbd></button></div>
       </div>
     </div>
-    <div class="view" id="v-portal" hidden><webview id="portal" allowpopups="false"></webview></div>
+    <div class="view" id="v-portal">
+      <div class="banner" id="pbanner" hidden><span id="pmsg"></span><button class="btn ghost" id="preload">Erneut versuchen</button></div>
+      <webview id="portal" partition="persist:ma-home" allowpopups="false"></webview>
+    </div>
     <div class="view" id="v-server" hidden><div class="srvbody" id="srvbody"></div></div>
   </section>
 </div>
