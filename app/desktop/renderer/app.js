@@ -212,7 +212,8 @@ async function status(force) {
   chats = await window.ma.loadChats(); cur = chats[0] || null; renderList(); renderMsgs(true);
   const pv = $('#portal'); pv.setAttribute('src', cfg.portal);
   pv.addEventListener('did-fail-load', e => { if (e.errorCode === -3 || !e.isMainFrame) return; $('#pmsg').textContent = 'Portal nicht erreichbar (' + (e.errorDescription || e.errorCode) + '). Läuft der Server, und bist du online?'; $('#pbanner').hidden = false; });
-  pv.addEventListener('did-finish-load', () => { $('#pbanner').hidden = true; });
+  const okPage = () => { if (!/^chrome-error:/.test(pv.getURL())) $('#pbanner').hidden = true; };
+  pv.addEventListener('did-finish-load', okPage); pv.addEventListener('did-stop-loading', okPage); pv.addEventListener('did-navigate', okPage);
   $('#preload').onclick = () => { $('#pbanner').hidden = true; pv.reload(); };
   $('#newChat').onclick = newChat;
   $('#send').onclick = () => send();
