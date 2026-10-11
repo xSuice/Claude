@@ -83,6 +83,24 @@ a = re.search(r'^## (\d{4}-\d{2}-\d{2} \d{2}:\d{2})\n(.*?)(?=^## |\Z)', abg, re.
 if a:
     lines.append(f'**Server (Abgleich {a.group(1)}):**')
     lines += [f'- {short(clean(x[2:]))}' for x in a.group(2).splitlines() if x.startswith('- ')][:3]
+try:                                    # Speicher-Fruehwarnung (80 % gelb, 90 % rot), Verursacher aus der Bibliothek
+    import shutil
+    u = shutil.disk_usage('/')
+    pct, frei = u.used * 100 // u.total, u.free // 2 ** 30
+    msg = f'{pct} % belegt, {frei} GB frei'
+    if pct >= 80:
+        big = []
+        for d in sorted(os.listdir('/srv/ma-home')):
+            p = os.path.join('/srv/ma-home', d)
+            try:
+                size = sum(os.path.getsize(os.path.join(r, f)) for r, _d, fs in os.walk(p) for f in fs) // 2 ** 30
+                big.append((size, d))
+            except OSError:
+                pass
+        msg += ' — größte Bereiche: ' + ', '.join(f'{d} {s} GB' for s, d in sorted(big, reverse=True)[:3])
+    lines.append(('**⚠ Speicher knapp:** ' if pct >= 90 else '**Speicher (Warnung):** ' if pct >= 80 else '**Speicher:** ') + msg)
+except Exception:
+    pass
 brief = '\n'.join(lines)
 head = '---\ntyp: morgenbrief\nquelle: morgenbrief.py (täglich 06:55, ohne Modell)\ndatenklasse: B\n---\n# Morgenbrief\nÜbergeordnet: [[Fristen-Uebersicht]] · [[Mail-Tagesbericht]] · [[Server-Abgleich]] · [[Index]]\n\n'
 old = read('Morgenbrief.md')
