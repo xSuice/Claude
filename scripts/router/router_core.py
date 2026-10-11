@@ -50,6 +50,8 @@ def classify(prompt, mode=None, has_images=False):
         return 'opus', 'security_architecture'
     if _any(p, ARCH) and _any(p, COMPLEX):
         return 'opus', 'complex_architecture'
+    if prompt.startswith('AI-Council:'):
+        return 'sonnet', 'council'
     if _any(p, PLANNING) and len(p) > 200:
         return 'opus', 'planning'
     if _any(p, WRITE):
