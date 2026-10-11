@@ -6,8 +6,11 @@
 <meta name="theme-color" content="#07080c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MA Home">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>MA Home</title>
-<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%20%22MA%20Home%22%2C%20%22short_name%22%3A%20%22MA%20Home%22%2C%20%22start_url%22%3A%20%22/%22%2C%20%22scope%22%3A%20%22/%22%2C%20%22display%22%3A%20%22standalone%22%2C%20%22background_color%22%3A%20%22%2307080c%22%2C%20%22theme_color%22%3A%20%22%2307080c%22%2C%20%22lang%22%3A%20%22de%22%2C%20%22icons%22%3A%20%5B%7B%22src%22%3A%20%22data%3Aimage/svg%2Bxml%2C%253Csvg%2520xmlns%253D%2527http%253A//www.w3.org/2000/svg%2527%2520viewBox%253D%25270%25200%2520512%2520512%2527%253E%253Crect%2520width%253D%2527512%2527%2520height%253D%2527512%2527%2520rx%253D%252796%2527%2520fill%253D%2527%252307080c%2527/%253E%253Cpath%2520d%253D%2527M256%252056l170%252098v204L256%2520456%252086%2520358V154z%2527%2520fill%253D%2527%2523140a10%2527%2520stroke%253D%2527%2523e5173f%2527%2520stroke-width%253D%252714%2527/%253E%253Cpath%2520transform%253D%2527translate%2528130%2520108%2529%2520scale%252810.6%2529%2527%2520d%253D%2527M12%25202.5c.9%25203%25204.2%25204.6%25204.2%25209a4.2%25204.2%25200%252001-8.4%25200c0-1.8.8-3%25201.7-4%2520.3%25201.1.9%25201.7%25201.5%25201.9C10.8%25207.6%252011.1%25205%252012%25202.5z%2527%2520fill%253D%2527none%2527%2520stroke%253D%2527%2523fff%2527%2520stroke-width%253D%25271.9%2527%2520stroke-linejoin%253D%2527round%2527/%253E%253Cpath%2520d%253D%2527M150%2520392h212%2527%2520stroke%253D%2527%2523e5173f%2527%2520stroke-width%253D%252710%2527%2520stroke-linecap%253D%2527round%2527/%253E%253C/svg%253E%22%2C%20%22sizes%22%3A%20%22any%22%2C%20%22type%22%3A%20%22image/svg%2Bxml%22%2C%20%22purpose%22%3A%20%22any%22%7D%5D%7D">
+<link rel="manifest" href="/assets/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20512%20512%27%3E%3Crect%20width%3D%27512%27%20height%3D%27512%27%20rx%3D%2796%27%20fill%3D%27%2307080c%27/%3E%3Cpath%20d%3D%27M256%2056l170%2098v204L256%20456%2086%20358V154z%27%20fill%3D%27%23140a10%27%20stroke%3D%27%23e5173f%27%20stroke-width%3D%2714%27/%3E%3Cpath%20transform%3D%27translate%28130%20108%29%20scale%2810.6%29%27%20d%3D%27M12%202.5c.9%203%204.2%204.6%204.2%209a4.2%204.2%200%2001-8.4%200c0-1.8.8-3%201.7-4%20.3%201.1.9%201.7%201.5%201.9C10.8%207.6%2011.1%205%2012%202.5z%27%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-width%3D%271.9%27%20stroke-linejoin%3D%27round%27/%3E%3Cpath%20d%3D%27M150%20392h212%27%20stroke%3D%27%23e5173f%27%20stroke-width%3D%2710%27%20stroke-linecap%3D%27round%27/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/style.css">
 </head>
@@ -17,6 +20,7 @@
     <div class="brand"><div class="logo" id="logo"></div><span>MA Home</span></div>
     <nav class="nav" id="nav" aria-label="Hauptmenü"></nav>
     <div class="spacer"></div>
+    <button class="btn ghost" id="reload" type="button" style="margin:0 0 .6rem;width:100%">Neu laden</button>
     <div class="who"><div class="avatar" id="avatar">?</div><div><b id="whoName">…</b><br><small id="whoRole"></small></div></div>
   </aside>
   <main id="view" aria-live="polite"><div class="skeleton"></div></main>

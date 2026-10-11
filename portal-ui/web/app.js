@@ -565,8 +565,36 @@ async function route() {
   window.scrollTo(0, 0);
 }
 
+// ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
+const VERSION = '2026-10-11-1';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+function pwa() {
+  const btn = $('#reload');
+  const hardReload = async () => {
+    try { for (const k of await caches.keys()) await caches.delete(k); for (const r of await navigator.serviceWorker.getRegistrations()) await r.update(); } catch (er) { /* egal */ }
+    location.reload();
+  };
+  if (btn) { btn.textContent = 'Neu laden · v' + VERSION; btn.onclick = hardReload; }
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // Prueft beim Oeffnen und beim Zurueckkehren, ob der Server eine neuere Version hat; laedt neu, wenn gerade nichts getippt wird.
+  const check = async () => {
+    try {
+      const txt = await (await fetch('/sw.js', { cache: 'no-store', credentials: 'same-origin' })).text();
+      const v = (txt.match(/VERSION = '([^']+)'/) || [])[1];
+      if (v && v !== VERSION) {
+        const typing = [...document.querySelectorAll('textarea, input')].some(x => x.value && x.type !== 'hidden' && x.type !== 'checkbox');
+        if (typing) { toast('Neue Version verfügbar: unten links „Neu laden“', 0); return; }
+        toast('Neue Version, lädt neu …'); setTimeout(hardReload, 700);
+      }
+    } catch (er) { /* offline */ }
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  check();
+}
+
 (async () => {
   $('#logo').innerHTML = ico('logo');
+  pwa();
   buildNav();
   try { me = await api('/api/me'); } catch (er) { view.innerHTML = `<div class="empty">Nicht angemeldet oder Server nicht erreichbar.<br>${esc(er.message)}</div>`; return; }
   $('#whoName').textContent = me.user; $('#whoRole').textContent = me.admin ? 'Administrator' : 'Benutzer'; $('#avatar').textContent = me.user.slice(0, 1).toUpperCase();

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Spiegelt ALLES Lesbare vom MA-Server auf den PC (nur holen, nichts wird auf dem Server geaendert):
  home/        Skripte und Diagnosen aus ~ (ohne Schluessel), crontab.txt
- bibliothek/  /srv/ma-home/library ohne vault-notizen/vault-snapshots (die laufen ueber eigene Abgleiche)
+ bibliothek/  /srv/ma-home/library ohne vault-notizen/vault-snapshots/vault-dateien (laufen ueber eigene Abgleiche, vault-dateien stammt vom PC, 61 GB)
  system/      /etc/systemd/system/ma-*, /usr/local/{sbin,lib}/ma-*, /opt/ma-home/*.py, Dockerfile, /etc/fstab, /etc/udev/rules.d/99-ma-*
  claude-sitzungen/  Sitzungsprotokolle von Claude auf dem Server
 Ziel: C:\\Users\\andre\\ServerKopie (ausserhalb des Git-Repos). Geheimnisse (Schluessel, .credentials, /etc/ma-home) werden nie kopiert.
@@ -23,7 +23,7 @@ mkdir -p "$T/home" "$T/bibliothek" "$T/system" "$T/claude-sitzungen"
 cp -a ~/*.sh ~/*.py "$T/home/" 2>/dev/null || true
 cp -a ~/ma-diag-* ~/rr "$T/home/" 2>/dev/null || true
 crontab -l > "$T/home/crontab.txt" 2>/dev/null || true
-( cd /srv/ma-home/library && tar -cf - --exclude=./vault-notizen --exclude=./vault-snapshots --exclude=./vault-graph.json . ) | tar -xf - -C "$T/bibliothek" 2>/dev/null || true
+( cd /srv/ma-home/library && tar -cf - --exclude=./vault-notizen --exclude=./vault-snapshots --exclude=./vault-dateien --exclude=./vault-graph.json . ) | tar -xf - -C "$T/bibliothek" 2>/dev/null || true
 for f in /etc/systemd/system/ma-* /usr/local/sbin/ma-* /usr/local/lib/ma-* /opt/ma-home/*.py /opt/ma-home/Dockerfile /etc/fstab /etc/udev/rules.d/99-ma-*; do
   [ -f "$f" ] && [ -r "$f" ] && { mkdir -p "$T/system$(dirname "$f")"; cp -a "$f" "$T/system$f"; }
 done
