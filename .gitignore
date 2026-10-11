@@ -18,3 +18,5 @@ app/android/build/
 *.apk
 installer/
 setup/
+app/android/out/
+*.idsig

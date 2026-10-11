@@ -18,7 +18,7 @@ HOST = "ma-server"
 LOG = os.path.expanduser("~/.claude/state/server-spiegel.log")
 
 PACK = r"""set -e
-T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+T=$(mktemp -d -p /var/tmp); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/home" "$T/bibliothek" "$T/system" "$T/claude-sitzungen"
 cp -a ~/*.sh ~/*.py "$T/home/" 2>/dev/null || true
 cp -a ~/ma-diag-* ~/rr "$T/home/" 2>/dev/null || true

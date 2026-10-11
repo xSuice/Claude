@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -122,11 +123,6 @@ def push_config(changes):
         ".claude/settings.json": open(os.path.join(CFG, "settings.json"), "rb").read().replace(b"\r\n", b"\n"),
         ".claude/hooks/ma-guard.py": open(os.path.join(CFG, "hooks", "ma-guard.py"), "rb").read().replace(b"\r\n", b"\n"),
     }
-    for base, prefix in ((os.path.join(CFG, "skills"), ".claude/skills/"), (os.path.expanduser("~/.claude/agents"), ".claude/agents/")):
-        for root, _d, files in os.walk(base):
-            for f in files:
-                full = os.path.join(root, f)
-                want[prefix + os.path.relpath(full, base).replace("\\", "/")] = open(full, "rb").read().replace(b"\r\n", b"\n")
     have = json.loads(ssh(HAVE_CMD % json.dumps(list(want))))
     send = {p: b for p, b in want.items() if hashlib.sha1(b).hexdigest() != have.get(p)}
     if send and not DRY:
@@ -139,6 +135,148 @@ def push_config(changes):
     changes += [f"Regeln/Einstellung zum Server: {p}" for p in send]
 
 
+GLOBAL_SKIP = ("synced",)          # von der Plattform verwaltet (Skills aus dem Konto)
+REVIEW = r"C:\Users\andre\Documents\Obsidian Vault\00 Inbox\Review"
+GROUPS = ((os.path.expanduser("~/.claude/skills"), ".claude/skills/"), (os.path.expanduser("~/.claude/agents"), ".claude/agents/"))
+
+SRV_GLOBAL = r"""python3 - <<'PY'
+import hashlib, os, json
+out = {}
+for sub in ('skills', 'agents'):
+    base = os.path.expanduser('~/.claude/' + sub)
+    for root, dirs, files in os.walk(base):
+        dirs[:] = [d for d in dirs if d not in %s]
+        for f in files:
+            p = os.path.join(root, f)
+            if f.endswith('.disabled') or os.path.getsize(p) > %d: continue
+            out['.claude/' + sub + '/' + os.path.relpath(p, base).replace(os.sep, '/')] = hashlib.sha1(open(p, 'rb').read().replace(b'\r\n', b'\n')).hexdigest()
+print(json.dumps(out))
+PY""" % (json.dumps(list(GLOBAL_SKIP)), MAX)
+
+
+def pc_global():
+    out = {}
+    for base, prefix in GROUPS:
+        for root, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in GLOBAL_SKIP]
+            for f in files:
+                full = os.path.join(root, f)
+                if f.endswith(".disabled") or os.path.getsize(full) > MAX:
+                    continue
+                out[prefix + os.path.relpath(full, base).replace("\\", "/")] = (full, hashlib.sha1(open(full, "rb").read().replace(b"\r\n", b"\n")).hexdigest())
+    return out
+
+
+def sync_global(st, changes):
+    """Skills und Agenten (global, ~/.claude) in beide Richtungen. Dreiwege-Vergleich; bei Konflikt wird nichts ueberschrieben,
+    die Serverfassung kommt nach 00 Inbox/Review."""
+    srv = json.loads(ssh(SRV_GLOBAL))
+    pc = pc_global()
+    base = st.setdefault("gbase", {})
+    pull, push = [], []
+    for rel in set(pc) | set(srv):
+        p = pc[rel][1] if rel in pc else None
+        s, b = srv.get(rel), base.get(rel)
+        if p == s:
+            base[rel] = p
+        elif s and (p is None and b is None or p == b):
+            pull.append(rel)
+        elif p and (s == b or s is None):
+            push.append(rel)
+        elif p and s:
+            changes.append(f"**Konflikt Skill/Agent** `{rel}`: Serverfassung in `00 Inbox/Review`")
+            if not DRY:
+                data = ssh(f"tar -cf - -C ~ {rel}", binary=True)
+                with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+                    m = tf.getmembers()[0]
+                    os.makedirs(REVIEW, exist_ok=True)
+                    open(os.path.join(REVIEW, "server-konflikt-" + rel.replace("/", "__")), "wb").write(tf.extractfile(m).read())
+    changes += [f"Skill/Agent vom Server geholt: {x}" for x in pull] + [f"Skill/Agent zum Server gesendet: {x}" for x in push]
+    if DRY:
+        return
+    if push:
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tf:
+            for rel in push:
+                data = open(pc[rel][0], "rb").read().replace(b"\r\n", b"\n")
+                ti = tarfile.TarInfo(rel); ti.size = len(data); ti.mode = 0o755 if rel.endswith((".py", ".sh")) else 0o644; ti.mtime = time.time()
+                tf.addfile(ti, io.BytesIO(data))
+        ssh("mkdir -p ~/.claude/skills ~/.claude/agents && tar -xf - -C ~", data=buf.getvalue())
+        for rel in push:
+            base[rel] = pc[rel][1]
+    if pull:
+        data = ssh("tar -cf - -C ~ -T -", data="\n".join(pull).encode(), binary=True)
+        with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+            for m in tf.getmembers():
+                if not m.isfile() or ".." in m.name.split("/") or not m.name.startswith((".claude/skills/", ".claude/agents/")):
+                    continue
+                dest = os.path.join(os.path.expanduser("~"), m.name.replace("/", os.sep))
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                open(dest, "wb").write(tf.extractfile(m).read())
+                base[m.name] = srv[m.name]
+
+
+HIST_SKIP = ("AppData", "System32", "schema-test", "scratch")      # Ordnernamen-Teile ohne Nutzen
+HIST_MAX = 50 * 1024 * 1024
+SECRET_RE = re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|ghp_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-or-v1-[A-Za-z0-9]{20,}")
+
+SRV_HIST = r"""python3 - <<'PY'
+import os, json
+b = os.path.expanduser('~/.claude/projects'); out = {}
+for root, dirs, files in os.walk(b):
+    for f in files:
+        if f.endswith('.jsonl'):
+            p = os.path.join(root, f)
+            out[os.path.relpath(p, b).replace(os.sep, '/')] = os.path.getsize(p)
+print(json.dumps(out))
+PY"""
+
+
+def sync_history(changes):
+    """Claude-Verlaeufe (~/.claude/projects/**/*.jsonl) in beide Richtungen: Fehlendes wird kopiert, bei Unterschied gewinnt die
+    groessere Datei (Protokolle wachsen nur). Dateien mit Schluesselmustern (Klasse C) werden nie kopiert, nur gemeldet."""
+    base = os.path.expanduser("~/.claude/projects")
+    srv = json.loads(ssh(SRV_HIST))
+    pc = {}
+    for root, _d, files in os.walk(base):
+        for f in files:
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, base).replace("\\", "/")
+            if f.endswith(".jsonl") and not any(x in rel.split("/")[0] for x in HIST_SKIP):
+                pc[rel] = os.path.getsize(full)
+    to_srv = [r for r, n in pc.items() if n <= HIST_MAX and n > srv.get(r, 0)]
+    to_pc = [r for r, n in srv.items() if n <= HIST_MAX and n > pc.get(r, 0) and not any(x in r.split("/")[0] for x in HIST_SKIP)]
+    skipped = []
+    if DRY:
+        changes.append(f"Verlaeufe: {len(to_srv)} zum Server, {len(to_pc)} zum PC (Trockenlauf)")
+        return
+    if to_srv:
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tf:
+            for r in to_srv:
+                data = open(os.path.join(base, r.replace("/", os.sep)), "rb").read()
+                if SECRET_RE.search(data):
+                    skipped.append(r)
+                    continue
+                ti = tarfile.TarInfo(".claude/projects/" + r); ti.size = len(data); ti.mode = 0o600; ti.mtime = time.time()
+                tf.addfile(ti, io.BytesIO(data))
+        ssh("mkdir -p ~/.claude/projects && tar -xf - -C ~", data=buf.getvalue(), timeout=600)
+    if to_pc:
+        data = ssh("tar -cf - -C ~/.claude/projects -T -", data="\n".join("./" + r for r in to_pc).encode(), binary=True, timeout=600)
+        with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+            for m in tf.getmembers():
+                if not m.isfile() or ".." in m.name.split("/"):
+                    continue
+                raw = tf.extractfile(m).read()
+                if SECRET_RE.search(raw):
+                    skipped.append(m.name)
+                    continue
+                dest = os.path.join(base, (m.name[2:] if m.name.startswith("./") else m.name).replace("/", os.sep))
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                open(dest, "wb").write(raw)
+    changes.append(f"Verlaeufe abgeglichen: {len(to_srv)} zum Server, {len(to_pc)} zum PC" + (f"; {len(skipped)} wegen Schluesselmustern uebersprungen" if skipped else ""))
+
+
 def main():
     try:
         st = json.load(open(STATE, encoding="utf-8"))
@@ -147,6 +285,8 @@ def main():
     base, changes, conflicts = st.get("base", {}), [], []
     try:
         push_config(changes)
+        sync_global(st, changes)
+        sync_history(changes)
         srv = json.loads(ssh(SRV_LIST))
     except Exception as e:
         log(f"Server nicht erreichbar: {e}")

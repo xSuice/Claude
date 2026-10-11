@@ -249,3 +249,5 @@ Backups: `~/.claude/settings.json.bak-20261010-phase5`, `router-config.json.bak-
 ### Token-Auswertung 2026-10-10
 - 7 Tage: ca. 547 Mio Token, 97,3 Prozent aus dem Zwischenspeicher, 99 Prozent im Projekt MA-Server, 69 Prozent am 2026-10-09. Größte Posten: lange Einzelsitzungen (im Schnitt ca. 290 000 Token Kontext pro Aufruf); einzelne "ja mach alles"-Aufträge je 2 bis 4 Prozent. Aktuelle Sitzung: 654 000 Token Kontext (Nachrichten 58 Prozent, MCP-Werkzeuge 3 Prozent, Skills 1 Prozent). 5-Stunden-Limit 89 Prozent, Woche 24 Prozent.
 - Folge: Neue Sitzung pro Thema statt einer endlosen. Mail- und Kalenderroutine auf 21:45 und 22:15 verschoben (nach dem Limit-Reset um 21:20).
+
+- Automatische Sitzungsübergabe: Hooks `kontext-waechter.py` (UserPromptSubmit, ab 450 000 Token) und `uebergabe-laden.py` (SessionStart), Skill `uebergabe`, `clear_session` auf "self". Hooks liegen in ~/.claude/hooks, Sicherungen settings.json.bak-20261010-hook(2).

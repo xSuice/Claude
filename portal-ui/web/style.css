@@ -206,3 +206,20 @@ a.row, a.card, a.hero { color: inherit; text-decoration: none; }
 .chip { border: 1px solid var(--line2); background: rgba(7,8,12,.6); color: var(--silver); padding: 6px 12px; font: 600 12px var(--mono); letter-spacing: .04em; cursor: pointer; transition: all .15s; }
 .chip:hover { border-color: var(--red); color: #fff; box-shadow: 0 0 14px -4px var(--redglow); }
 .more { margin-left: auto; font: 600 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--red2); }
+.cimgs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}.cimgs .chip{background:var(--card,#222);border:1px solid var(--line,#444);border-radius:12px;padding:2px 10px;font-size:.85em}.cimgs .chip b{cursor:pointer;margin-left:6px}
+
+/* Mobil: Claude-Chat */
+.cwrap { height: calc(100dvh - 170px); }
+@media (max-width: 820px) {
+  .cwrap { height: calc(100dvh - 150px); min-height: 300px; gap: 8px; }
+  .cm, .cerr { max-width: 94%; padding: 10px 12px; }
+  .cm pre { font-size: 12px; }
+  .copts { flex-wrap: nowrap; gap: 6px; overflow-x: auto; }
+  .copts label { min-width: 0; flex: 1 1 0; font-size: 10px; }
+  .copts select { width: 100%; min-height: 40px; font-size: 14px; }
+  .cin { flex-wrap: wrap; gap: 8px; }
+  .cin textarea { flex: 1 1 100%; font-size: 16px; min-height: 48px; }
+  .cin .btn { flex: 1; min-height: 44px; }
+  .cin #cattach { flex: 0 0 48px; }
+  .toast { bottom: 96px; }
+}

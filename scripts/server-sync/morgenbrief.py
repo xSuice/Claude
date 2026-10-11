@@ -52,15 +52,29 @@ abg = read('Server-Abgleich.md')
 lines = [f'## {TAGE[now.tm_wday]}, {time.strftime("%d.%m.%Y", now)}']
 woche = items(section(fr, 'Diese Woche'), 4)
 bald = items(section(fr, 'Bald'), 4)
+neu = re.search(r'^## (\d{4}-\d{2}-\d{2}).*?\n(.*?)(?=^## |\Z)', mail, re.S | re.M)
+wichtig = pruefen = None
+if neu:
+    wichtig = re.search(r'\*\*Wichtig:\*\*\n(.*?)(?=\n- \*\*|\Z)', neu.group(2), re.S)
+    pruefen = re.search(r'\*\*Prüfen[^\n]*\n(.*?)(?=\n- \*\*|\Z)', neu.group(2), re.S)
+prio = []
+for x in woche + (items(wichtig.group(1), 3) if wichtig else []) + bald:
+    if x not in prio:
+        prio.append(x)
+offen = items(pruefen.group(1), 2) if pruefen else []
+lines.append('**Top 3 heute:**')
+lines += [f'{i}. {x}' for i, x in enumerate(prio[:3], 1)] or ['- keine offenen Prioritäten gefunden']
+if prio:
+    lines.append(f'**Nächster Schritt:** {prio[0]}')
+if offen:
+    lines.append('**Fehlende Info / prüfen:**')
+    lines += [f'- {x}' for x in offen]
 lines.append('**Diese Woche (Stufe 3):**')
 lines += [f'- {x}' for x in woche] or ['- nichts Dringendes in der Fristen-Übersicht']
 if bald:
     lines.append('**Bald (Stufe 2):**')
     lines += [f'- {x}' for x in bald]
-neu = re.search(r'^## (\d{4}-\d{2}-\d{2}).*?\n(.*?)(?=^## |\Z)', mail, re.S | re.M)
 if neu:
-    wichtig = re.search(r'\*\*Wichtig:\*\*\n(.*?)(?=\n- \*\*|\Z)', neu.group(2), re.S)
-    pruefen = re.search(r'\*\*Prüfen[^\n]*\n(.*?)(?=\n- \*\*|\Z)', neu.group(2), re.S)
     lines.append(f'**Mails (Bericht vom {neu.group(1)}):**')
     for blk in (wichtig, pruefen):
         if blk:

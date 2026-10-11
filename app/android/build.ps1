@@ -6,7 +6,7 @@ $bt = Join-Path $sdk 'build-tools\34.0.0'
 $jar = Join-Path $sdk 'platforms\android-34\android.jar'
 $jdk = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot'
 $env:JAVA_HOME = $jdk
-$out = Join-Path $here 'build'
+$out = Join-Path $here 'out'
 $sign = Join-Path $here 'signing'
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 New-Item -ItemType Directory -Force $out, "$out\gen", "$out\classes", "$out\dex", $sign | Out-Null
@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Force $out, "$out\gen", "$out\classes", "$out\dex"
 & "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest "$here\AndroidManifest.xml" --java "$out\gen" -R "$out\res.zip" --min-sdk-version 26 --target-sdk-version 34 --version-code 1 --version-name 0.1.0 --auto-add-overlay
 
 $srcs = Get-ChildItem "$here\src", "$out\gen" -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-& "$jdk\bin\javac.exe" --release 17 -classpath $jar -d "$out\classes" $srcs
+& 'C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin\javac.exe' --release 17 -classpath $jar -d "$out\classes" $srcs
 $classes = Get-ChildItem "$out\classes" -Recurse -Filter *.class | ForEach-Object { $_.FullName }
 & "$bt\d8.bat" --lib $jar --min-api 26 --output "$out\dex" $classes
 

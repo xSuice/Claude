@@ -248,15 +248,54 @@ function claudeRender() {
   }).join('') : '<div class="empty">Frag Claude auf deinem Server.<br>Zum Beispiel: „Wie voll ist die Backup-Platte?“ oder „Was ist neu in meinen Notizen?“<br>Mit „Nur lesen“ kann nichts verändert werden.</div>';
   box.scrollTop = box.scrollHeight;
 }
+let pendingImgs = [];
+const IMG_BUDGET = 100000; // Zeichen gesamt; das Portal nimmt höchstens 128 KB je Anfrage
+function imgChips() {
+  const c = $('#cimgs'); if (!c) return;
+  c.innerHTML = pendingImgs.map((_, i) => '<span class="chip">📎 Bild ' + (i + 1) + ' <b data-i="' + i + '" title="Entfernen">×</b></span>').join('');
+  c.querySelectorAll('b').forEach(b => { b.onclick = () => { pendingImgs.splice(+b.dataset.i, 1); imgChips(); }; });
+}
+function imgFit(file, budget) {
+  return new Promise((resolve, reject) => {
+    const im = new Image(), url = URL.createObjectURL(file);
+    im.onload = () => {
+      URL.revokeObjectURL(url);
+      for (const dim of [1280, 1024, 800, 640, 480]) for (const q of [0.7, 0.55, 0.4]) {
+        const k = Math.min(1, dim / Math.max(im.width, im.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+        cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+        const u = cv.toDataURL('image/jpeg', q);
+        if (u.length <= budget) return resolve(u);
+      }
+      reject(new Error('Bild zu groß'));
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Kein lesbares Bild')); };
+    im.src = url;
+  });
+}
+async function imgAdd(files) {
+  const list = [...files].filter(f => f.type.startsWith('image/'));
+  if (!list.length) return;
+  if (pendingImgs.length + list.length > 3) { toast('Höchstens 3 Bilder', 1); return; }
+  const n = pendingImgs.length + list.length;
+  try {
+    // bisherige Bilder bleiben, das Budget wird auf alle Bilder verteilt (neue Bilder bekommen den Rest)
+    const used = pendingImgs.reduce((a, u) => a + u.length, 0), each = Math.floor((IMG_BUDGET - used) / list.length);
+    if (each < 8000) { toast('Kein Platz mehr, bitte ein Bild entfernen', 1); return; }
+    for (const f of list) pendingImgs.push(await imgFit(f, each));
+    imgChips();
+  } catch (er) { toast(er.message, 1); }
+}
 async function claudeSend(prompt, opts) {
   const S = claudeState;
   if (S.busy || !prompt) return;
   S.busy = true;
-  S.msgs.push({ r: 'u', t: prompt }, { r: 'a', t: '', live: true });
+  const imgs = pendingImgs; pendingImgs = []; imgChips();
+  S.msgs.push({ r: 'u', t: (imgs.length ? '📎 ' + imgs.length + ' Bild' + (imgs.length > 1 ? 'er' : '') + '\n' : '') + prompt }, { r: 'a', t: '', live: true });
   claudeRender();
   const asst = () => S.msgs.slice().reverse().find(m => m.r === 'a');
   try {
-    const r = await fetch('/api/claude', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ prompt, session: S.sid, ...opts }) });
+    const r = await fetch('/api/claude', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ prompt, session: S.sid, ...opts, images: imgs }) });
     if (!r.ok) {
       let m = 'Fehler ' + r.status;
       try { m = (await r.json()).error || m; } catch (e) { /* leer */ }
@@ -289,6 +328,8 @@ async function claudeSend(prompt, opts) {
           if (d.is_error) {
             S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Das geht nur einmal und nur mit deinem Konto. Auf deinem PC in PowerShell eingeben: ssh -t ma-server "~/.local/bin/claude". Danach funktioniert dieser Chat dauerhaft.' : String(d.result) });
           } else if (a && !a.t && d.result) a.t = d.result;
+        } else if (d.type === 'bridge_model') {
+          if (!opts.model || opts.model === 'auto') S.msgs.splice(Math.max(0, S.msgs.findIndex(m => m.live)), 0, { r: 't', t: 'Modell automatisch gewählt: ' + d.model });
         } else if (d.type === 'bridge_error') {
           S.msgs.push({ r: 'e', t: d.error });
         }
@@ -306,26 +347,34 @@ const COUNCIL = (idee) => 'AI-Council: Prüfe diese Idee aus fünf Rollen und be
   '3. Chancen: Wo steckt der größte Hebel?\n4. Außenblick: Wie sieht es für jemanden aus, der nichts über mich weiß (Leser, Kunde, Ausbilder)?\n5. Umsetzer: Konkrete nächste drei Schritte mit Aufwand.\n' +
   'Danach eine zweite Prüfrunde: Wo widersprechen sich die Rollen? Schließe mit einer klaren Empfehlung (machen, ändern, lassen) und einer offenen Frage an mich.\n\nIdee:\n' + idee;
 
+// Automatischer Council: nur bei klaren Formulierungen (Treffer kosten einen langen Durchlauf). Mit "ohne council" in der Nachricht abschaltbar.
+const COUNCIL_AUTO = /^(?![\s\S]*ohne council)[\s\S]*(\bcouncil\b|prüf(e)? (meine|diese|die) (idee|entscheidung|plan)|ist das eine gute idee|lohnt (es )?sich das)/i;
+
 async function claude() {
   claudeLoad();
   view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cnew">Neuer Chat</button>') +
     '<div class="cwrap"><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
-    '<div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
+    '<div id="cimgs" class="cimgs"></div><div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
     '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
-    '<label>Modell<select name="model"><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
-    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude …" required></textarea><button class="btn ghost" type="button" id="ccouncil" title="Prüft deine Idee aus fünf Rollen mit zweiter Runde">Council</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
+    '<label>Modell<select name="model"><option value="auto">Auto</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
+    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (Bild per Strg+V einfügen)"></textarea><input type="file" id="cfile" accept="image/*" multiple hidden><button class="btn ghost" type="button" id="cattach" title="Bild anhängen">📎</button><button class="btn ghost" type="button" id="ccouncil" title="Prüft deine Idee aus fünf Rollen mit zweiter Runde">Council</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();
   $('#cnew').onclick = () => { if (claudeState.busy) return; claudeState = { msgs: [], sid: null, busy: false }; claudeSave(); claudeRender(); };
   $('#cf').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target); const p = String(f.get('prompt')).trim();
-    if (!p || claudeState.busy) return;
+    if ((!p && !pendingImgs.length) || claudeState.busy) return;
     $('#csend').disabled = true; e.target.prompt.value = '';
-    claudeSend(p, { dir: f.get('dir'), mode: f.get('mode'), model: f.get('model') });
+    const auto = COUNCIL_AUTO.test(p) && !p.startsWith('AI-Council:');
+    if (auto) toast('Council automatisch gestartet');
+    claudeSend(auto ? COUNCIL(p) : p, { dir: f.get('dir'), mode: f.get('mode') === 'voll_senden' && auto ? 'voll' : f.get('mode'), model: f.get('model') });
     if (f.get('mode') === 'voll_senden') e.target.mode.value = 'voll';
   };
   try { const q = sessionStorage.getItem('ma-claude-q'); if (q) { sessionStorage.removeItem('ma-claude-q'); $('#cf').prompt.value = q; setTimeout(() => $('#cf').requestSubmit(), 150); } } catch (er) { /* ohne Speicher */ }
   $('#ccouncil').onclick = () => { const f = new FormData($('#cf')); const p = String(f.get('prompt')).trim(); if (!p || claudeState.busy) { toast('Erst die Idee ins Feld schreiben', 1); return; } $('#cf').prompt.value = ''; claudeSend(COUNCIL(p), { dir: f.get('dir'), mode: f.get('mode') === 'voll_senden' ? 'voll' : f.get('mode'), model: f.get('model') }); };
+  $('#cattach').onclick = () => $('#cfile').click();
+  $('#cfile').onchange = e => { imgAdd(e.target.files); e.target.value = ''; };
+  $('#cf').prompt.addEventListener('paste', e => { const fs = [...(e.clipboardData || {}).files || []]; if (fs.some(f => f.type.startsWith('image/'))) { e.preventDefault(); imgAdd(fs); } });
   $('#cf').prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cf').requestSubmit(); } });
 }
 
