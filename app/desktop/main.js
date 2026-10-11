@@ -113,6 +113,7 @@ function buildTray() {
     { label: 'MA Home öffnen', click: showWin },
     { label: 'Mit Windows starten', type: 'checkbox', checked: !!st.autostart, click: m => setAutostart(m.checked) },
     { label: 'Server-Status jetzt prüfen', click: () => pollWatch(true) },
+    pendingUpdate ? { label: 'Jetzt aktualisieren auf ' + pendingUpdate.version, click: updateNow } : { label: 'Nach Updates suchen', click: () => checkUpdate(true) },
     { type: 'separator' },
     { label: 'Beenden', click: () => { quitting = true; app.quit(); } }
   ]));
@@ -135,6 +136,47 @@ function pollWatch(manual) {
   setTimeout(() => p.kill(), 20000);
 }
 
+// Auto-Update: Server legt ~/app-updates/latest.json {version,file,sha256} ab (deploy.py). Laden per scp, sha256 pruefen, still installieren beim Beenden.
+const UPD_DIR = path.join(app.getPath('userData'), 'updates');
+let pendingUpdate = null, updating = false;
+function cmpVer(a, b) { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1; } return 0; }
+function run(cmd, args, ms) {
+  return new Promise(resolve => {
+    const p = spawn(cmd, args, { windowsHide: true }); let out = '';
+    p.stdout.on('data', d => out += d); p.on('error', () => resolve({ code: -1, out })); p.on('close', code => resolve({ code, out }));
+    setTimeout(() => p.kill(), ms || 30000);
+  });
+}
+function sha256File(f) { return new Promise(res => { const h = require('crypto').createHash('sha256'); fs.createReadStream(f).on('data', d => h.update(d)).on('end', () => res(h.digest('hex'))).on('error', () => res('')); }); }
+async function checkUpdate(manual) {
+  if (updating || pendingUpdate) { if (manual && pendingUpdate) notify('Update ' + pendingUpdate.version + ' ist geladen und wird beim Beenden installiert.'); return; }
+  updating = true;
+  try {
+    const r = await run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', HOST, 'cat ~/app-updates/latest.json'], 20000);
+    let j; try { j = JSON.parse(r.out); } catch (e) { j = null; }
+    if (!j || !/^\d+\.\d+\.\d+$/.test(j.version || '') || !/^[\w. -]+\.exe$/.test(j.file || '') || !/^[0-9a-f]{64}$/.test(j.sha256 || '')) { if (manual) notify('Kein Update-Hinweis auf dem Server.'); return; }
+    if (cmpVer(j.version, app.getVersion()) <= 0) { if (manual) notify('MA Home ist aktuell (' + app.getVersion() + ').'); return; }
+    fs.mkdirSync(UPD_DIR, { recursive: true });
+    const dest = path.join(UPD_DIR, 'MA-Home-Setup-' + j.version + '.exe');
+    if (await sha256File(dest) !== j.sha256) {
+      const c = await run('scp', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', HOST + ':app-updates/' + j.file.replace(/ /g, '\\ '), dest], 300000);
+      if (c.code !== 0 || await sha256File(dest) !== j.sha256) { try { fs.unlinkSync(dest); } catch (e) { /* weg */ } if (manual) notify('Update-Download fehlgeschlagen oder Pruefsumme falsch.'); return; }
+    }
+    pendingUpdate = { version: j.version, file: dest };
+    notify('Update ' + j.version + ' geladen. Es wird beim Beenden still installiert (Tray: Jetzt aktualisieren).');
+    buildTray();
+  } finally { updating = false; }
+}
+function notify(body) { if (Notification.isSupported()) new Notification({ title: 'MA Home', body }).show(); }
+function installPending() {
+  if (!pendingUpdate) return false;
+  const f = pendingUpdate.file; pendingUpdate = null;
+  // kurz warten, bis diese Instanz beendet ist; /S = still, --force-run startet die App danach neu
+  const p = spawn('cmd', ['/c', 'ping -n 4 127.0.0.1 >nul & "' + f + '" /S --force-run'], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true });
+  p.unref(); return true;
+}
+function updateNow() { if (installPending()) { quitting = true; app.quit(); } }
+
 const lock = app.requestSingleInstanceLock();
 if (!lock) app.quit(); else {
   app.on('second-instance', showWin);
@@ -144,7 +186,9 @@ if (!lock) app.quit(); else {
     createWindow(); buildTray();
     if (process.argv.includes('--hidden')) win.hide();
     setTimeout(() => pollWatch(false), 15000); setInterval(() => pollWatch(false), 10 * 60 * 1000);
+    if (app.isPackaged) { setTimeout(() => checkUpdate(false), 45000); setInterval(() => checkUpdate(false), 60 * 60 * 1000); }
   });
 }
 app.on('before-quit', () => { quitting = true; });
+app.on('will-quit', () => { installPending(); });
 app.on('window-all-closed', () => { /* bleibt im Tray */ });

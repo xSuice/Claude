@@ -1,6 +1,6 @@
 {
   "name": "ma-home-desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "MA Home: eigene Desktop-App (Chat mit Claude auf dem MA-Server, Portal, Status)",
   "main": "main.js",
   "scripts": {

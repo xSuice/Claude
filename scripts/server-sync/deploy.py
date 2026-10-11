@@ -129,6 +129,7 @@ def main():
         if b is not None and sha(b) != root_srv.get(srv):
             root_send[name] = b
     if not (user_send or web_diff or root_send):
+        app_update()
         log('Nichts zu tun, Server hat den committeten Stand.')
         return 0
     err = check_syntax({**user_send, **{n: web_files[n] for n in web_diff}, **root_send})
@@ -167,8 +168,40 @@ def main():
         log(f'ma-deploy Code {r.returncode}: {out[:300]}')
         if r.returncode != 0:
             return 1
+    app_update()
     log('Deploy fertig.')
     return 0
+
+
+def app_update():
+    """Windows-App: fertigen Installer (app/desktop/setup/MA Home Setup <version>.exe, Version aus package.json im HEAD) samt latest.json nach ~/app-updates legen."""
+    import json
+    pj = head('app/desktop/package.json')
+    if pj is None:
+        return
+    ver = json.loads(pj)['version']
+    exe = os.path.join(PC, 'app', 'desktop', 'setup', f'MA Home Setup {ver}.exe')
+    if not os.path.isfile(exe):
+        return
+    data = open(exe, 'rb').read()
+    h = hashlib.sha256(data).hexdigest()
+    r = ssh('cat ~/app-updates/latest.json 2>/dev/null')
+    try:
+        if json.loads(r.stdout).get('sha256') == h:
+            return
+    except ValueError:
+        pass
+    log(f'App-Update {ver} wird bereitgestellt.')
+    if DRY:
+        return
+    name = f'MA-Home-Setup-{ver}.exe'
+    r = ssh(f'mkdir -p ~/app-updates && cat > ~/app-updates/{name}.tmp && mv ~/app-updates/{name}.tmp ~/app-updates/{name}', data, timeout=600)
+    if r.returncode != 0:
+        log('App-Upload fehlgeschlagen: ' + r.stderr.decode('utf-8', 'replace')[:200])
+        return
+    meta = json.dumps({'version': ver, 'file': name, 'sha256': h})
+    ssh(f"printf '%s' '{meta}' > ~/app-updates/latest.json.tmp && mv ~/app-updates/latest.json.tmp ~/app-updates/latest.json && ls -t ~/app-updates/*.exe | tail -n +4 | xargs -r rm -f")
+    log('App-Update bereit: ' + name)
 
 
 def stage_setup():

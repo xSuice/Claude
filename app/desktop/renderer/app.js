@@ -27,6 +27,7 @@ function md(src) {
     const h = p.match(/^(#{1,3}) (.+)$/); if (h && !p.includes('\n')) return '<h' + (h[1].length + 2) + '>' + h[2] + '</h' + (h[1].length + 2) + '>';
     if (/^\s*[-*] /m.test(p) && p.split('\n').every(l => /^\s*[-*] /.test(l) || !l.trim())) return '<ul>' + p.split('\n').filter(l => l.trim()).map(l => l.replace(/^\s*[-*] (.*)$/, '<li>$1</li>')).join('') + '</ul>';
     if (/^\s*\d+[.)] /m.test(p) && p.split('\n').every(l => /^\s*\d+[.)] /.test(l) || !l.trim())) return '<ol>' + p.split('\n').filter(l => l.trim()).map(l => l.replace(/^\s*\d+[.)] (.*)$/, '<li>$1</li>')).join('') + '</ol>';
+    if (/^\u0000\d+\u0000$/.test(p.trim())) return p.trim();
     return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
   }).join('');
   return t.replace(/\u0000(\d+)\u0000/g, (_m, i) => blocks[+i]);
