@@ -101,6 +101,11 @@ try:                                    # Speicher-Fruehwarnung (80 % gelb, 90 %
     lines.append(('**⚠ Speicher knapp:** ' if pct >= 90 else '**Speicher (Warnung):** ' if pct >= 80 else '**Speicher:** ') + msg)
 except Exception:
     pass
+par = read('Paritaet.md')               # Bericht des taeglichen Paritaets-Checks (PC), per Vault-Abgleich hier
+m = re.search(r'Stand ([\d\- :]+): \*\*(.+?)\*\*', par)
+if m:
+    todo = [x[2:] for x in section(par, 'Zu tun').splitlines() if x.startswith('- ')]
+    lines.append(f'**Parität PC↔Server ({m.group(1)}):** {m.group(2)}' + (' — ' + '; '.join(short(clean(x), 70) for x in todo[:3]) if todo else ''))
 brief = '\n'.join(lines)
 head = '---\ntyp: morgenbrief\nquelle: morgenbrief.py (täglich 06:55, ohne Modell)\ndatenklasse: B\n---\n# Morgenbrief\nÜbergeordnet: [[Fristen-Uebersicht]] · [[Mail-Tagesbericht]] · [[Server-Abgleich]] · [[Index]]\n\n'
 old = read('Morgenbrief.md')
