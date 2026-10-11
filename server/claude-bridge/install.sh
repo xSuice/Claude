@@ -6,6 +6,7 @@ set -Eeuo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Bitte mit sudo ausfuehren."; exit 1; }
 D="$(cd "$(dirname "$0")" && pwd)"
 install -m 755 -o root -g root "$D/ma-claude-bridge.py" /usr/local/lib/ma-claude-bridge.py
+[ -f "$D/router_core.py" ] && install -m 644 -o root -g root "$D/router_core.py" /usr/local/lib/router_core.py || true
 cat > /etc/systemd/system/ma-claude-bridge.service <<'EOF'
 [Unit]
 Description=MA Home Claude-Bruecke (Portal -> Claude Code)
