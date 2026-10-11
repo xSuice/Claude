@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, Menu, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, Notification, Tray, nativeImage } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -19,8 +19,11 @@ const MODES = {
   notizen: { tools: ['Read', 'Grep', 'Glob', 'Edit', 'Write', ...READ_BASH], perm: 'acceptEdits' }
 };
 const store = path.join(app.getPath('userData'), 'chats.json');
-let win;
+let win, tray, quitting = false;
 const runs = new Map();
+const settingsFile = path.join(app.getPath('userData'), 'settings.json');
+function loadSettings() { try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')); } catch (e) { return {}; } }
+function saveSettings(o) { try { fs.writeFileSync(settingsFile, JSON.stringify(o)); } catch (e) { /* ohne Speicher */ } }
 
 function createWindow() {
   win = new BrowserWindow({
@@ -29,6 +32,7 @@ function createWindow() {
   });
   Menu.setApplicationMenu(null);
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  win.on('close', e => { if (!quitting) { e.preventDefault(); win.hide(); } });
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
 }
 
@@ -80,6 +84,54 @@ ipcMain.handle('status', () => new Promise(resolve => {
 
 ipcMain.handle('login-hint', () => 'ssh -t ma-server "~/.local/bin/claude"');
 
+function setAutostart(on) {
+  const st = loadSettings(); st.autostart = on; saveSettings(st);
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] });
+  buildTray();
+}
+function showWin() { if (!win) createWindow(); win.show(); win.restore(); win.focus(); }
+function buildTray() {
+  if (!tray) {
+    const img = nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.png')).resize({ width: 16, height: 16 });
+    tray = new Tray(img); tray.setToolTip('MA Home'); tray.on('click', showWin);
+  }
+  const st = loadSettings();
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'MA Home öffnen', click: showWin },
+    { label: 'Mit Windows starten', type: 'checkbox', checked: !!st.autostart, click: m => setAutostart(m.checked) },
+    { label: 'Server-Status jetzt prüfen', click: () => pollWatch(true) },
+    { type: 'separator' },
+    { label: 'Beenden', click: () => { quitting = true; app.quit(); } }
+  ]));
+}
+
+// Wachhund des Servers (/var/lib/ma-watchdog) alle 10 Minuten lesen; neue Probleme als Windows-Meldung, jedes nur einmal
+const seen = new Set();
+function pollWatch(manual) {
+  const cmd = 'cat /var/lib/ma-watchdog/status.txt /var/lib/ma-watchdog/sicherheit.kurz 2>/dev/null';
+  const p = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', HOST, cmd], { windowsHide: true });
+  let out = ''; p.stdout.on('data', d => out += d);
+  p.on('close', () => {
+    const probs = out.split('\n').filter(l => l.startsWith('PROBLEM') || l.startsWith('- '));
+    const neu = probs.filter(l => !seen.has(l)); neu.forEach(l => seen.add(l));
+    if (Notification.isSupported() && (neu.length || manual)) {
+      new Notification({ title: neu.length ? 'MA-Server: Problem' : 'MA-Server', body: neu.length ? neu.join('; ').slice(0, 240) : (out ? 'Alles in Ordnung.' : 'Server nicht erreichbar.') }).show();
+    }
+  });
+  p.on('error', () => { /* ssh fehlt oder Server aus: still bleiben */ });
+  setTimeout(() => p.kill(), 20000);
+}
+
 const lock = app.requestSingleInstanceLock();
-if (!lock) app.quit(); else { app.on('second-instance', () => { if (win) { win.restore(); win.focus(); } }); app.whenReady().then(createWindow); }
-app.on('window-all-closed', () => app.quit());
+if (!lock) app.quit(); else {
+  app.on('second-instance', showWin);
+  app.whenReady().then(() => {
+    const st = loadSettings();
+    if (st.autostart === undefined) setAutostart(true);          // erster Start: mit Windows starten (im Tray abschaltbar)
+    createWindow(); buildTray();
+    if (process.argv.includes('--hidden')) win.hide();
+    setTimeout(() => pollWatch(false), 15000); setInterval(() => pollWatch(false), 10 * 60 * 1000);
+  });
+}
+app.on('before-quit', () => { quitting = true; });
+app.on('window-all-closed', () => { /* bleibt im Tray */ });
