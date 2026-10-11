@@ -24,7 +24,21 @@ FILES = [
     ('Router-Modul', 'scripts/router/router_core.py', '/usr/local/lib/router_core.py'),
     ('Claude-Brücke', 'server/claude-bridge/ma-claude-bridge.py', '/usr/local/lib/ma-claude-bridge.py'),
     ('ask.py', 'scripts/ext-ai/ask.py', '/home/andrew/MA-Server/scripts/ext-ai/ask.py'),
+    ('Morgenbrief-Skript (Cron)', 'scripts/server-sync/morgenbrief.py', '/home/andrew/MA-Server/scripts/server-sync/morgenbrief.py'),
+    ('Graph-Export (Cron)', 'scripts/server-sync/vault-graph-export.py', '/home/andrew/MA-Server/scripts/server-sync/vault-graph-export.py'),
+    ('Server-settings.json', 'server/claude-config/settings.json', '/home/andrew/.claude/settings.json'),
+    ('Hook ma-guard', 'server/claude-config/hooks/ma-guard.py', '/home/andrew/.claude/hooks/ma-guard.py'),
+    ('Hook council-auto', 'server/claude-config/hooks/council-auto.py', '/home/andrew/.claude/hooks/council-auto.py'),
 ]
+# Hooks, die es bewusst nur am PC gibt (Grund steht dabei). Jeder andere PC-Hook ohne Gegenstück wird gemeldet.
+PC_ONLY_HOOKS = {'kontext-waechter.py': 'Token-Zähler der PC-Sitzung', 'uebergabe-laden.py': 'Übergabe-Start nur am PC',
+                 'coach_gate_launcher.mjs': 'fixmyprompt-Plugin (PC)'}
+# Jobs: (Name, Höchstalter des letzten Laufs in Stunden)
+PC_TASKS = [('VaultZuServer', 2), ('VaultVomServer', 1.5), ('ClaudeAbgleich', 2), ('VaultDateienZuServer', 26), ('VaultAutopflege', 26), ('MA-Paritaet-Check', 26)]
+SERVER_TIMERS = ['ma-home-maintenance.timer', 'ma-usb-backup.timer']
+SERVER_CRON = ['vault-graph-export.py', 'morgenbrief.py']
+VAULT = r'C:\Users\andre\Documents\Obsidian Vault'
+SERVER_NOTIZEN = '/srv/ma-home/library/vault-notizen'
 # /opt/ma-home/web ist nur fuer root und ma-web lesbar: deploy-ui.sh schreibt die Pruefsummen der installierten Dateien nach DEPLOYED
 PORTAL_FILES = ('index.html', 'app.js', 'style.css', 'sw.js', 'manifest.webmanifest')
 DEPLOYED = '/opt/ma-home/DEPLOYED-UI.sha256'
@@ -59,6 +73,10 @@ def server_script():
     lines.append('for t in ' + ' '.join(TOOLS) + '; do command -v $t >/dev/null && echo "T $t 1" || echo "T $t 0"; done')
     lines.append('for d in "$HOME"/.claude/skills/*/ "$HOME"/MA-Server/.claude/skills/*/; do [ -f "$d/SKILL.md" ] && echo "K $(basename "$d")"; done')
     lines.append('for a in "$HOME"/.claude/agents/*.md; do [ -f "$a" ] && echo "A $(basename "$a")"; done')
+    lines.append('for h in "$HOME"/.claude/hooks/*; do [ -f "$h" ] && echo "HK $(basename "$h")"; done')
+    lines.append('for t in ' + ' '.join(SERVER_TIMERS) + '; do echo "TM $t $(systemctl is-active $t 2>&1) $(systemctl is-enabled $t 2>&1)"; done')
+    lines.append('for c in ' + ' '.join(SERVER_CRON) + '; do crontab -l 2>/dev/null | grep -v "^#" | grep -qF "$c" && echo "CR $c 1" || echo "CR $c 0"; done')
+    lines.append('echo "VN $(find ' + SERVER_NOTIZEN + ' -type f -name "*.md" 2>/dev/null | wc -l)"')
     return '\n'.join(lines) + '\n'
 
 
@@ -83,6 +101,76 @@ def local_agents():
     return {f for f in os.listdir(base) if f.endswith('.md')} if os.path.isdir(base) else set()
 
 
+def pc_hook_files():
+    """Hook-Dateien, die in der PC-settings.json vorkommen (Skriptnamen)."""
+    try:
+        import json
+        cfg = json.load(open(os.path.join(HOME_CLAUDE, 'settings.json'), encoding='utf-8'))
+    except Exception:
+        return set()
+    names = set()
+    for groups in cfg.get('hooks', {}).values():
+        for g in groups:
+            for h in g.get('hooks', []):
+                for tok in ' '.join([str(h.get('command', ''))] + [str(a) for a in h.get('args', [])]).replace('"', ' ').split():
+                    if tok.lower().endswith(('.py', '.mjs', '.js', '.sh')):
+                        names.add(os.path.basename(tok.replace('\\', '/')))
+    return names
+
+
+def pc_tasks():
+    ps = ("Get-ScheduledTask | Where-Object { $_.TaskPath -eq '\\' } | ForEach-Object { $i = Get-ScheduledTaskInfo $_; "
+          "'{0}|{1}|{2}|{3}' -f $_.TaskName, $_.State, $i.LastTaskResult, [int](((Get-Date) - $i.LastRunTime).TotalMinutes) }")
+    r = subprocess.run(['powershell', '-NoProfile', '-Command', ps], capture_output=True, timeout=60)
+    out = {}
+    for ln in r.stdout.decode('utf-8', 'replace').splitlines():
+        parts = ln.strip().split('|')
+        if len(parts) == 4:
+            out[parts[0]] = parts[1:]
+    return out
+
+
+def git_notes():
+    """Hinweise (keine Abweichungen): nicht committete oder nicht gepushte Änderungen."""
+    notes = []
+    try:
+        st = subprocess.run(['git', '-C', PC, 'status', '--short', '-b'], capture_output=True, timeout=30).stdout.decode('utf-8', 'replace').splitlines()
+        if st and 'ahead' in st[0]:
+            notes.append('Commits noch nicht auf GitHub (' + st[0].split('[', 1)[-1].rstrip(']') + ')')
+        dirty = [x[3:] for x in st[1:] if x[3:].startswith(('portal-ui/', 'server/', 'scripts/'))]
+        if dirty:
+            notes.append(f'{len(dirty)} Datei(en) nicht committet, z. B. ' + ', '.join(dirty[:3]))
+    except Exception:
+        pass
+    return notes
+
+
+def extra_checks(row, rows, srv_hooks, timers, cron, vn):
+    pc_h = pc_hook_files()
+    fehlt = sorted(h for h in pc_h if h not in srv_hooks and h not in PC_ONLY_HOOKS)
+    row('Hooks', not fehlt, ('PC-Hook ohne Gegenstück auf dem Server (und nicht als "nur PC" erlaubt): ' + ', '.join(fehlt)) if fehlt
+        else f'{len(pc_h)} am PC, davon {len(pc_h & srv_hooks)} auch auf dem Server, Rest bewusst nur PC')
+    for n in SERVER_TIMERS:
+        v = timers.get(n, '?')
+        row('Server-Timer ' + n, v.startswith('active') and 'enabled' in v, v)
+    for n in SERVER_CRON:
+        row('Server-Cron ' + n, cron.get(n, False), '' if cron.get(n, False) else 'fehlt in der crontab')
+    tasks = pc_tasks()
+    for n, max_h in PC_TASKS:
+        t = tasks.get(n)
+        if not t:
+            row('PC-Aufgabe ' + n, False, 'nicht gefunden')
+            continue
+        state, res, age = t[0], t[1], int(t[2])
+        ok = state != 'Disabled' and res in (('0', '1') if n == 'MA-Paritaet-Check' else ('0', '267009')) and age <= max_h * 60   # 1 = Prüfung fand Abweichungen, kein Fehler
+        row('PC-Aufgabe ' + n, ok, f'{state}, Ergebnis {res}, letzter Lauf vor {age} Min' + ('' if ok else f' (erwartet höchstens {int(max_h * 60)})'))
+    if vn is not None:
+        pc_n = sum(1 for r, d, fs in os.walk(VAULT) if '.obsidian' not in r for f in fs if f.endswith('.md'))
+        rows.append(f"| Vault-Notizen | {'Hinweis' if abs(pc_n - vn) > 5 else 'gleich'} | PC {pc_n} .md, Server-Spiegel {vn} (bis 5 Unterschied ist Verzögerung) |")
+    for n in git_notes():
+        rows.append(f'| Git | Hinweis | {n} |')
+
+
 def main():
     quiet = '--quiet' in sys.argv
     try:
@@ -94,6 +182,7 @@ def main():
         return 2
     deployed = {}
     srv_hash, markers, services, tools, skills, agents = {}, {}, {}, {}, set(), set()
+    srv_hooks, timers, cron, vn = set(), {}, {}, None
     for line in out:
         kind, _, rest = line.partition(' ')
         if kind == 'H':
@@ -116,6 +205,16 @@ def main():
             skills.add(rest.strip())
         elif kind == 'A':
             agents.add(rest.strip())
+        elif kind == 'HK':
+            srv_hooks.add(rest.strip())
+        elif kind == 'TM':
+            n, _, st = rest.partition(' ')
+            timers[n] = st.strip()
+        elif kind == 'CR':
+            n, _, v = rest.partition(' ')
+            cron[n] = v.strip() == '1'
+        elif kind == 'VN':
+            vn = int(rest.strip() or 0)
 
     rows, problems = [], []
 
@@ -144,6 +243,7 @@ def main():
     row('Agenten', la == agents, ('fehlen auf dem Server: ' + ', '.join(sorted(la - agents)) + '. ' if la - agents else '') +
         ('nur auf dem Server: ' + ', '.join(sorted(agents - la)) if agents - la else '') or f'{len(la)} gleich')
 
+    extra_checks(row, rows, srv_hooks, timers, cron, vn)
     stamp = time.strftime('%Y-%m-%d %H:%M')
     verdict = 'alles gleich' if not problems else f'{len(problems)} Abweichung(en)'
     body = ['---', 'typ: paritaet', 'quelle: paritaet-check.py (täglich)', 'datenklasse: B', '---', '# Parität PC ↔ Server',
