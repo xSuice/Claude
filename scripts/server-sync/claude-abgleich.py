@@ -349,6 +349,10 @@ def main():
             subprocess.run([sys.executable, "-I", os.path.join(os.path.dirname(os.path.abspath(__file__)), "server-spiegel.py")], capture_output=True, timeout=400)
         except Exception as e:
             log(f"Vollspiegel fehlgeschlagen: {e!r}")
+        try:                       # committete Staende aufs System bringen (nur wenn die Auto-Deploy-Regel eingerichtet ist)
+            subprocess.run([sys.executable, "-I", os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy.py"), "--quiet"], capture_output=True, timeout=300)
+        except Exception as e:
+            log(f"Auto-Deploy fehlgeschlagen: {e!r}")
     return 0
 
 

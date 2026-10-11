@@ -1,0 +1,51 @@
+#!/bin/bash
+# /usr/local/sbin/ma-deploy (root:root, 755). Per sudoers ohne Passwort fuer andrew erlaubt (siehe auto-deploy-einrichten.sh).
+# Kopiert NUR eine feste Dateiliste aus /home/andrew/deploy-staging an ihre Ziele. Fuehrt nichts aus dem Staging aus (kein bash/python
+# als root), deshalb ist die Regel kein Weg zu root: Weboberflaeche -> /opt/ma-home/web, Bruecke/Router -> /usr/local/lib.
+# Ablauf: Syntaxpruefung (nur Python, ohne Ausfuehrung) -> Sicherung der Weboberflaeche -> installieren -> Pruefsummen -> Dienst neu starten, wenn noetig.
+set -Eeuo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "Nur als root (sudo)."; exit 1; }
+S=/home/andrew/deploy-staging
+WEB=/opt/ma-home/web
+exec 9>/run/ma-deploy.lock; flock -n 9 || { echo "Es laeuft schon ein Deploy."; exit 1; }
+ok() { [ -f "$1" ] && [ ! -L "$1" ]; }
+WEBFILES="index.html app.js style.css sw.js manifest.webmanifest icon-192.png icon-512.png apple-touch-icon.png"
+GEAENDERT=""
+
+# 1. Pruefen
+for f in ma-claude-bridge.py router_core.py; do
+  if ok "$S/$f"; then python3 -c 'import sys; compile(open(sys.argv[1], encoding="utf-8").read(), sys.argv[1], "exec")' "$S/$f" || { echo "Syntaxfehler in $f, nichts installiert."; exit 2; }; fi
+done
+
+# 2. Weboberflaeche
+WEBNEU=0
+for f in $WEBFILES; do
+  if ok "$S/web/$f" && ! cmp -s "$S/web/$f" "$WEB/$f"; then WEBNEU=1; fi
+done
+if [ "$WEBNEU" = 1 ]; then
+  B=$WEB.bak-$(date +%Y%m%d-%H%M%S); cp -a "$WEB" "$B"
+  for f in $WEBFILES; do if ok "$S/web/$f"; then install -m 640 -o root -g ma-web "$S/web/$f" "$WEB/$f"; fi; done
+  ( cd "$WEB" && for f in index.html app.js style.css sw.js manifest.webmanifest; do echo "$(tr -d '\r' < "$f" | sha256sum | cut -d' ' -f1)  $f"; done ) > /opt/ma-home/DEPLOYED-UI.sha256
+  chmod 644 /opt/ma-home/DEPLOYED-UI.sha256
+  ls -dt $WEB.bak-* | tail -n +6 | xargs -r rm -rf          # nur die letzten 5 Sicherungen behalten
+  GEAENDERT="$GEAENDERT web"
+fi
+
+# 3. Bruecke und Router
+RESTART=0
+if ok "$S/ma-claude-bridge.py" && ! cmp -s "$S/ma-claude-bridge.py" /usr/local/lib/ma-claude-bridge.py; then
+  cp -a /usr/local/lib/ma-claude-bridge.py /usr/local/lib/ma-claude-bridge.py.bak
+  install -m 755 -o root -g root "$S/ma-claude-bridge.py" /usr/local/lib/ma-claude-bridge.py; RESTART=1; GEAENDERT="$GEAENDERT bruecke"
+fi
+if ok "$S/router_core.py" && ! cmp -s "$S/router_core.py" /usr/local/lib/router_core.py; then
+  install -m 644 -o root -g root "$S/router_core.py" /usr/local/lib/router_core.py; RESTART=1; GEAENDERT="$GEAENDERT router"
+fi
+if [ "$RESTART" = 1 ]; then
+  systemctl restart ma-claude-bridge; sleep 2
+  if [ "$(systemctl is-active ma-claude-bridge)" != active ] && [ -f /usr/local/lib/ma-claude-bridge.py.bak ]; then
+    install -m 755 /usr/local/lib/ma-claude-bridge.py.bak /usr/local/lib/ma-claude-bridge.py; systemctl restart ma-claude-bridge
+    echo "Bruecke startete nicht, alte Fassung zurueck."; exit 3
+  fi
+fi
+echo "OK geaendert:${GEAENDERT:- nichts}"
+curl -s -o /dev/null -w "Portal intern: HTTP %{http_code}\n" http://127.0.0.1:18765/healthz || true
