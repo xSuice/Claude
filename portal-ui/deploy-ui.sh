@@ -8,6 +8,9 @@ SRC="$(cd "$(dirname "$0")" && pwd)/web"
 B=/opt/ma-home/web.bak-$(date +%Y%m%d-%H%M%S)
 cp -a /opt/ma-home/web "$B"
 install -m 640 -o root -g ma-web "$SRC"/index.html "$SRC"/app.js "$SRC"/style.css "$SRC"/sw.js "$SRC"/manifest.webmanifest "$SRC"/icon-192.png "$SRC"/icon-512.png "$SRC"/apple-touch-icon.png /opt/ma-home/web/
+# Pruefsummen der installierten Dateien (Zeilenenden egal) fuer scripts/server-sync/paritaet-check.py; /opt/ma-home/web ist nur fuer ma-web lesbar
+( cd /opt/ma-home/web && for f in index.html app.js style.css sw.js manifest.webmanifest; do echo "$(tr -d '\r' < "$f" | sha256sum | cut -d' ' -f1)  $f"; done ) > /opt/ma-home/DEPLOYED-UI.sha256
+chmod 644 /opt/ma-home/DEPLOYED-UI.sha256
 # Portal-Patches (idempotent, Sicherung von portal.py, nur wenn noetig; danach Neustart): PWA-Dateien und Claude-Verwaltung
 CHANGED=0
 for PATCH in patch-portal-pwa.py patch-portal-claudeops.py; do
