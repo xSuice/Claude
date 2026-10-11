@@ -7,11 +7,13 @@ import json
 import os
 import re
 import select
+import signal
 import socketserver
 import subprocess
 import sys
 import threading
 import time
+import uuid
 
 SOCK = os.environ.get('MA_CLAUDE_SOCK', '/run/ma-claude/bridge.sock')
 CLAUDE = '/home/andrew/.local/bin/claude'
@@ -84,15 +86,175 @@ SESSION = re.compile(r'[0-9a-f-]{36}\Z')
 LIMIT = threading.BoundedSemaphore(2)
 TIMEOUT = 900
 
+JOBS = {}                                  # id -> {proc, start, prompt, model, mode}
+JOBS_LOCK = threading.Lock()
+PROJ = '/home/andrew/.claude/projects'
+META = '/home/andrew/.ma-chat-names.json'  # eigene Sitzungsnamen (0600)
+RESUMABLE = {cwd.replace('/', '-'): key for key, cwd in DIRS.items()}   # Ordnername unter projects -> Portal-Ordner
+
+
+def kill_group(proc):
+    """Beendet Claude samt Unterprozessen (eigene Prozessgruppe)."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+        threading.Timer(3, lambda: proc.poll() is None and os.killpg(proc.pid, signal.SIGKILL)).start()
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def load_meta():
+    try:
+        return json.load(open(META, encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+
+
+def text_of(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return ' '.join(b.get('text', '') for b in content if isinstance(b, dict) and b.get('type') == 'text')
+    return ''
+
+
+def first_user(path):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as fh:
+            for _ in range(400):
+                line = fh.readline()
+                if not line:
+                    break
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if d.get('type') == 'user':
+                    t = ' '.join(text_of((d.get('message') or {}).get('content')).split())
+                    if t and not t.startswith('<'):
+                        return t[:90]
+    except OSError:
+        pass
+    return ''
+
+
+def find_session(sid):
+    if not SESSION.fullmatch(sid or ''):
+        return None
+    try:
+        for d in os.listdir(PROJ):
+            p = os.path.join(PROJ, d, sid + '.jsonl')
+            if os.path.isfile(p):
+                return p, d
+    except OSError:
+        pass
+    return None
+
+
+def list_sessions(q):
+    q = (q or '').strip().lower()[:100]
+    meta, out, t0 = load_meta(), [], time.time()
+    try:
+        folders = os.listdir(PROJ)
+    except OSError:
+        return out
+    for d in folders:
+        dp = os.path.join(PROJ, d)
+        if not os.path.isdir(dp):
+            continue
+        for f in os.listdir(dp):
+            if not f.endswith('.jsonl') or not SESSION.fullmatch(f[:-6]):
+                continue
+            p, sid = os.path.join(dp, f), f[:-6]
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            name = meta.get(sid) or ''
+            title = name or first_user(p) or '(ohne Text)'
+            if q and q not in title.lower():
+                if st.st_size > 8_000_000 or time.time() - t0 > 6:
+                    continue
+                try:
+                    if q not in open(p, encoding='utf-8', errors='replace').read().lower():
+                        continue
+                except OSError:
+                    continue
+            where = d.replace('-C-Users-andre-Documents-', 'PC ').replace('C--Users-andre-Documents-', 'PC ').strip('-')[:40]
+            out.append({'id': sid, 'title': title, 'named': bool(name), 'time': int(st.st_mtime), 'size': st.st_size,
+                        'where': where, 'dir': RESUMABLE.get(d)})
+    out.sort(key=lambda x: x['time'], reverse=True)
+    return out[:60]
+
+
+def show_session(sid):
+    found = find_session(sid)
+    if not found:
+        return None
+    path, folder = found
+    msgs = []
+    with open(path, encoding='utf-8', errors='replace') as fh:
+        for line in fh:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            kind = d.get('type')
+            if kind not in ('user', 'assistant'):
+                continue
+            t = text_of((d.get('message') or {}).get('content')).strip()
+            if not t or t.startswith('<'):
+                continue
+            msgs.append({'r': 'u' if kind == 'user' else 'a', 't': t[:4000]})
+    return {'msgs': msgs[-120:], 'dir': RESUMABLE.get(folder), 'folder': folder}
+
+
 
 class Handler(socketserver.StreamRequestHandler):
     def reply(self, obj):
         self.wfile.write(json.dumps(obj).encode() + b'\n')
         self.wfile.flush()
 
+    def op(self, req):
+        """Verwaltungsbefehle (Portal-Route /api/claude/op): jobs, cancel, sessions, show, rename."""
+        op = req.get('op')
+        try:
+            if op == 'jobs':
+                with JOBS_LOCK:
+                    jobs = [{'id': k, 'sec': int(time.time() - v['start']), 'prompt': v['prompt'], 'model': v['model'], 'mode': v['mode']} for k, v in JOBS.items()]
+                return self.reply({'type': 'jobs', 'jobs': jobs})
+            if op == 'cancel':
+                with JOBS_LOCK:
+                    job = JOBS.get(str(req.get('id')))
+                if job:
+                    kill_group(job['proc'])
+                return self.reply({'type': 'cancel', 'ok': bool(job)})
+            if op == 'sessions':
+                return self.reply({'type': 'sessions', 'sessions': list_sessions(req.get('q'))})
+            if op == 'show':
+                res = show_session(str(req.get('id')))
+                return self.reply({'type': 'show', 'ok': bool(res), **(res or {})})
+            if op == 'rename':
+                sid, name = str(req.get('id')), ' '.join(str(req.get('name') or '').split())[:80]
+                if not SESSION.fullmatch(sid):
+                    return self.reply({'type': 'rename', 'ok': False})
+                meta = load_meta()
+                if name:
+                    meta[sid] = name
+                else:
+                    meta.pop(sid, None)
+                fd = os.open(META, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, 'w', encoding='utf-8') as fh:
+                    json.dump(meta, fh, ensure_ascii=False)
+                return self.reply({'type': 'rename', 'ok': True})
+        except Exception as exc:
+            return self.reply({'type': 'bridge_error', 'error': type(exc).__name__})
+        return self.reply({'type': 'bridge_error', 'error': 'Unbekannter Befehl'})
+
     def handle(self):
         try:
             req = json.loads(self.rfile.readline(131072))
+            if req.get('op'):
+                return self.op(req)
             prompt = req.get('prompt')
             if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 20000:
                 return self.reply({'type': 'bridge_error', 'error': 'Ungueltiger Text'})
@@ -120,16 +282,21 @@ class Handler(socketserver.StreamRequestHandler):
         if not LIMIT.acquire(blocking=False):
             return self.reply({'type': 'bridge_error', 'error': 'Es laufen schon zwei Auftraege. Bitte warten.'})
         proc = None
+        jid = None
         try:
             env = dict(os.environ, HOME='/home/andrew', PATH='/home/andrew/.local/bin:/usr/local/bin:/usr/bin:/bin')
             env.pop('MA_ALLOW_SEND', None)
             if req.get('mode') == 'voll_senden':
                 env['MA_ALLOW_SEND'] = '1'
             self.reply({'type': 'bridge_model', 'model': model})
-            proc = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            proc = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+            jid = uuid.uuid4().hex[:12]
+            with JOBS_LOCK:
+                JOBS[jid] = {'proc': proc, 'start': time.time(), 'prompt': ' '.join(prompt.split())[:60], 'model': model, 'mode': str(req.get('mode'))}
+            self.reply({'type': 'bridge_job', 'id': jid})
             proc.stdin.write(prompt.encode())
             proc.stdin.close()
-            timer = threading.Timer(TIMEOUT, proc.kill)
+            timer = threading.Timer(TIMEOUT, kill_group, [proc])
             timer.start()
             fd = proc.stdout.fileno()
             while True:
@@ -156,7 +323,9 @@ class Handler(socketserver.StreamRequestHandler):
                 pass
         finally:
             if proc and proc.poll() is None:
-                proc.kill()
+                kill_group(proc)
+            with JOBS_LOCK:
+                JOBS.pop(jid, None)
             LIMIT.release()
 
 

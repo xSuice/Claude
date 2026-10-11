@@ -330,6 +330,10 @@ async function claudeSend(prompt, opts) {
           } else if (a && !a.t && d.result) a.t = d.result;
         } else if (d.type === 'bridge_model') {
           if (!opts.model || opts.model === 'auto') S.msgs.splice(Math.max(0, S.msgs.findIndex(m => m.live)), 0, { r: 't', t: 'Modell automatisch gewählt: ' + d.model });
+        } else if (d.type === 'bridge_job') {
+          S.jobId = d.id; jobsRefresh();
+        } else if (d.type === 'bridge_end' && d.code < 0) {
+          S.msgs.push({ r: 't', t: 'Abgebrochen' });
         } else if (d.type === 'bridge_error') {
           S.msgs.push({ r: 'e', t: d.error });
         }
@@ -339,7 +343,7 @@ async function claudeSend(prompt, opts) {
   } catch (er) { S.msgs.push({ r: 'e', t: er.message }); }
   S.msgs.forEach(m => { delete m.live; });
   S.msgs = S.msgs.filter(m => !(m.r === 'a' && !m.t));
-  S.busy = false; claudeSave(); claudeRender();
+  S.busy = false; S.jobId = null; claudeSave(); claudeRender(); jobsRefresh();
   const b = $('#csend'); if (b) b.disabled = false;
 }
 const COUNCIL = (idee) => 'AI-Council: Prüfe diese Idee aus fünf Rollen und bewerte jede Rolle mit zwei bis vier Sätzen.\n' +
@@ -348,22 +352,94 @@ const COUNCIL = (idee) => 'AI-Council: Prüfe diese Idee aus fünf Rollen und be
   'Danach eine zweite Prüfrunde: Wo widersprechen sich die Rollen? Schließe mit einer klaren Empfehlung (machen, ändern, lassen) und einer offenen Frage an mich.\n\nIdee:\n' + idee;
 
 // Automatischer Council: nur bei klaren Formulierungen (Treffer kosten einen langen Durchlauf). Mit "ohne council" in der Nachricht abschaltbar.
-const COUNCIL_AUTO = /^(?![\s\S]*ohne council)[\s\S]*(\bcouncil\b|prüf(e)? (meine|diese|die) (idee|entscheidung|plan)|ist das eine gute idee|lohnt (es )?sich das)/i;
+const COUNCIL_AUTO = /^(?![\s\S]*(ohne|kein) council)(?=[\s\S]{25,})[\s\S]*(\bcouncil\b|prüf(e|en)? (meine|diese|die|den|das|mal)|gute idee|lohnt (es )?sich|\bsoll(te)? ich\b|was hältst du (von|davon)|vor- ?und nachteile|\b(entscheidung|projektidee|geschäftsidee)\b|\b(umbau|neuaufbau|migration)\b[\s\S]*\?|\bwelche(r|s)? (variante|option|lösung) )/i;
+
+/* ---------- Claude-Verwaltung: laufende Aufträge, Abbrechen, Verlaufsliste, Bestätigung für Voll ---------- */
+async function cop(op, data) {
+  const r = await fetch('/api/claude/op', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ op, ...data }) });
+  if (!r.ok) throw new Error(r.status === 403 ? 'Nur für Administratoren.' : 'Fehler ' + r.status);
+  return r.json();
+}
+let jobsTimer = null;
+async function jobsRefresh() {
+  const box = $('#cstat');
+  if (!box) { clearInterval(jobsTimer); jobsTimer = null; return; }
+  try {
+    const d = await cop('jobs', {}), jobs = d.jobs || [];
+    box.innerHTML = jobs.map(j => '<div class="cjob"><span>⏳ ' + esc(j.prompt) + ' · ' + esc(j.model) + ' · ' + Math.floor(j.sec / 60) + ':' + String(j.sec % 60).padStart(2, '0') + '</span><button class="btn ghost small" data-id="' + esc(j.id) + '">Abbrechen</button></div>').join('');
+    box.hidden = !jobs.length;
+    box.querySelectorAll('button').forEach(b => { b.onclick = async () => { b.disabled = true; try { await cop('cancel', { id: b.dataset.id }); toast('Auftrag abgebrochen'); } catch (er) { toast(er.message, 1); } jobsRefresh(); }; });
+  } catch (er) { /* Brücke gerade nicht erreichbar */ }
+}
+function jobsWatch() { jobsRefresh(); if (!jobsTimer) jobsTimer = setInterval(jobsRefresh, 4000); }
+function fmtAgo(t) { const s = Math.max(0, Math.floor(Date.now() / 1000 - t)); return s < 3600 ? Math.max(1, Math.floor(s / 60)) + ' min' : s < 86400 ? Math.floor(s / 3600) + ' Std' : Math.floor(s / 86400) + ' Tg'; }
+async function sessionsOpen() {
+  const p = $('#cses'); p.hidden = false;
+  p.innerHTML = '<div class="cseshead"><input type="search" id="cq" placeholder="Verläufe durchsuchen …" autocomplete="off"><button class="btn ghost small" id="cclose">Schließen</button></div><div id="csl"><div class="empty">Lädt …</div></div>';
+  $('#cclose').onclick = () => { p.hidden = true; };
+  let timer;
+  const load = async () => {
+    const list = $('#csl'); if (!list) return;
+    try {
+      const d = await cop('sessions', { q: $('#cq').value }), all = d.sessions || [];
+      list.innerHTML = all.map(s => '<div class="csrow" data-id="' + esc(s.id) + '"><div class="cstitle">' + esc(s.title) + '</div><div class="csmeta">' + esc(s.where) + ' · vor ' + fmtAgo(s.time) + (s.dir ? '' : ' · nur lesen') + '</div><button class="btn ghost small csren" title="Umbenennen">✎</button></div>').join('') || '<div class="empty">Nichts gefunden.</div>';
+      list.querySelectorAll('.csrow').forEach(row => {
+        const s = all.find(x => x.id === row.dataset.id);
+        row.onclick = e => { if (!e.target.closest('.csren') && !e.target.closest('.csin')) sessionsResume(s); };
+        row.querySelector('.csren').onclick = e => { e.stopPropagation(); renameRow(row, s, load); };
+      });
+    } catch (er) { list.innerHTML = '<div class="empty">' + esc(er.message) + '</div>'; }
+  };
+  $('#cq').oninput = () => { clearTimeout(timer); timer = setTimeout(load, 350); };
+  load();
+}
+function renameRow(row, s, reload) {
+  const t = row.querySelector('.cstitle');
+  t.innerHTML = '<input class="csin" value="' + esc(s.title) + '" maxlength="80">';
+  const inp = t.firstChild; inp.focus(); inp.select();
+  let fin = false;
+  const done = async save => { if (fin) return; fin = true; if (save) { try { await cop('rename', { id: s.id, name: inp.value }); } catch (er) { toast(er.message, 1); } } reload(); };
+  inp.onkeydown = e => { if (e.key === 'Enter') done(true); else if (e.key === 'Escape') done(false); };
+  inp.onblur = () => done(true);
+}
+async function sessionsResume(s) {
+  if (claudeState.busy) { toast('Erst den laufenden Auftrag abwarten oder abbrechen', 1); return; }
+  try {
+    const d = await cop('show', { id: s.id });
+    if (!d.ok) throw new Error('Verlauf nicht gefunden');
+    claudeState = { msgs: d.msgs, sid: d.dir ? s.id : null, busy: false };
+    if (!d.dir) claudeState.msgs.push({ r: 't', t: 'Dieser Verlauf stammt vom PC und kann hier nur gelesen werden. Eine neue Frage startet einen neuen Chat.' });
+    if (d.dir && $('#cf')) $('#cf').dir.value = d.dir;
+    claudeSave(); claudeRender(); $('#cses').hidden = true;
+  } catch (er) { toast(er.message, 1); }
+}
+// Bestätigung vor "Voll": der erste Druck zeigt nur den Hinweis, der zweite sendet. "Senden/Löschen" fragt jedes Mal.
+function vollOk(mode) {
+  const S = claudeState;
+  if (mode === 'voll_senden') {
+    if (S.sendAsk && Date.now() - S.sendAsk < 30000) { S.sendAsk = 0; return true; }
+    S.sendAsk = Date.now(); toast('Senden/Löschen erlaubt: zum Bestätigen noch einmal Senden.', 0); return false;
+  }
+  if (mode !== 'voll' || S.vollOk) return true;
+  S.vollOk = true; toast('Voll-Modus: Claude darf Dateien ändern und Befehle ausführen. Zum Bestätigen noch einmal Senden.', 0); return false;
+}
 
 async function claude() {
   claudeLoad();
-  view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cnew">Neuer Chat</button>') +
-    '<div class="cwrap"><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
+  view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cseb">Verläufe</button> <button class="btn ghost small" id="cnew">Neuer Chat</button>') +
+    '<div class="cwrap"><div class="cstat" id="cstat" hidden></div><div class="cses" id="cses" hidden></div><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
     '<div id="cimgs" class="cimgs"></div><div class="copts"><label>Ordner<select name="dir"><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
     '<label>Rechte<select name="mode"><option value="lesen">Nur lesen</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
     '<label>Modell<select name="model"><option value="auto">Auto</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
     '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (Bild per Strg+V einfügen)"></textarea><input type="file" id="cfile" accept="image/*" multiple hidden><button class="btn ghost" type="button" id="cattach" title="Bild anhängen">📎</button><button class="btn ghost" type="button" id="ccouncil" title="Prüft deine Idee aus fünf Rollen mit zweiter Runde">Council</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();
+  $('#cseb').onclick = sessionsOpen; jobsWatch();
   $('#cnew').onclick = () => { if (claudeState.busy) return; claudeState = { msgs: [], sid: null, busy: false }; claudeSave(); claudeRender(); };
   $('#cf').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target); const p = String(f.get('prompt')).trim();
     if ((!p && !pendingImgs.length) || claudeState.busy) return;
+    if (!vollOk(String(f.get('mode')))) return;
     $('#csend').disabled = true; e.target.prompt.value = '';
     const auto = COUNCIL_AUTO.test(p) && !p.startsWith('AI-Council:');
     if (auto) toast('Council automatisch gestartet');
@@ -371,7 +447,7 @@ async function claude() {
     if (f.get('mode') === 'voll_senden') e.target.mode.value = 'voll';
   };
   try { const q = sessionStorage.getItem('ma-claude-q'); if (q) { sessionStorage.removeItem('ma-claude-q'); $('#cf').prompt.value = q; setTimeout(() => $('#cf').requestSubmit(), 150); } } catch (er) { /* ohne Speicher */ }
-  $('#ccouncil').onclick = () => { const f = new FormData($('#cf')); const p = String(f.get('prompt')).trim(); if (!p || claudeState.busy) { toast('Erst die Idee ins Feld schreiben', 1); return; } $('#cf').prompt.value = ''; claudeSend(COUNCIL(p), { dir: f.get('dir'), mode: f.get('mode') === 'voll_senden' ? 'voll' : f.get('mode'), model: f.get('model') }); };
+  $('#ccouncil').onclick = () => { const f = new FormData($('#cf')); const p = String(f.get('prompt')).trim(); if (!p || claudeState.busy) { toast('Erst die Idee ins Feld schreiben', 1); return; } if (!vollOk(String(f.get('mode')))) return; $('#cf').prompt.value = ''; claudeSend(COUNCIL(p), { dir: f.get('dir'), mode: f.get('mode') === 'voll_senden' ? 'voll' : f.get('mode'), model: f.get('model') }); };
   $('#cattach').onclick = () => $('#cfile').click();
   $('#cfile').onchange = e => { imgAdd(e.target.files); e.target.value = ''; };
   $('#cf').prompt.addEventListener('paste', e => { const fs = [...(e.clipboardData || {}).files || []]; if (fs.some(f => f.type.startsWith('image/'))) { e.preventDefault(); imgAdd(fs); } });
@@ -566,7 +642,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-11-1';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-11-2';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

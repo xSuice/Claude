@@ -223,3 +223,17 @@ a.row, a.card, a.hero { color: inherit; text-decoration: none; }
   .cin #cattach { flex: 0 0 48px; }
   .toast { bottom: 96px; }
 }
+
+/* Claude-Verwaltung: laufende Aufträge, Verlaufsliste */
+.cstat { display: flex; flex-direction: column; gap: .4rem; padding: .5rem .7rem; border: 1px solid var(--line2); border-radius: 10px; margin-bottom: .5rem; }
+.cstat[hidden], .cses[hidden] { display: none; }
+.cjob { display: flex; justify-content: space-between; align-items: center; gap: .6rem; font-size: .85rem; }
+.cses { border: 1px solid var(--line2); border-radius: 12px; padding: .6rem; margin-bottom: .6rem; max-height: 50vh; max-height: 50dvh; overflow: auto; }
+.cseshead { display: flex; gap: .5rem; margin-bottom: .5rem; }
+.cseshead input { flex: 1; font-size: 16px; }
+.csrow { position: relative; padding: .5rem 3.4rem .5rem .6rem; border-radius: 8px; cursor: pointer; min-height: 44px; }
+.csrow:hover { background: rgba(255, 255, 255, .04); }
+.cstitle { font-size: .9rem; word-break: break-word; }
+.csmeta { font-size: .75rem; color: var(--silver); }
+.csren { position: absolute; right: .2rem; top: .2rem; min-width: 44px; min-height: 44px; }
+.csin { width: 100%; font-size: 16px; }
