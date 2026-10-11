@@ -122,6 +122,7 @@ def push_config(changes):
         ".claude/CLAUDE.md": (pc_md.rstrip("\n") + "\n\n" + open(os.path.join(CFG, "server-abschnitt.md"), encoding="utf-8").read()).encode(),
         ".claude/settings.json": open(os.path.join(CFG, "settings.json"), "rb").read().replace(b"\r\n", b"\n"),
         ".claude/hooks/ma-guard.py": open(os.path.join(CFG, "hooks", "ma-guard.py"), "rb").read().replace(b"\r\n", b"\n"),
+        ".claude/hooks/council-auto.py": open(os.path.join(CFG, "hooks", "council-auto.py"), "rb").read().replace(b"\r\n", b"\n"),
     }
     have = json.loads(ssh(HAVE_CMD % json.dumps(list(want))))
     send = {p: b for p, b in want.items() if hashlib.sha1(b).hexdigest() != have.get(p)}
