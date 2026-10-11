@@ -56,7 +56,7 @@ def ssh(cmd, data=None, timeout=180):
 def server_hashes():
     script = ("[ -f /opt/ma-home/DEPLOYED-UI.sha256 ] && sed 's/^/D /' /opt/ma-home/DEPLOYED-UI.sha256\n"
               + ''.join(f'echo "H {srv} $(tr -d \'\\r\' < {srv} 2>/dev/null | sha256sum | cut -d" " -f1)"\n' for _, srv in ROOT_FILES.values())
-              + ''.join(f'echo "U {p} $(tr -d \'\\r\' < "$HOME/{p}" 2>/dev/null | sha256sum | cut -d" " -f1)"\n' for p in USER_FILES.values())
+              + ''.join(f'echo "U {p} $(tr -d \'\\r\' < "$HOME/{p}" 2>/dev/null | sha256sum | cut -d" " -f1)"\n' for p in {**USER_FILES, **project_skills()}.values())
               + 'echo "R $(sudo -n -l /usr/local/sbin/ma-deploy >/dev/null 2>&1 && echo ja || echo nein)"\n')
     r = ssh('bash -s', script.encode())
     if r.returncode != 0:
@@ -97,6 +97,12 @@ def check_syntax(files):
     return None
 
 
+def project_skills():
+    """Projekt-Skills (.claude/skills im Repo) -> ~/MA-Server/.claude/skills auf dem Server."""
+    r = subprocess.run(['git', '-C', PC, 'ls-tree', '-r', '--name-only', 'HEAD', '.claude/skills'], capture_output=True, timeout=30)
+    return {p: 'MA-Server/' + p for p in r.stdout.decode('utf-8', 'replace').splitlines() if p.endswith(('.md', '.py', '.sh', '.json'))}
+
+
 def main():
     try:
         web_srv, root_srv, user_srv, regel = server_hashes()
@@ -105,7 +111,7 @@ def main():
         return 1
     # 1. Dateien des Server-Benutzers
     user_send = {}
-    for repo, dest in USER_FILES.items():
+    for repo, dest in {**USER_FILES, **project_skills()}.items():
         b = head(repo)
         if b is not None and sha(b) != user_srv.get(dest):
             user_send[dest] = b

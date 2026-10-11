@@ -41,6 +41,7 @@ NOT_HAIKU = [r'\berstell', r'\bschreib', r'\bänder', r'\bimplement', r'\brepar'
              r'\barchitecture', r'\bsicherheit', r'\bsecurity', r'\bkomplex', r'\bcomplex', r'\brefactor', r'\boptimi', r'\bmigrier']
 
 
+# Council-Auftraege ("AI-Council:") laufen bewusst auf Sonnet, nicht auf Opus (siehe classify).
 def classify(prompt, mode=None, has_images=False):
     """Gibt (modell, grund) zurueck. Rein regelbasiert, kein Modellaufruf."""
     p = _norm(prompt)
