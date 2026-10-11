@@ -23,6 +23,9 @@ Portal (18765) und Brücke (Socket), Terminal (7681), Home Assistant (8123, nur 
 3. **ändern (nur mit Bestätigung)**: Router, Firewall, DNS-Filter, `/etc`, Docker, Systemdienste, Löschen, Geldausgaben, Senden an Dritte. Nur als Sudo-Skript für Philipp mit Rückgängig-Anleitung.
 Zugänge (Tokens, Router-Login) legt Philipp selbst in einer Datei an (`chmod 600`, nicht im Git, nicht im Chat). Statt offener Shell ins Netz gilt eine Zulassungsliste (Allowlist) von Hosts und Befehlen.
 
+## Werkzeug (gebaut, 2026-10-11)
+`server/tools/netz.py` mit Tests `server/tools/test_netz.py` (12/12, Home Assistant gegen einen Schein-Server) und Skill `.claude/skills/netz`. Zulassungsliste `~/.ma-netz.json` (Aufbau im Kopf der Datei), Stufen wie oben, Stufe 3 wird verweigert. Auf dem Server nur die lesenden Befehle geprüft (`liste`, `dienste`, `nachbarn`); gegen echte Geräte und Home Assistant ungetestet, weil keine Liste und kein Token vorliegen.
+
 ## Nächste Schritte
 - Geräteliste mit Namen: Philipp liefert die Geräteliste aus dem Router (192.168.0.1) oder benennt sie, dann ordne ich IPs zu.
 - `server/tools/install-bluetooth.sh` ausführen (Sudo), danach Bluetooth-Geräte erfassen.

@@ -508,7 +508,7 @@ async function claude() {
   view.innerHTML = head('Claude', 'Dein Assistent auf dem Server', '<button class="btn ghost small" id="cseb">Verläufe</button> <button class="btn ghost small" id="cnew">Neuer Chat</button>') +
     '<div class="cwrap"><div class="cstat" id="cstat" hidden></div><div class="cses" id="cses" hidden></div><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
     '<div id="cimgs" class="cimgs"></div><div class="copts"><label>Ordner<select name="dir"><option value="auto">Auto</option><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
-    '<label>Rechte<select name="mode"><option value="auto">Auto (kleinste Rechte)</option><option value="lesen">Nur lesen</option><option value="plan">Nur planen (Plan-Modus)</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
+    '<label>Rechte<select name="mode"><option value="auto">Auto</option><option value="lesen">Nur lesen</option><option value="plan">Nur planen (Plan-Modus)</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
     '<label>Modell<select name="model"><option value="auto">Auto</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
     '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (/hilfe zeigt Befehle, Dateien per 📎 oder hineinziehen)"></textarea><input type="file" id="cfile" multiple hidden><button class="btn ghost" type="button" id="cattach" title="Bild oder Datei anhängen (bis 8 MB)">📎</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();
@@ -654,7 +654,8 @@ document.addEventListener('click', async e => {
 const GCOL = ['#e5173f', '#3d8bfd', '#2fbf71', '#f59e0b', '#a78bfa', '#22c1c3', '#c9ced9', '#ff7ab6', '#84cc16', '#fb923c'];
 async function wissen() {
   view.innerHTML = head('Wissen', 'Deine Notizen und ihre Verbindungen', '<div class="gtools"><input id="gq" placeholder="Notiz suchen …"><button class="btn small ghost" id="greset">Ansicht zurücksetzen</button></div>') +
-    '<div class="gwrap"><canvas id="gc"></canvas><div class="gtip" id="gtip" hidden></div><div class="glegend" id="glegend"></div><div class="ginfo" id="ginfo"></div></div>';
+    '<div class="gwrap"><canvas id="gc"></canvas><div class="gtip" id="gtip" hidden></div><button class="glegtog" id="glegtog" type="button" aria-expanded="false">Legende</button><div class="glegend" id="glegend"></div><div class="ginfo" id="ginfo"></div>' +
+    '<div class="gzoom"><button type="button" id="gzin" aria-label="Hineinzoomen">+</button><button type="button" id="gzout" aria-label="Herauszoomen">−</button></div></div>';
   let g;
   try { g = await loadGraph(true); } catch (er) { $('.gwrap').innerHTML = '<div class="empty">' + esc(er.message) + '</div>'; return; }
   const cv = $('#gc'), ctx = cv.getContext('2d'), wrap = $('.gwrap');
@@ -695,20 +696,71 @@ async function wissen() {
   }
   function loop() { if (!document.body.contains(cv)) return; step(); draw(); requestAnimationFrame(loop); }
   loop();
-  const pick = (sx, sy) => { const w = toWorld(sx, sy); let best = -1, bd = 1e9; P.forEach((p, i) => { const d = (p.x - w.x) ** 2 + (p.y - w.y) ** 2; if (d < bd && d < (p.r + 6 / cam.k) ** 2) { bd = d; best = i; } }); return best; };
+  const pick = (sx, sy, margin = 6) => { const w = toWorld(sx, sy); let best = -1, bd = 1e9; P.forEach((p, i) => { const d = (p.x - w.x) ** 2 + (p.y - w.y) ** 2; if (d < bd && d < (p.r + margin / cam.k) ** 2) { bd = d; best = i; } }); return best; };
   const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
-  let moved = false;
-  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); const m = pos(e), i = pick(m.x, m.y); moved = false; drag = i >= 0 ? { i } : { pan: true, sx: m.x, sy: m.y, cx: cam.x, cy: cam.y }; });
+  // Zeiger: eine Maus oder ein Finger zieht Knoten oder Ansicht, zwei Finger zoomen (um die Fingermitte) und verschieben.
+  // Tippen öffnet die Notiz; auf dem Handy mit kurzer Verzögerung, damit Doppeltippen (hineinzoomen) nicht zugleich öffnet.
+  const ptrs = new Map();
+  let moved = false, pinch = null, lastTap = null, openTimer = null;
+  const clampK = k => Math.min(6, Math.max(0.15, k));
+  const zoomAt = (sx, sy, f) => { const before = toWorld(sx, sy); cam.k = clampK(cam.k * f); const after = toWorld(sx, sy); cam.x += before.x - after.x; cam.y += before.y - after.y; };
+  const startPan = (m) => { drag = { pan: true, sx: m.x, sy: m.y, cx: cam.x, cy: cam.y }; };
+  cv.addEventListener('pointerdown', e => {
+    try { cv.setPointerCapture(e.pointerId); } catch (er) { /* Zeiger schon weg */ }
+    const m = pos(e); ptrs.set(e.pointerId, m);
+    if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()], mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, k0: cam.k, w: toWorld(mid.x, mid.y) };
+      drag = null; moved = true; clearTimeout(openTimer); return;
+    }
+    if (ptrs.size > 2) return;
+    const i = pick(m.x, m.y, e.pointerType === 'mouse' ? 6 : 16); moved = false;
+    drag = i >= 0 ? { i, sx: m.x, sy: m.y, touch: e.pointerType !== 'mouse' } : { pan: true, sx: m.x, sy: m.y, cx: cam.x, cy: cam.y, touch: e.pointerType !== 'mouse' };
+  });
   cv.addEventListener('pointermove', e => {
     const m = pos(e);
-    if (drag && drag.i !== undefined) { const w = toWorld(m.x, m.y); P[drag.i].x = w.x; P[drag.i].y = w.y; alpha = Math.max(alpha, 0.3); moved = true; return; }
-    if (drag && drag.pan) { cam.x = drag.cx - (m.x - drag.sx) / cam.k; cam.y = drag.cy - (m.y - drag.sy) / cam.k; moved = true; return; }
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, m);
+    if (pinch && ptrs.size >= 2) {
+      const [a, b] = [...ptrs.values()], mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      cam.k = clampK(pinch.k0 * (Math.hypot(a.x - b.x, a.y - b.y) || 1) / pinch.d0);
+      cam.x = pinch.w.x - (mid.x - W / 2) / cam.k; cam.y = pinch.w.y - (mid.y - H / 2) / cam.k;   // der Punkt unter den Fingern bleibt dort
+      return;
+    }
+    if (drag && (Math.abs(m.x - drag.sx) > 6 || Math.abs(m.y - drag.sy) > 6)) moved = true;
+    if (drag && drag.i !== undefined) { if (!moved) return; const w = toWorld(m.x, m.y); P[drag.i].x = w.x; P[drag.i].y = w.y; alpha = Math.max(alpha, 0.3); return; }
+    if (drag && drag.pan) { if (!moved) return; cam.x = drag.cx - (m.x - drag.sx) / cam.k; cam.y = drag.cy - (m.y - drag.sy) / cam.k; return; }
+    if (e.pointerType !== 'mouse') return;
     hover = pick(m.x, m.y); const tip = $('#gtip');
     if (hover >= 0) { const n = g.nodes[hover]; tip.hidden = false; tip.textContent = n.n + ' · ' + n.d + ' Verbindungen · ' + n.g; tip.style.left = (m.x + 14) + 'px'; tip.style.top = (m.y + 10) + 'px'; } else tip.hidden = true;
     cv.style.cursor = hover >= 0 ? 'pointer' : 'grab';
   });
-  cv.addEventListener('pointerup', e => { const m = pos(e); if (drag && drag.i !== undefined && !moved) openNote(drag.i); drag = null; });
-  cv.addEventListener('wheel', e => { e.preventDefault(); const m = pos(e), before = toWorld(m.x, m.y); cam.k = Math.min(6, Math.max(0.15, cam.k * (e.deltaY < 0 ? 1.15 : 0.87))); const after = toWorld(m.x, m.y); cam.x += before.x - after.x; cam.y += before.y - after.y; }, { passive: false });
+  const release = e => {
+    const m = pos(e), wasPinch = !!pinch, d = drag;
+    ptrs.delete(e.pointerId);
+    if (wasPinch) {
+      if (ptrs.size < 2) { pinch = null; const rest = [...ptrs.values()][0]; if (rest) startPan(rest); else drag = null; moved = true; }
+      return;
+    }
+    drag = null;
+    if (e.type === 'pointercancel' || !d || moved) return;
+    // Tippen ohne Ziehen
+    const now = Date.now(), dbl = lastTap && now - lastTap.t < 320 && Math.hypot(m.x - lastTap.x, m.y - lastTap.y) < 30;
+    if (dbl) { clearTimeout(openTimer); lastTap = null; zoomAt(m.x, m.y, 2); return; }
+    lastTap = { t: now, x: m.x, y: m.y };
+    if (d.i !== undefined) {
+      if (d.touch) { clearTimeout(openTimer); const i = d.i; openTimer = setTimeout(() => { lastTap = null; openNote(i); }, 330); } else openNote(d.i);
+    }
+  };
+  cv.addEventListener('pointerup', release);
+  cv.addEventListener('pointercancel', release);
+  cv.addEventListener('dblclick', e => { const m = pos(e); if (pick(m.x, m.y) < 0) zoomAt(m.x, m.y, 2); });
+  $('#gzin').onclick = () => { cam.k = clampK(cam.k * 1.4); };
+  $('#gzout').onclick = () => { cam.k = clampK(cam.k / 1.4); };
+  const leg = $('#glegend'), legtog = $('#glegtog');
+  const legSet = open => { leg.hidden = !open; legtog.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  legSet(window.innerWidth > 820);
+  legtog.onclick = () => legSet(leg.hidden);
+  cv.addEventListener('wheel', e => { e.preventDefault(); const m = pos(e), before = toWorld(m.x, m.y); cam.k = clampK(cam.k * (e.deltaY < 0 ? 1.15 : 0.87)); const after = toWorld(m.x, m.y); cam.x += before.x - after.x; cam.y += before.y - after.y; }, { passive: false });
   $('#gq').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); if (query) { const i = g.nodes.findIndex(n => n.n.toLowerCase().includes(query)); if (i >= 0) { cam.x = P[i].x; cam.y = P[i].y; cam.k = Math.max(cam.k, 1.6); } } });
   $('#gq').addEventListener('keydown', e => { if (e.key === 'Enter') { const i = g.nodes.findIndex(n => n.n.toLowerCase().includes(query)); if (i >= 0) openNote(i); } });
   $('#greset').onclick = () => { cam = { x: 0, y: 0, k: 0.9 }; query = ''; $('#gq').value = ''; alpha = 0.6; };
@@ -726,7 +778,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-11-3';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-11-4';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

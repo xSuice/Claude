@@ -211,7 +211,7 @@ a.row, a.card, a.hero { color: inherit; text-decoration: none; }
 /* Mobil: Claude-Chat */
 .cwrap { height: calc(100dvh - 170px); }
 @media (max-width: 820px) {
-  .cwrap { height: calc(100dvh - 150px); min-height: 300px; gap: 8px; }
+  .cwrap { height: calc(100dvh - 270px); min-height: 300px; gap: 8px; }
   .cm, .cerr { max-width: 94%; padding: 10px 12px; }
   .cm pre { font-size: 12px; }
   .copts { flex-wrap: nowrap; gap: 6px; overflow-x: auto; }
@@ -237,3 +237,31 @@ a.row, a.card, a.hero { color: inherit; text-decoration: none; }
 .csmeta { font-size: .75rem; color: var(--silver); }
 .csren { position: absolute; right: .2rem; top: .2rem; min-width: 44px; min-height: 44px; }
 .csin { width: 100%; font-size: 16px; }
+
+/* Mobil: Graph (Pinch, Zoom-Knöpfe, einklappbare Legende) und allgemeine Tippflächen */
+.gwrap { height: calc(100vh - 170px); height: calc(100dvh - 170px); }
+.gwrap .glegend[hidden] { display: none; }
+.glegtog { position: absolute; left: 10px; bottom: 10px; z-index: 2; min-height: 36px; padding: 0 12px; background: var(--panel2); border: 1px solid var(--line2); color: var(--silver); font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.glegend { bottom: 54px; max-height: 40%; overflow: auto; background: rgba(5, 6, 10, .8); padding: 6px 8px; }
+.gzoom { position: absolute; right: 10px; bottom: 10px; z-index: 2; display: flex; flex-direction: column; gap: 6px; }
+.gzoom button { width: 44px; height: 44px; background: var(--panel2); border: 1px solid var(--line2); color: var(--text); font: 600 22px var(--mono); line-height: 1; cursor: pointer; }
+.gzoom button:active, .glegtog:active { border-color: var(--red); }
+@media (max-width: 820px) {
+  .gwrap { height: calc(100vh - 250px); height: calc(100dvh - 250px); }
+  .gtools { width: 100%; } .gtools input { flex: 1; width: auto; min-width: 0; }
+  input, select, textarea { font-size: 16px; }
+  .btn, .chip, button.small { min-height: 44px; }
+  .nav button { min-height: 48px; }
+  main, .card, .cwrap, .gwrap { max-width: 100%; }
+  main { overflow-x: hidden; }
+  pre, table { max-width: 100%; overflow-x: auto; }
+  img, canvas, video { max-width: 100%; }
+}
+@media (max-width: 820px) {
+  #reload { display: none; }          /* die Web-App aktualisiert sich selbst; Platz für alle neun Reiter */
+}
+@media (max-width: 820px) {
+  .copts select { font-size: 16px; }
+  .glegtog { min-height: 44px; }
+  main button { min-height: 44px; }
+}
