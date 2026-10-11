@@ -1,0 +1,48 @@
+#!/bin/bash
+# /usr/local/sbin/ma-watchdog (root, alle 5 Min per Timer). Prueft Dienste, Container, Portal, Backup und Platte.
+# Startet Ausgefallenes neu (hoechstens 3 Versuche pro Stunde und Dienst), meldet Probleme (ma-notify, falls Token da) und
+# schreibt /var/lib/ma-watchdog/status.txt (lesbar fuer den Morgenbrief). Aendert nichts sonst, loescht nichts.
+set -uo pipefail
+D=/var/lib/ma-watchdog; mkdir -p "$D"; chmod 755 "$D"
+NOW=$(date +%s); H=$(( NOW / 3600 ))
+PROBS=(); FIXED=()
+notify() { [ -x /usr/local/sbin/ma-notify ] && /usr/local/sbin/ma-notify "$1" "$2" "${3:-4}" 2>/dev/null || true; }
+# Meldung nur einmal je Problem und 6 Stunden
+once() { local f="$D/m_$(echo "$1" | tr -c 'a-zA-Z0-9' _)"; local last; last=$(cat "$f" 2>/dev/null || echo 0)
+  if [ $(( NOW - last )) -gt 21600 ]; then echo "$NOW" > "$f"; return 0; fi; return 1; }
+tries() { local f="$D/t_$(echo "$1" | tr -c 'a-zA-Z0-9' _)"; local c=0 hh=0; [ -f "$f" ] && read -r hh c < "$f"
+  [ "$hh" = "$H" ] || c=0; c=$((c+1)); echo "$H $c" > "$f"; [ "$c" -le 3 ]; }
+
+for s in ma-home-web ma-claude-bridge ma-home-agent ma-home-terminal docker fail2ban ufw; do
+  if [ "$(systemctl is-active "$s" 2>/dev/null)" != active ]; then
+    if tries "svc-$s" && systemctl restart "$s" 2>/dev/null && sleep 3 && [ "$(systemctl is-active "$s")" = active ]; then FIXED+=("$s neu gestartet")
+    else PROBS+=("Dienst $s ausgefallen"); fi
+  fi
+done
+if command -v docker >/dev/null; then
+  while read -r name st; do
+    case "$st" in *unhealthy*|Exited*|Dead*|Restarting*)
+      if tries "ct-$name" && docker restart "$name" >/dev/null 2>&1; then FIXED+=("Container $name neu gestartet"); else PROBS+=("Container $name: $st"); fi ;; esac
+  done < <(docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null)
+fi
+code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' http://127.0.0.1:18765/healthz || echo 000)
+[ "$code" = 200 ] || PROBS+=("Portal antwortet nicht (HTTP $code)")
+
+# Backup: letzter Lauf erfolgreich und nicht aelter als 26 Stunden
+res=$(systemctl show ma-usb-backup.service -p Result --value 2>/dev/null)
+ts=$(systemctl show ma-usb-backup.service -p ExecMainExitTimestamp --value 2>/dev/null)
+ets=$(date -d "$ts" +%s 2>/dev/null || echo 0)
+if [ "$res" != success ]; then PROBS+=("Backup: letzter Lauf $res"); elif [ $(( NOW - ets )) -gt 93600 ]; then PROBS+=("Backup aelter als 26 Stunden"); fi
+
+# Platte
+pct=$(df --output=pcent / | tail -1 | tr -dc 0-9)
+[ "${pct:-0}" -lt 90 ] || PROBS+=("Platte ${pct} % voll")
+
+{ echo "Stand $(date '+%Y-%m-%d %H:%M')"
+  if [ ${#PROBS[@]} -eq 0 ]; then echo "OK: Dienste, Container, Portal, Backup, Platte"; else printf 'PROBLEM: %s\n' "${PROBS[@]}"; fi
+  [ ${#FIXED[@]} -eq 0 ] || printf 'Repariert: %s\n' "${FIXED[@]}"
+} > "$D/status.txt.new"; chmod 644 "$D/status.txt.new"; mv "$D/status.txt.new" "$D/status.txt"
+
+for p in "${PROBS[@]:-}"; do [ -n "$p" ] && once "$p" && notify "MA Home: Problem" "$p" 5; done
+for f in "${FIXED[@]:-}"; do [ -n "$f" ] && once "fix $f" && notify "MA Home: repariert" "$f" 3; done
+exit 0

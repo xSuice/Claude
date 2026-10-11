@@ -1,0 +1,46 @@
+#!/bin/bash
+# /usr/local/sbin/ma-sicherheitsbericht (root, woechentlich). Nur lesen, nichts aendern. Inhalte von Geheimnissen werden NIE gelesen (nur Rechte).
+# Schreibt /var/lib/ma-watchdog/sicherheit.md (lesbar) und meldet Abweichungen (ma-notify, falls Token da).
+set -uo pipefail
+D=/var/lib/ma-watchdog; mkdir -p "$D"; chmod 755 "$D"
+OUT=$D/sicherheit.md.new; F=()
+ERLAUBT_OFFEN=" 22 80 443 8080 8443 "          # Ports, die von aussen erreichbar sein duerfen (ufw regelt, wer wirklich durchkommt)
+{
+echo "# Sicherheitsbericht Server ($(date '+%Y-%m-%d %H:%M'))"; echo
+echo "## Firewall"; ufw status verbose 2>&1 | sed 's/^/    /'
+ufw status | grep -q "Status: active" || F+=("Firewall ufw ist nicht aktiv")
+ufw status verbose | grep -q "deny (incoming)" || F+=("ufw: Standard fuer eingehend ist nicht deny")
+echo; echo "## SSH (wirksame Einstellungen)"
+S=$(sshd -T 2>/dev/null | grep -E '^(passwordauthentication|permitrootlogin|pubkeyauthentication|allowusers|port|maxauthtries) '); echo "$S" | sed 's/^/    /'
+echo "$S" | grep -q '^passwordauthentication yes' && F+=("SSH: Passwort-Login ist erlaubt (nur Schluessel waere sicherer)")
+echo "$S" | grep -qE '^permitrootlogin (yes|prohibit-password|without-password)' && ! echo "$S" | grep -q '^permitrootlogin no' && F+=("SSH: Root-Login nicht ausdruecklich aus")
+echo; echo "## Lauschende Ports (nicht nur lokal)"
+ss -tulnH | awk '{print $1, $5}' | grep -vE '127\.0\.0\.|\[::1\]|%lo' | sed 's/^/    /'
+for p in $(ss -tlnH | awk '{print $4}' | grep -vE '127\.0\.0\.|\[::1\]|%lo' | sed 's/.*://' | sort -un); do
+  case "$ERLAUBT_OFFEN" in *" $p "*) ;; *) ufw status | grep -qE "^$p(/tcp)? .*ALLOW" && F+=("Port $p ist von der Firewall freigegeben, steht aber nicht auf der Erlaubt-Liste") ;; esac
+done
+echo; echo "## Container und veroeffentlichte Ports"; docker ps --format '    {{.Names}}  {{.Ports}}' 2>/dev/null
+docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -E '0\.0\.0\.0:|:::' | while read -r l; do echo "$l"; done > "$D/.offene_container"
+[ -s "$D/.offene_container" ] && F+=("Container mit Port auf allen Adressen: $(cut -d' ' -f1 "$D/.offene_container" | paste -sd,)")
+echo; echo "## Updates"; U=$(apt list --upgradable 2>/dev/null | grep -c upgradable); echo "    ausstehend: $U; Neustart noetig: $([ -f /var/run/reboot-required ] && echo ja || echo nein)"
+[ "$U" -le 10 ] || F+=("$U Paket-Updates ausstehend")
+[ -f /var/run/reboot-required ] && F+=("Neustart wegen Updates noetig")
+echo; echo "## fail2ban"; fail2ban-client status 2>/dev/null | sed 's/^/    /'
+for j in $(fail2ban-client status 2>/dev/null | grep 'Jail list' | sed 's/.*://; s/,/ /g'); do fail2ban-client status "$j" 2>/dev/null | grep -E 'Currently banned|Total banned' | sed "s/^/    [$j] /"; done
+echo; echo "## Anmeldungen (7 Tage)"
+echo "    fehlgeschlagen: $(journalctl -u ssh -u sshd --since '-7d' --no-pager 2>/dev/null | grep -ciE 'failed password|invalid user')"
+echo "    zuletzt erfolgreich:"; last -n 5 -a 2>/dev/null | head -5 | sed 's/^/      /'
+echo; echo "## Rechte (nur Modus, kein Inhalt)"
+for f in /home/andrew/.ssh /home/andrew/.ssh/authorized_keys /home/andrew/.claude/.credentials.json /home/andrew/.claude/secrets /home/andrew/.ntfy-token /etc/ma-home; do
+  [ -e "$f" ] || continue; m=$(stat -c %a "$f"); echo "    $m $f"
+  case "$m" in 600|700|400|500|640|750) ;; *) F+=("Rechte $m an $f (zu offen)") ;; esac
+done
+echo; echo "## sudo-Regeln"; ls /etc/sudoers.d 2>/dev/null | sed 's/^/    /'; grep -rhv '^#' /etc/sudoers.d 2>/dev/null | grep -v '^$' | sed 's/^/      /'
+echo; echo "## Konten mit Login-Shell"; getent passwd | awk -F: '$7 ~ /(bash|sh|zsh)$/ {print "    " $1 " " $7}'
+echo; echo "## Ergebnis"
+if [ ${#F[@]} -eq 0 ]; then echo "Keine Auffaelligkeiten."; else printf -- '- %s\n' "${F[@]}"; fi
+} > "$OUT" 2>&1
+chmod 644 "$OUT"; mv "$OUT" "$D/sicherheit.md"
+echo "$(date '+%Y-%m-%d') ${#F[@]}" > "$D/sicherheit.kurz"; chmod 644 "$D/sicherheit.kurz"; [ ${#F[@]} -eq 0 ] || printf '%s\n' "${F[@]}" >> "$D/sicherheit.kurz"
+if [ ${#F[@]} -gt 0 ] && [ -x /usr/local/sbin/ma-notify ]; then /usr/local/sbin/ma-notify "MA Home: Sicherheit" "$(printf '%s; ' "${F[@]}")" 4 2>/dev/null; fi
+exit 0
