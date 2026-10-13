@@ -14,6 +14,7 @@ const ICONS = {
   files: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
   term: '<path d="M4 6l6 6-6 6M13 18h7"/>',
   vault: '<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3zM5 17a3 3 0 013-3h11M9 8h6"/>',
+  verbindungen: '<path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 01-10 0zM12 16v5"/>',
   system: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
@@ -60,7 +61,7 @@ async function api(path, opts = {}) {
 }
 const items = k => api('/api/items/' + k).then(d => d.items);
 
-const TABS = [['home', 'Lage'], ['neu', 'Neu'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['musik', 'Musik'], ['claude', 'Claude'], ['term', 'Terminal'], ['vault', 'Vault'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['system', 'System']];
+const TABS = [['home', 'Lage'], ['neu', 'Neu'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['musik', 'Musik'], ['claude', 'Claude'], ['term', 'Terminal'], ['vault', 'Vault'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['verbindungen', 'Verbindungen'], ['system', 'System']];
 function buildNav() {
   $('#nav').innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${ico(id)}<span>${name}</span></button>`).join('');
   $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) location.hash = '#/' + b.dataset.t; });
@@ -1020,6 +1021,19 @@ document.addEventListener('click', async e => {
   try { const g = await loadGraph(); const k = (w.dataset.t || w.textContent).toLowerCase().replace(/\.md$/, ''); const i = g.byName[k] ?? g.byName[k.split('/').pop()]; if (i !== undefined) openNote(i); else toast('Notiz „' + w.textContent + '“ nicht gefunden', 1); } catch (er) { toast(er.message, 1); }
 });
 const GCOL = ['#e5173f', '#3d8bfd', '#2fbf71', '#f59e0b', '#a78bfa', '#22c1c3', '#c9ced9', '#ff7ab6', '#84cc16', '#fb923c'];
+async function verbindungen() {
+  view.innerHTML = head('Verbindungen', 'Konten, die Claude nutzen kann') + '<div class="skeleton"></div>';
+  const d = await cop('connectors', {});
+  if (!d.ok) { view.innerHTML = head('Verbindungen') + '<div class="empty">' + esc(d.error || 'Keine Daten') + '</div>'; return; }
+  const label = { ok: 'verbunden', login: 'Anmeldung nötig', fehler: 'Fehler' };
+  const rank = { login: 0, fehler: 1, ok: 2 };
+  const items = d.items.slice().sort((a, b) => rank[a.state] - rank[b.state] || a.name.localeCompare(b.name));
+  const need = items.filter(x => x.state !== 'ok').length;
+  view.innerHTML = head('Verbindungen', items.length + ' Verbindungen · ' + need + ' brauchen Aufmerksamkeit') +
+    '<div class="list">' + items.map(x => '<div class="row"><div><b>' + esc(x.name) + '</b><div class="sub">' + esc(x.url) + '</div></div><span class="tag">' + label[x.state] + '</span></div>').join('') + '</div>' +
+    '<div class="empty">Anmelden geht nur in den Konnektor-Einstellungen von claude.ai, nicht hier. Im Chat gelten die Verbindungen nur im Modus „konnektoren“ und „voll“.</div>';
+}
+
 async function wissen() {
   view.innerHTML = head('Wissen', 'Deine Notizen und ihre Verbindungen', '<div class="gtools"><input id="gq" placeholder="Notiz suchen …"><button class="btn small ghost" id="greset">Ansicht zurücksetzen</button></div>') +
     '<div class="gwrap"><canvas id="gc"></canvas><div class="gtip" id="gtip" hidden></div><button class="glegtog" id="glegtog" type="button" aria-expanded="false">Legende</button><div class="glegend" id="glegend"></div><div class="ginfo" id="ginfo"></div>' +
@@ -1595,7 +1609,7 @@ async function musik() {
   musRefresh(); browse('');
 }
 
-const ROUTES = { home, neu, musik, tasks, notes, money, training, claude, term, vault, wissen, files, system };
+const ROUTES = { home, neu, musik, tasks, notes, money, training, claude, term, vault, wissen, files, verbindungen, system };
 async function route() {
   const id = (location.hash.slice(2).split('?')[0]) || 'home';
   const fn = ROUTES[id] || home;
@@ -1607,7 +1621,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-12-22';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-13-1';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

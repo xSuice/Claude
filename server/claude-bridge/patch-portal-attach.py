@@ -19,7 +19,7 @@ REPL = [
 src = open(P, encoding='utf-8').read()
 todo = []
 for olds, n in REPL:
-    if n in src:
+    if n in src or (n == OPS_NEW and n[:-1] + ", 'connectors')" in src):      # 'connectors' kommt spaeter von patch-portal-connectors.py
         continue
     o = next((x for x in olds if x in src), None)
     if o is None:

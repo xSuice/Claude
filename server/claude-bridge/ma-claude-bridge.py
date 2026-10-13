@@ -1012,6 +1012,32 @@ def show_session(sid):
 
 
 
+CONN_CACHE = {'t': 0.0, 'data': None}
+CONN_LINE = re.compile(r'^(?P<name>.+?): (?P<url>\S+) - (?P<mark>\S+) (?P<state>.+)$')
+
+
+def connectors_status():
+    """Verbindungen mit Status fuer den Portal-Reiter (nur lesen, 60 s Zwischenspeicher), Quelle: `claude mcp list`."""
+    now = time.time()
+    if CONN_CACHE['data'] and now - CONN_CACHE['t'] < 60:
+        return CONN_CACHE['data']
+    try:
+        out = subprocess.run([CLAUDE, 'mcp', 'list'], capture_output=True, text=True, timeout=60, cwd='/home/andrew', stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {'ok': False, 'items': [], 'error': f'claude mcp list fehlgeschlagen: {exc.__class__.__name__}'}
+    items = []
+    for line in out.splitlines():
+        m = CONN_LINE.match(line.strip())
+        if not m:
+            continue
+        state = 'ok' if 'Connected' in m['state'] else 'login' if 'authentication' in m['state'] else 'fehler'
+        items.append({'name': m['name'].replace('claude.ai ', '', 1), 'url': m['url'], 'state': state})
+    res = {'ok': bool(items), 'items': items, 'error': '' if items else 'Keine Verbindungen gelesen'}
+    if items:
+        CONN_CACHE.update(t=now, data=res)
+    return res
+
+
 class Handler(socketserver.StreamRequestHandler):
     def reply(self, obj):
         self.wfile.write(json.dumps(obj).encode() + b'\n')
@@ -1053,6 +1079,8 @@ class Handler(socketserver.StreamRequestHandler):
                     return self.reply({'type': 'sched', 'ok': True, 'tasks': tasks})
             if op == 'note':
                 return self.reply({'type': 'note', **note_api(req.get('data') or '')})
+            if op == 'connectors':
+                return self.reply({'type': 'connectors', **connectors_status()})
             if op == 'usage':
                 return self.reply({'type': 'usage', 'ok': True, **usage_report()})
             if op == 'lern_feedback':

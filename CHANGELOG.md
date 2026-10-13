@@ -330,3 +330,12 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Neues Skript `scripts/vault-q-gold.py`: 20 Fragen, Treffer@5 und MRR, alt (Sicherung) gegen neu (Live-Index). Ergebnis: alt 4/20 (MRR 0,20), neu 18/20 (MRR 0,67). Auswertung und Schwächen: Vault-Notiz `30 Technik/MA-Server/Goldstandard-Suche.md`.
 - Neu in `FILES` von `paritaet-check.py` eintragen, PC-Kopie folgt über ClaudeAbgleich.
 - Nachtrag: Test, Hub-Notizen (Crimson Zone, Projekt Schmejd, Arduino) in `RANK` von der Ordner-Abwertung auszunehmen, brachte keine Besserung (17 statt 18 von 20) und wurde zurückgenommen; `vault-q.py` ist wieder der Stand vor dem Test. Erwartung "Eternal Bonds" im Goldstandard um `Projekt Schmejd.md` ergänzt.
+
+## 2026-10-13 – Portal-Reiter „Verbindungen“ (installiert, Ansicht im Browser noch ungeprüft)
+
+- Auftrag: Philipp will den Portal-Chat näher an Claude Desktop bringen (Plan: `Plan-Portal-Chat-wie-Desktop`, Schritt 1).
+- Betroffene Dateien: `server/claude-bridge/ma-claude-bridge.py` (Op `connectors`), `portal-ui/web/app.js` und `sw.js` (Reiter, Version 2026-10-13-1), neu `portal-ui/patch-portal-connectors.py`, `portal-ui/entwurf-verbindungen/installieren.sh`; angepasst `server/claude-bridge/patch-portal-images.py` und `patch-portal-attach.py` (erkennen spätere Staende von `portal.py`; der erste Installationsversuch brach bei `patch-portal-images.py` mit „Stelle nicht gefunden“ ab).
+- Prüfung: Python-Dateien kompiliert, Skript mit `bash -n`; Patches gegen eine Kopie der echten `portal.py` getestet (idempotent, Op-Liste bleibt vollständig). `claude mcp list` liefert 40 Verbindungen, Parser liest alle. `app.js` ist ungeprüft (kein node auf dem Server), Aufruf von `claude mcp list` aus der Brücke ungeprüft.
+- Ergebnis: Philipp hat `installieren.sh` per Sudo ausgeführt; Brücke und Portal neu gestartet, beide Dienste „active“. Test der Op am Brückensocket: 40 Verbindungen, 29 verbunden, 11 Anmeldung nötig. `'connectors'` steht laut Übergabe in der Op-Liste von `portal.py` (Zeile 362). Ansicht `verbindungen()` in `app.js` im Browser noch nicht bestätigt.
+- Rückweg: Kopf von `installieren.sh`; Quellsicherungen `portal-ui/entwurf-verbindungen/*.vor-verbindungen`.
+- Parität: `paritaet-check.py` prüft jetzt den Marker `'connectors'` in `portal.py` (`MARKERS`; `patch-portal-connectors.py` ist ein Einmal-Patch ohne Serverpfad und gehört nicht in `FILES`). PC zieht über `ClaudeAbgleich` nach.

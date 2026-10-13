@@ -10,7 +10,7 @@ OLD = "('prompt', 'session', 'dir', 'mode', 'model')"
 MID = "('prompt', 'session', 'dir', 'mode', 'model', 'images')"
 NEW = "('prompt', 'session', 'dir', 'mode', 'model', 'images', 'files')"
 src = open(P, encoding='utf-8').read()
-if NEW in src:
+if NEW in src or "'images', 'files'" in src:      # auch spaetere Staende (attach, from) gelten als eingebaut
     print('Schon eingebaut.')
     sys.exit(0)
 if OLD not in src and MID not in src:

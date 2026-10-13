@@ -68,7 +68,7 @@ DEPLOYED = '/opt/ma-home/DEPLOYED-UI.sha256'
 MARKERS = [('PWA im Portal', 'MA-PWA'), ('Claude-Verwaltung im Portal', 'MA-CLAUDE-OPS'),
            ('Dateien/Bilder an Claude', "'images', 'files'"), ('Suggest/Upload im Portal', "'suggest', 'upload'"),
            ('Weiterlaufende Aufträge (attach)', "'attach', 'from'"), ('Suche und Zeitplan im Portal', "'search', 'sched_list'"),
-           ('Terminal im Portal', 'MA-TERM-BRIDGE')]
+           ('Terminal im Portal', 'MA-TERM-BRIDGE'), ('Reiter Verbindungen (Op connectors)', "'connectors'")]
 SERVICES = ['ma-claude-bridge', 'ma-home-web', 'ma-term-bridge']
 # Lokale MCP-Verbindungen, die bewusst nur am PC laufen (Name -> Grund). Alles andere soll auf beiden Seiten gleich heißen.
 PC_ONLY_MCP = {}
