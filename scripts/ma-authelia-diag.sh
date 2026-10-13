@@ -11,11 +11,11 @@ redact() { sed -E 's/(secret|password|passwd|key|token|hash|salt)([^A-Za-z0-9_]{
   echo "== Container =="
   docker ps --filter name=authelia --format '{{.Names}}  {{.Image}}  {{.Status}}'
   echo; echo "== Version =="
-  docker exec authelia authelia --version 2>&1 || docker exec authelia authelia build-info 2>&1
+  docker exec ma-home-authelia-1 authelia --version 2>&1 || docker exec ma-home-authelia-1 authelia build-info 2>&1
   echo; echo "== Konfig-Pfade (Mounts) =="
-  docker inspect authelia --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
+  docker inspect ma-home-authelia-1 --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
   echo; echo "== webauthn / totp / session / access_control (geschwaerzt) =="
-  CFG=$(docker inspect authelia --format '{{range .Mounts}}{{if eq .Destination "/config"}}{{.Source}}{{end}}{{end}}')
+  CFG=$(docker inspect ma-home-authelia-1 --format '{{range .Mounts}}{{if eq .Destination "/config"}}{{.Source}}{{end}}{{end}}')
   for f in "$CFG"/configuration.yml "$CFG"/configuration.yaml; do
     [ -f "$f" ] || continue
     echo "-- $f"
