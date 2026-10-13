@@ -401,5 +401,5 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Auftrag (Philipp): `vault-pg` muss am PC gleich verfuegbar sein.
 - Entscheidung: kein zweites PostgreSQL am PC. `scripts/vault-pg.cmd` ruft per SSH dasselbe `vault-pg.py` auf dem Server auf; PC und Server liefern damit dieselben Treffer, und das Datenbankpasswort (`/etc/ma-home/vaultq.pgpass`) bleibt auf dem Server. Der Index wird weiter nur dort aktualisiert (Timer, Server ist Hauptkopie des Vaults).
 - `paritaet-check.py`: `vault-pg.py` in `FILES` aufgenommen.
-- Nicht geprueft: Lauf ueber SSH. Die SSH-Sitzung von andrew ist nicht in der Gruppe `ma-web` und kann die Passwortdatei nicht lesen (Fehler "Permission denied", belegt). Einmalig noetig, von Philipp mit Sudo: `ssh -t ma-server "sudo usermod -aG ma-web andrew"`.
+- Geprueft 2026-10-13: nach `sudo usermod -aG ma-web andrew` liefert `vault-pg search` und `stats` vom PC dieselben Treffer wie auf dem Server. Die Weitergabe der Argumente macht `scripts/vault-pg-pc.py` (shlex-Quoting, sonst zerfallen Suchbegriffe mit Leerzeichen).
 - Rueckweg: `scripts/vault-pg.cmd` loeschen; Gruppe mit `sudo gpasswd -d andrew ma-web` entfernen.
