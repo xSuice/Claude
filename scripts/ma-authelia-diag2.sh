@@ -13,7 +13,7 @@ D=/etc/ma-home/authelia
   for f in "$D"/*.yml "$D"/*.yaml; do
     [ -f "$f" ] || continue
     echo; echo "== Struktur $f (Werte bei secret/password/hash/key/salt geschwaerzt) =="
-    sed -E 's/^([[:space:]]*-?[[:space:]]*[A-Za-z_]*(secret|password|hash|key|salt|token)[A-Za-z_]*:).*/\1 <REDACTED>/I' "$f" | grep -vE '^[[:space:]]*(#|$)'
+    sed -E 's/^([[:space:]]*-?[[:space:]]*"?[A-Za-z_]*(secret|password|hash|key|salt|token)[A-Za-z_]*"?:).*/\1 <REDACTED>/I' "$f" | grep -vE '^[[:space:]]*(#|$)'
   done
 } >"$OUT" 2>&1
 chown andrew:andrew "$OUT"
