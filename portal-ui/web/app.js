@@ -328,8 +328,12 @@ const CTX_MAX = 200000;      // ab hier: Übergabe sichern und neuer Chat (jede 
 const fmtTok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + ' Mio' : n >= 1000 ? Math.round(n / 1000) + 'k' : String(n || 0);
 function tokRender() {
   const el = $('#ctok'), t = claudeState.tok; if (!el) return;
-  el.textContent = t ? 'Kontext ' + fmtTok(t.ctx) + ' · Sitzung: ' + fmtTok(t.in) + ' rein / ' + fmtTok(t.out) + ' raus' + (t.cost ? ' · ca. $' + t.cost.toFixed(2) : '') + (t.ctx > CTX_MAX ? ' · groß, besser neuer Chat' : '') : 'Tokens: noch keine Anfrage';
-  el.classList.toggle('warn', !!t && t.ctx > CTX_MAX);
+  if (!t) { el.textContent = 'Tokens: noch keine Anfrage'; el.classList.remove('warn'); return; }
+  const win = /1m/i.test(claudeState.model || '') ? 1e6 : 200000, pct = Math.min(100, Math.round(t.ctx / win * 100));      // Fenstergroesse: 200k, mit [1m]-Modell 1 Mio
+  el.innerHTML = '<div class="ctokh"><span>Kontextfenster</span><span>' + fmtTok(t.ctx) + ' / ' + fmtTok(win) + ' (' + pct + ' %)</span></div>' +
+    '<div class="ctokbar"><i style="width:' + pct + '%"></i></div>' +
+    '<div class="ctoks">Sitzung: ' + fmtTok(t.in) + ' rein / ' + fmtTok(t.out) + ' raus' + (t.cost ? ' · ca. $' + t.cost.toFixed(2) : '') + (t.ctx > CTX_MAX ? ' · groß, besser neuer Chat' : '') + '</div>';
+  el.classList.toggle('warn', t.ctx > CTX_MAX);
 }
 function claudeRender(toBottom) {
   const box = $('#cmsgs'); if (!box) return;
@@ -1668,7 +1672,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-13-4';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-13-5';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

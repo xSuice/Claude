@@ -403,3 +403,35 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - `paritaet-check.py`: `vault-pg.py` in `FILES` aufgenommen.
 - Geprueft 2026-10-13: nach `sudo usermod -aG ma-web andrew` liefert `vault-pg search` und `stats` vom PC dieselben Treffer wie auf dem Server. Die Weitergabe der Argumente macht `scripts/vault-pg-pc.py` (shlex-Quoting, sonst zerfallen Suchbegriffe mit Leerzeichen).
 - Rueckweg: `scripts/vault-pg.cmd` loeschen; Gruppe mit `sudo gpasswd -d andrew ma-web` entfernen.
+
+## 2026-10-13 – git-sync aktiv: Server pusht auf GitHub-Zweig server-live (Server-Kopie, live)
+
+- Belegt: Login mit dem Deploy-Key an `xSuice/Claude` ("successfully authenticated"), `git-sync.py init` (Fetch `main` ok), erster `run`: Commit und Push auf `server-live` ok (53 Dateien). Timer `ma-git-sync.timer` alle 15 Min über die Sudo-Brücke eingerichtet, erster Lauf Status 0/SUCCESS.
+- Befund: Viele Dateien unterscheiden sich zu `main` nur im Zeilenende (PC CRLF, Server LF) oder im Dateimodus. Fix in `git-sync.py`: nur echte Inhaltsänderungen committen (`--ignore-cr-at-eol`); im Server-Repo `core.fileMode=false`. Der erste Commit enthält trotzdem rund 50 Dateien mit 0 Zeilenänderung (nur Modus), harmlos.
+- Nicht geprüft: Ob der Timerlauf ohne Terminal auch pusht (Status 0, aber keine Ausgabe gelesen); Zusammenführung `server-live` → `main` am PC; Umstellung von `claude-abgleich.py` und `paritaet-check.py` auf Commit-Stände.
+- Offen: PC holt `server-live` per `git fetch` und führt bewusst zusammen; `claude-abgleich.py` am PC danach anpassen, damit beide Wege sich nicht überschneiden.
+- Rückweg: `sudo systemctl disable --now ma-git-sync.timer; sudo rm /etc/systemd/system/ma-git-sync.{service,timer}`; Deploy-Key in GitHub löschen, `rm -r ~/.config/ma-github`.
+
+## 2026-10-13 – Abgleich-Bericht kürzer, spart Tokens (Server-Kopie)
+
+- Auftrag: Philipp will weniger Tokenverbrauch; `Dienste/Server-Abgleich.md` war rund 600 Zeilen lang und wird bei jedem Lesen komplett geladen.
+- Datei: `scripts/server-sync/claude-abgleich.py`, Funktion `write_report`. Läuft am PC, die Änderung wirkt erst nach dem nächsten Abgleich (bei Änderung auf beiden Seiten entsteht `.server-konflikt`).
+- Änderung: nur die letzten 12 statt 48 Einträge; geholte und gesendete Dateien als eine Zeile mit höchstens 5 Namen und "(+N weitere)"; höchstens 3 verschiedene Claude-Sitzungen, Startsatz auf 60 Zeichen gekürzt.
+- Geprüft: Testlauf mit `/tmp/ma-test/test_report.py` (Skript wird geladen, `write_report` 15-mal mit Testdaten): genau 12 Einträge, 115 Zeilen, Dateiliste "(9): a0..a4 (+4 weitere)", doppelter Sitzungsstart nur einmal. Nicht geprüft: Lauf am PC mit echten Daten.
+- Rückweg: Die drei Änderungen in `write_report` zurücknehmen (`git diff` zeigt sie), `blocks[:12]` wieder auf `blocks[:48]`.
+
+## 2026-10-13 – Portal-Chat: Kontextfenster-Balken, Authelia-Diagnose geschwärzt (Server-Kopie, noch nicht eingespielt)
+
+- Auftrag: Philipp will im Portal-Chat eine Anzeige wie in Claude Desktop (Kontextfenster mit Balken, Sitzungs- und Wochenlimit).
+- Änderung: `portal-ui/web/app.js` (`tokRender`) zeigt "Kontextfenster 204k / 200k (100 %)" mit Balken, darunter Sitzungsverbrauch; Fenster 200k, bei Modellnamen mit `1m` 1 Mio. `style.css`: Klassen `.ctokh`, `.ctokbar`. Version in `app.js` und `sw.js` auf 2026-10-13-5.
+- Nicht gebaut: Sitzungs- und Wochenlimit in Prozent. Im Stream des Servers (`claude -p`) ist dafür kein Ereignis belegt (Suche in den Protokollen ohne Treffer); ohne Datenquelle würde die Anzeige erfunden. Fenstergröße des Server-Modells ist nicht belegt (200k angenommen).
+- Nicht geprüft: Syntax und Darstellung. `node` fehlt auf dem Server, kein Browsertest. Einspielen mit `deploy-ui.sh` (Sudo).
+- Fund: `ma-authelia-diag2.sh` hat Geheimnisse NICHT geschwärzt (Konfig liegt als JSON, das Muster erwartete keine Anführungszeichen). `/home/andrew/ma-authelia-diag2.txt` (0600) enthält jwt_secret, session secret, storage encryption_key und Passwort-Hashes im Klartext. Muster im Skript korrigiert und an Testwerten geprüft; die Datei selbst und die Geheimnisse sind nicht angefasst.
+- Rückweg: `git diff` zeigt die Änderungen an `app.js`, `style.css`, `sw.js`; Versionen zurücksetzen.
+
+## 2026-10-13 – Authelia: Skript für Passkey und Schlüsseltausch (Server-Kopie, nicht gelaufen)
+
+- Neu: `scripts/ma-authelia-haerten.sh` (`sudo bash ... passkey` schaltet WebAuthn und Passkey-Login ein; `... rotate` tauscht Session- und Reset-Schlüssel und fragt optional nach neuen Passwörtern). Beide sichern die Konfiguration, prüfen mit `authelia validate-config` und stellen bei Fehler die Sicherung zurück. `storage.encryption_key` bleibt unverändert (Wechsel braucht eine Datenbank-Migration).
+- Geprüft: nur `bash -n`. Nicht geprüft: Lauf; die Schlüssel `enable_passkey_login` und `selection_criteria` unter webauthn stammen aus dem Gedächtnis für v4.39, die Prüfung vor dem Neustart fängt Fehler ab.
+- Erledigt: `/home/andrew/ma-authelia-diag2.txt` (enthielt Geheimnisse im Klartext) gelöscht, Löschung belegt (`ls` meldet "No such file"). Die Werte stehen weiter im Chatprotokoll; daher `rotate` empfohlen.
+- Rückweg: Sicherungen `configuration.yml.bak-<Zeit>` und `users.yml.bak-<Zeit>` zurückkopieren, `docker restart ma-home-authelia-1`.
