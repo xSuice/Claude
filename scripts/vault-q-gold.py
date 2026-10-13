@@ -16,7 +16,7 @@ GOLD = [
     ('wie funktioniert die Bibliothek mit der Inbox', [M + 'MA-Server Library.md', M + 'MA-Server Zentrale.md']),
     ('wie funktioniert der Obsidian Bibliothekar', ['_Claude-Memory/Learned/Librarian-Learned.md', M + 'MA-Server Zentrale.md', '_Claude-Memory/Auto-Memory/ma-automation-librarian-pipeline.md']),
     ('was ist das Projekt Crimson Zone', ['20 Projekte/Crimson Zone/Crimson Zone.md', '20 Projekte/Projekte.md']),
-    ('was ist Eternal Bonds', ['20 Projekte/Crimson Zone/Crimson Zone.md', '20 Projekte/Projekte.md']),
+    ('was ist Eternal Bonds', ['20 Projekte/Projekt Schmejd/Projekt Schmejd.md', '20 Projekte/Crimson Zone/Crimson Zone.md', '20 Projekte/Projekte.md']),
     ('wie bewerbe ich mich bei der Bundespolizei', ['10 Leben/Bewerbung/Bewerbungsunterlagen.md', '10 Leben/Bewerbung/Bundespolizei Einstellungstest.md', '10 Leben/Bewerbung/Bundespolizei Gesundheitsanforderungen.md']),
     ('was muss ich für den Einstellungstest lernen', ['10 Leben/Bewerbung/Bundespolizei Einstellungstest.md']),
     ('wie läuft meine Ausbildung zum Fachinformatiker', ['_Claude-Memory/Profil.md']),

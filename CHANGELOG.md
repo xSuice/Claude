@@ -329,3 +329,4 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 ## 2026-10-13 – vault-q-gold.py: Goldstandard der Suche (Server-Kopie)
 - Neues Skript `scripts/vault-q-gold.py`: 20 Fragen, Treffer@5 und MRR, alt (Sicherung) gegen neu (Live-Index). Ergebnis: alt 4/20 (MRR 0,20), neu 18/20 (MRR 0,67). Auswertung und Schwächen: Vault-Notiz `30 Technik/MA-Server/Goldstandard-Suche.md`.
 - Neu in `FILES` von `paritaet-check.py` eintragen, PC-Kopie folgt über ClaudeAbgleich.
+- Nachtrag: Test, Hub-Notizen (Crimson Zone, Projekt Schmejd, Arduino) in `RANK` von der Ordner-Abwertung auszunehmen, brachte keine Besserung (17 statt 18 von 20) und wurde zurückgenommen; `vault-q.py` ist wieder der Stand vor dem Test. Erwartung "Eternal Bonds" im Goldstandard um `Projekt Schmejd.md` ergänzt.
