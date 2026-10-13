@@ -34,6 +34,7 @@ FILES = [
     ('Verbrauchs-Datenbank (usage-db)', 'server/tools/usage-db.py', '/home/andrew/MA-Server/server/tools/usage-db.py'),
     ('Terminal-Brücke', 'server/term-bridge/ma-term-bridge.py', '/usr/local/lib/ma-term-bridge.py'),
     ('Auto-Einspielung (Root-Skript)', 'server/auto-deploy/ma-deploy.sh', '/usr/local/lib/ma-deploy.sh'),
+    ('Sudo-Freigabe (Root-Skript)', 'server/auto-deploy/ma-sudo-run.sh', '/usr/local/lib/ma-sudo-run.sh'),
     ('Meldung Auftrag fertig (Root-Skript)', 'server/auto-deploy/ma-job-notify.sh', '/usr/local/lib/ma-job-notify.sh'),
 ]
 # Hooks, die es bewusst nur am PC gibt (Grund steht dabei). Jeder andere PC-Hook ohne Gegenstück wird gemeldet.

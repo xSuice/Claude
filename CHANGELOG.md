@@ -339,3 +339,40 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Ergebnis: Philipp hat `installieren.sh` per Sudo ausgeführt; Brücke und Portal neu gestartet, beide Dienste „active“. Test der Op am Brückensocket: 40 Verbindungen, 29 verbunden, 11 Anmeldung nötig. `'connectors'` steht laut Übergabe in der Op-Liste von `portal.py` (Zeile 362). Ansicht `verbindungen()` in `app.js` im Browser noch nicht bestätigt.
 - Rückweg: Kopf von `installieren.sh`; Quellsicherungen `portal-ui/entwurf-verbindungen/*.vor-verbindungen`.
 - Parität: `paritaet-check.py` prüft jetzt den Marker `'connectors'` in `portal.py` (`MARKERS`; `patch-portal-connectors.py` ist ein Einmal-Patch ohne Serverpfad und gehört nicht in `FILES`). PC zieht über `ClaudeAbgleich` nach.
+
+## 2026-10-13 – Portal: Slash-Menü für Befehle und Skills (Server-Kopie, noch nicht eingespielt)
+
+- Auftrag: Plan `Plan-Portal-Chat-wie-Desktop`, Schritt 2 (Philipp: „Ja“).
+- Betroffene Dateien: `portal-ui/web/app.js` (`SLASH_CMDS`, `SLASH_SKILLS`, `slashMenu()`, Skill-Zweig in `slashRun()`, `/hilfe`), `style.css` (`.cslash`), `app.js`/`sw.js` Version `2026-10-13-2`. Brücke und `portal.py` unverändert.
+- Verhalten: Tippen von `/` öffnet ein Menü mit Befehlen und Skills, Klick setzt `/name `. `/<skill> Text` sendet „Nutze den Skill …“ mit den Auto-Rechten wie bei `/plan`. Skill-Liste von Hand gepflegt (uebergabe, bild, docx, pdf, pptx, xlsx, video, netz, ma-server-ops, obsidian-librarian); ob alle im Portal-Chat verfügbar sind, ist ungeprüft.
+- Prüfung: keine JS-Laufzeit auf dem Server (kein node), Syntax und Darstellung ungeprüft. Einspielen: `sudo bash ~/MA-Server/portal-ui/deploy-ui.sh`.
+- Parität: PC zieht über `ClaudeAbgleich` nach.
+
+## 2026-10-13 – Admin-Schalter „Auto-Einspielung erlauben“ (Server-Kopie, noch nicht installiert)
+
+- Auftrag: Philipp will die Auto-Einspielung (Root-Dienst `ma-deploy`) nur für Admins und als Checkbox schaltbar.
+- Dateien: `server/auto-deploy/patch-portal-deployswitch.py` (neu, Route `/api/deploy/switch`, nur `g.admin`), `server/auto-deploy/schalter-einrichten.sh` (neu, Sudo-Skript), `server/auto-deploy/ma-deploy.sh` (spielt nur ein, wenn der Schalter an ist), `portal-ui/web/app.js` (Checkbox `#cdep` im Chat, Version `2026-10-13-3`), `sw.js`, `style.css`.
+- Sicherheit: Der Schalter ist die Datei `/srv/ma-home/deploy-schalter/erlaubt` in einem Ordner `root:ma-web` (0775). `andrew` ist nicht in `ma-web` und kann die Datei nicht anlegen; nur das Portal (Admin-Route) und root. Voreinstellung nach der Installation: AUS. Bei AUS meldet `ma-deploy.sh` „AUS …“ in `status.txt` und tut nichts. Manuelles Einspielen mit `sudo bash portal-ui/deploy-ui.sh` bleibt unberührt.
+- Prüfung: `bash -n` und `py_compile` für die neuen Skripte; Portal-Patch gegen das echte `portal.py` und `app.js` im Browser nicht getestet (kein node). Annahmen ungeprüft: Dienstname `ma-home-web`, `os`/`jsonify`/`g` in `portal.py` importiert (Importzeilen gelesen, passt).
+- Einspielen: `sudo bash ~/MA-Server/server/auto-deploy/schalter-einrichten.sh`, danach `deploy-anfordern.sh` oder `sudo bash ~/MA-Server/portal-ui/deploy-ui.sh` für die Oberfläche.
+- Offen: `deploy-anfordern.sh` scheitert im Chat weiter an `/srv/ma-home/deploy/request` (Fund 2, braucht `SUDO-ALLES.sh`). `paritaet-check.py` meldet `ma-deploy.sh` als abweichend, bis das Skript installiert ist.
+- Parität: PC zieht über `ClaudeAbgleich` nach.
+
+## 2026-10-13 – PostgreSQL + pgvector: Einrichtungsskript (Vorbereitung)
+
+- Auftrag: Philipp will den Vault-Index von SQLite/FTS5 auf PostgreSQL + pgvector umstellen (Entscheidung 2026-10-13; Claude hatte SQLite + Vektorsuche empfohlen).
+- Betroffene Dateien: `server/postgres/postgres-einrichten.sh` (neu).
+- Änderung: Sudo-Skript installiert `postgresql`, `postgresql-18-pgvector`, `python3-psycopg`, legt DB `vault`, Benutzer `vaultq` und die Erweiterungen `vector`, `unaccent` an. Passwort nur in `/etc/ma-home/vaultq.pgpass`.
+- Prüfung: `bash -n` fehlerfrei. Paketkandidaten per `apt-cache` belegt (postgresql 18+290ubuntu1, postgresql-18-pgvector, python3-psycopg 3.3.2). Skript NICHT ausgeführt, nichts installiert.
+- Ergebnis: `vault-q` (SQLite) unverändert. Nächste Schritte: Skript durch Philipp, dann `vault-pg.py` und Embedding-Modell (Ollama fehlt noch).
+- Rückweg: Skript löschen; nach Ausführung `sudo -u postgres dropdb vault; dropuser vaultq` und Pakete entfernen.
+
+## 2026-10-13 – Sudo-Freigabe: pauschaler Admin-Haken (Entwurf, nicht eingespielt)
+
+- Auftrag: Philipp will einen pauschalen Haken, mit dem Claude Sudo-Skripte selbst ausführen kann (Entscheidung Philipp; Claude hatte Freigabe pro Skript empfohlen).
+- Betroffene Dateien: `server/auto-deploy/ma-sudo-run.sh`, `sudo-anfordern.sh`, `sudo-einrichten.sh`, `patch-portal-sudoswitch.py` (alle neu); `portal-ui/web/app.js` (zweiter Haken `#csudo` mit Bestätigungsdialog), `sw.js` (Version 2026-10-13-4); `scripts/server-sync/paritaet-check.py` (neue Zeile).
+- Änderung: Schalterdatei `/srv/ma-home/deploy-schalter/sudo-erlaubt` (Route `/api/deploy/sudo-switch`, nur Admin). Mit Schalter führt der Root-Dienst `ma-sudo` das von andrew in `/srv/ma-home/deploy-sudo/` abgelegte `*.sh` aus: erst Kopie in root-eigenes Temp, Syntaxprüfung, Archiv mit SHA-256 in `/var/log/ma-sudo/`, Ergebnis in `ergebnis.txt`. Ohne Schalter: Status „AUS“.
+- Prüfung: `bash -n` für alle drei Skripte fehlerfrei. `py_compile` des Patches und die JS-Syntax von `app.js` NICHT geprüft (Bash-Befehl verweigert, kein `node` auf dem Server). Nichts installiert oder ausgeführt.
+- Sicherheit: Mit gesetztem Haken laufen Skripte von andrew als root. Haken weg oder `sudo systemctl disable --now ma-sudo.path`.
+- Offen: `sudo bash ~/MA-Server/server/auto-deploy/sudo-einrichten.sh`, dann `deploy-ui.sh`; Drop-in für die Claude-Brücke gilt erst nach deren Neustart.
+- Rückweg: siehe Kopfzeilen von `sudo-einrichten.sh`; Haken in `app.js` per Dateiversionierung zurücknehmen.

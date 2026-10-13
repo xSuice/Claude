@@ -129,6 +129,10 @@ option { background: #10131b; }
 .cerr { align-self: flex-start; color: var(--red2); padding: 10px 14px; border: 1px solid var(--red); background: rgba(229,23,63,.08); max-width: 860px; white-space: pre-wrap; }
 .cform { display: grid; gap: 10px; }
 .copts { display: flex; gap: 10px; flex-wrap: wrap; } .copts label { min-width: 140px; flex: 1; }
+.cdep { display: flex; gap: .5rem; align-items: center; font-size: .85em; opacity: .85; min-height: 32px; } .cdep input { width: auto; }
+.cslash { display: grid; gap: 2px; max-height: 30vh; max-height: 30dvh; overflow: auto; border: 1px solid var(--line2); border-radius: 12px; padding: .3rem; } .cslash[hidden] { display: none; }
+.cslashi { display: flex; gap: .5rem; align-items: baseline; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: .4rem .5rem; border-radius: 8px; cursor: pointer; min-height: 40px; }
+.cslashi:hover, .cslashi:focus { background: var(--line2); } .cslashi span { flex: 1; opacity: .75; font-size: .9em; } .cslashi i { opacity: .55; font-size: .8em; }
 .cin { display: flex; gap: 10px; align-items: flex-end; } .cin textarea { min-height: 52px; max-height: 180px; }
 .typing::after { content: "▍"; animation: blink 1s steps(2) infinite; margin-left: 2px; color: var(--red2); }
 @keyframes blink { 50% { opacity: 0; } }

@@ -22,6 +22,9 @@ report() {                                   # Status fuer Claude/Philipp: root-
 fail() { report "FEHLER: $1"; exit 1; }
 [ -f "$Q/request" ] && [ ! -L "$Q/request" ] || exit 0
 say "Anforderung erhalten"
+# Admin-Schalter (Portal, nur Admins): ohne diese Datei wird nichts eingespielt. Der Ordner gehoert root:ma-web, andrew kann sie nicht anlegen.
+SW=/srv/ma-home/deploy-schalter/erlaubt
+if [ ! -f "$SW" ] || [ -L "$SW" ]; then report "AUS: Auto-Einspielung ist ausgeschaltet (Admin-Schalter im Portal, Chat). Nichts eingespielt."; exit 0; fi
 
 SRCR=$(realpath "$SRC")
 grab() {                                     # grab <relpfad>: kopiert nur normale Dateien innerhalb von SRC in das Temp-Verzeichnis

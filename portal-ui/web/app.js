@@ -777,7 +777,23 @@ async function resolveAccess(p, form) {
 }
 const SLASH_HELP = ['/hilfe  Befehle zeigen', '/neu  neuer Chat', '/notiz <Begriff>  was ich dazu notiert habe', '/verlaeufe  Verlaufsliste öffnen', '/abbrechen  laufende Aufträge stoppen',
   '/plan <Text>  nur planen, nichts verändern', '/council <Idee>  Idee aus fünf Rollen prüfen', '/modell auto|haiku|sonnet|opus',
-  '/ordner auto|notizen|bibliothek|maserver|server', '/rechte auto|lesen|plan|notizen|voll'].join('\n');
+  '/ordner auto|notizen|bibliothek|maserver|server', '/rechte auto|lesen|plan|notizen|voll',
+  'Skills: ' + ['uebergabe', 'bild', 'docx', 'pdf', 'pptx', 'xlsx', 'video', 'netz', 'ma-server-ops', 'obsidian-librarian'].map(x => '/' + x).join(' ') + '  (Menü erscheint beim Tippen von /)'].join('\n');
+// Eingebaute Befehle und Skills für das Slash-Menü. Skills laufen im Druckmodus als Auftrag „Nutze den Skill …“ (Liste von Hand gepflegt, Stand 2026-10-13).
+const SLASH_CMDS = [['hilfe', 'Befehle zeigen'], ['neu', 'neuer Chat'], ['notiz', 'was ich dazu notiert habe'], ['verlaeufe', 'Verlaufsliste öffnen'], ['abbrechen', 'laufende Aufträge stoppen'],
+  ['plan', 'nur planen, nichts verändern'], ['council', 'Idee aus fünf Rollen prüfen'], ['modell', 'auto|haiku|sonnet|opus'], ['ordner', 'auto|notizen|bibliothek|maserver|server'], ['rechte', 'auto|lesen|plan|notizen|voll']];
+const SLASH_SKILLS = [['uebergabe', 'Stand der Sitzung sichern'], ['bild', 'Bild erzeugen oder bearbeiten'], ['docx', 'Word-Dokument'], ['pdf', 'PDF lesen oder erzeugen'], ['pptx', 'Präsentation'], ['xlsx', 'Excel-Tabelle'],
+  ['video', 'Audio und Video schneiden'], ['netz', 'Heimnetz und Geräte prüfen'], ['ma-server-ops', 'Server-Diagnose'], ['obsidian-librarian', 'Vault sortieren und verlinken']];
+function slashMenu(form) {
+  const box = $('#cslash'), v = String(form.prompt.value);
+  const m = /^\/([a-zäöü0-9-]*)$/i.exec(v);                       // nur solange noch kein Leerzeichen oder Zeilenumbruch folgt
+  if (!m) { box.hidden = true; return; }
+  const q = m[1].toLowerCase();
+  const items = [...SLASH_CMDS.map(x => [...x, 'Befehl']), ...SLASH_SKILLS.map(x => [...x, 'Skill'])].filter(x => x[0].startsWith(q));
+  if (!items.length) { box.hidden = true; return; }
+  box.innerHTML = items.map(x => '<button type="button" class="cslashi" data-c="' + x[0] + '"><b>/' + x[0] + '</b> <span>' + x[1] + '</span> <i>' + x[2] + '</i></button>').join('');
+  box.hidden = false;
+}
 // Gibt true zurück, wenn die Eingabe ein Befehl war und danach geleert werden soll.
 async function slashRun(text, form) {
   const parts = text.slice(1).split(/\s+/), cmd = (parts.shift() || '').toLowerCase(), arg = parts.join(' ').trim(), S = claudeState;
@@ -810,7 +826,15 @@ async function slashRun(text, form) {
       claudeSend(plan ? 'Erstelle nur einen Plan (nichts ausführen, nichts ändern):\n' + arg : COUNCIL(arg), { dir: a.dir, mode: plan ? 'plan' : (a.mode === 'voll_senden' ? 'voll' : a.mode), model: form.model.value });
       return true;
     }
-    default: toast('Unbekannter Befehl. /hilfe zeigt alle.', 1); return false;
+    default: {
+      if (!SLASH_SKILLS.some(x => x[0] === cmd)) { toast('Unbekannter Befehl. /hilfe zeigt alle.', 1); return false; }
+      if (S.busy) { toast('Erst den laufenden Auftrag abwarten oder abbrechen', 1); return false; }
+      const a = await resolveAccess(cmd + ' ' + arg, form);
+      if (a.hold) return false;
+      $('#csend').disabled = true;
+      claudeSend('Nutze den Skill „' + cmd + '“.' + (arg ? '\n' + arg : ''), { dir: a.dir, mode: a.mode === 'voll_senden' ? 'voll' : a.mode, model: form.model.value, esc: a.esc });
+      return true;
+    }
   }
 }
 
@@ -821,10 +845,33 @@ async function claude() {
     '<div id="cimgs" class="cimgs"></div><div class="copts"><label>Ordner<select name="dir"><option value="auto">Auto</option><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
     '<label>Rechte<select name="mode"><option value="auto">Auto</option><option value="lesen">Nur lesen</option><option value="plan">Nur planen (Plan-Modus)</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
     '<label>Modell<select name="model"><option value="auto">Auto</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
-    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (/hilfe zeigt Befehle, Bilder und Dateien per 📎, Einfügen oder hineinziehen)"></textarea><input type="file" id="cfile" multiple hidden><input type="file" id="cpic" accept="image/*" multiple hidden><button class="btn ghost" type="button" id="cpicb" title="Mehrere Bilder aus der Galerie wählen (bis 10 Stück)">🖼</button><button class="btn ghost" type="button" id="cattach" title="Dateien anhängen (bis 10 Stück, je 25 MB)">📎</button><button class="btn ghost" type="button" id="cmic" title="Spracheingabe" hidden>🎤</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
+    '<label class="cdep" title="Wenn aus, spielt der Root-Dienst keine Anforderung von Claude ein"><input type="checkbox" id="cdep" disabled> Auto-Einspielung erlauben (nur Admin)</label><label class="cdep" title="Wenn an, führt der Root-Dienst Sudo-Skripte aus, die Claude ablegt. Nur zum Arbeiten setzen, danach wieder aus."><input type="checkbox" id="csudo" disabled> Sudo-Skripte erlauben (Root, nur Admin)</label><div class="cslash" id="cslash" hidden></div><div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (/hilfe zeigt Befehle, Bilder und Dateien per 📎, Einfügen oder hineinziehen)"></textarea><input type="file" id="cfile" multiple hidden><input type="file" id="cpic" accept="image/*" multiple hidden><button class="btn ghost" type="button" id="cpicb" title="Mehrere Bilder aus der Galerie wählen (bis 10 Stück)">🖼</button><button class="btn ghost" type="button" id="cattach" title="Dateien anhängen (bis 10 Stück, je 25 MB)">📎</button><button class="btn ghost" type="button" id="cmic" title="Spracheingabe" hidden>🎤</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();
   $('#cseb').onclick = sessionsOpen; jobsWatch();
   $('#cexp').onclick = claudeExport;
+  const dep = $('#cdep');                                           // Admin-Schalter der Auto-Einspielung (Route /api/deploy/switch, root-eigener Schalter)
+  api('/api/deploy/switch').then(d => { dep.checked = !!d.on; dep.disabled = false; }).catch(() => { dep.title = 'Schalter nicht verfügbar (schalter-einrichten.sh noch nicht gelaufen?)'; });
+  dep.onchange = async () => {
+    const want = dep.checked; dep.disabled = true;
+    try { const d = await api('/api/deploy/switch', { body: { on: want } }); dep.checked = !!d.on; toast('Auto-Einspielung ' + (d.on ? 'erlaubt' : 'ausgeschaltet')); }
+    catch (er) { dep.checked = !want; toast(er.message, 1); }
+    dep.disabled = false;
+  };
+  const sud = $('#csudo');                                          // Admin-Schalter der Sudo-Freigabe (Route /api/deploy/sudo-switch, sudo-einrichten.sh)
+  api('/api/deploy/sudo-switch').then(d => { sud.checked = !!d.on; sud.disabled = false; }).catch(() => { sud.title = 'Schalter nicht verfügbar (sudo-einrichten.sh noch nicht gelaufen?)'; });
+  sud.onchange = async () => {
+    const want = sud.checked;
+    if (want && !confirm('Jedes Skript, das Claude ablegt, läuft jetzt als root. Wirklich erlauben?')) { sud.checked = false; return; }
+    sud.disabled = true;
+    try { const d = await api('/api/deploy/sudo-switch', { body: { on: want } }); sud.checked = !!d.on; toast('Sudo-Skripte ' + (d.on ? 'erlaubt (Root!)' : 'ausgeschaltet')); }
+    catch (er) { sud.checked = !want; toast(er.message, 1); }
+    sud.disabled = false;
+  };
+  $('#cf').prompt.addEventListener('input', () => slashMenu($('#cf')));
+  $('#cslash').onclick = e => {
+    const b = e.target.closest('.cslashi'); if (!b) return;
+    const ta = $('#cf').prompt; ta.value = '/' + b.dataset.c + ' '; $('#cslash').hidden = true; ta.focus();
+  };
   $('#cjump').onclick = () => { const b = $('#cmsgs'); b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); };
   $('#cmsgs').addEventListener('scroll', () => { const b = $('#cmsgs'); $('#cjump').hidden = b.scrollHeight - b.scrollTop - b.clientHeight < 90; }, { passive: true });
   $('#csch').onclick = schedOpen;
@@ -1621,7 +1668,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-13-1';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-13-4';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {
