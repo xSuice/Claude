@@ -29,6 +29,7 @@ FILES = [
     ('Server-settings.json', 'server/claude-config/settings.json', '/home/andrew/.claude/settings.json'),
     ('Hook ma-guard', 'server/claude-config/hooks/ma-guard.py', '/home/andrew/.claude/hooks/ma-guard.py'),
     ('Hook council-auto', 'server/claude-config/hooks/council-auto.py', '/home/andrew/.claude/hooks/council-auto.py'),
+    ('Verbrauchs-Datenbank (usage-db)', 'server/tools/usage-db.py', '/home/andrew/MA-Server/server/tools/usage-db.py'),
     ('Terminal-Brücke', 'server/term-bridge/ma-term-bridge.py', '/usr/local/lib/ma-term-bridge.py'),
     ('Auto-Einspielung (Root-Skript)', 'server/auto-deploy/ma-deploy.sh', '/usr/local/lib/ma-deploy.sh'),
     ('Meldung Auftrag fertig (Root-Skript)', 'server/auto-deploy/ma-job-notify.sh', '/usr/local/lib/ma-job-notify.sh'),
@@ -100,6 +101,7 @@ def server_script():
     lines.append('for h in "$HOME"/.claude/hooks/*; do [ -f "$h" ] && echo "HK $(basename "$h")"; done')
     lines.append('for t in ' + ' '.join(SERVER_TIMERS) + '; do echo "TM $t $(systemctl is-active $t 2>&1) $(systemctl is-enabled $t 2>&1)"; done')
     lines.append('for c in ' + ' '.join(SERVER_CRON) + '; do crontab -l 2>/dev/null | grep -v "^#" | grep -qF "$c" && echo "CR $c 1" || echo "CR $c 0"; done')
+    lines.append('[ -f "$HOME/MA-Server/DEPLOYED-REV" ] && echo "R $(cut -d" " -f1 "$HOME/MA-Server/DEPLOYED-REV")" || echo "R -"')
     lines.append('echo "VN $(find ' + SERVER_NOTIZEN + ' -type f -name "*.md" 2>/dev/null | wc -l)"')
     # Namen der lokalen MCP-Verbindungen (nur die Namen, nie Zugangsdaten)
     lines.append("python3 -c 'import json,os\n"
@@ -171,9 +173,38 @@ def pc_tasks():
     return out
 
 
+SRV_REV = ['-']   # Commit-Hash aus ~/MA-Server/DEPLOYED-REV auf dem Server ('-' = Datei fehlt)
+
+
+def git_rev_notes():
+    """Dreier-Vergleich PC-HEAD / GitHub (origin/main) / Server (DEPLOYED-REV)."""
+    def git(*a):
+        r = subprocess.run(['git', '-C', PC, *a], capture_output=True, timeout=30)
+        return r.stdout.decode('utf-8', 'replace').strip() if r.returncode == 0 else ''
+    head = git('rev-parse', 'HEAD')
+    remote = ''
+    try:
+        remote = git('ls-remote', 'origin', 'refs/heads/main').split()[0]
+    except IndexError:
+        pass
+    srv = SRV_REV[0]
+    notes = [f"Stand: PC {head[:7] or '?'}, GitHub {remote[:7] or '? (nicht erreichbar)'}, Server {srv[:7] if srv != '-' else 'unbekannt (DEPLOYED-REV fehlt)'}"]
+    if remote and head and remote != head:
+        n = git('rev-list', '--count', f'{remote}..HEAD')
+        notes.append(f'PC und GitHub weichen ab ({n or "?"} Commit(s) nur am PC; GitHub ggf. vorn)')
+    if srv != '-' and head and srv != head:
+        n = git('rev-list', '--count', f'{srv}..HEAD')
+        notes.append(f'Server-Stand liegt {n or "?"} Commit(s) hinter dem PC-HEAD (Auto-Deploy liefert nur betroffene Dateien)')
+    return notes
+
+
 def git_notes():
     """Hinweise (keine Abweichungen): nicht committete oder nicht gepushte Änderungen."""
     notes = []
+    try:
+        notes += git_rev_notes()
+    except Exception:
+        pass
     try:
         st = subprocess.run(['git', '-C', PC, 'status', '--short', '-b'], capture_output=True, timeout=30).stdout.decode('utf-8', 'replace').splitlines()
         if st and 'ahead' in st[0]:
@@ -233,6 +264,8 @@ def main():
             h, _, n = rest.partition('  ')
             if n:
                 deployed[n.strip()] = h.strip()
+        elif kind == 'R':
+            SRV_REV[0] = rest.strip()
         elif kind == 'M':
             label, _, n = rest.partition('|')
             markers[label] = int((n.strip() or '0').split()[-1] or 0)

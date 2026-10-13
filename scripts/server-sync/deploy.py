@@ -104,6 +104,16 @@ def project_skills():
     return {p: 'MA-Server/' + p for p in r.stdout.decode('utf-8', 'replace').splitlines() if p.endswith(('.md', '.py', '.sh', '.json'))}
 
 
+def write_rev():
+    """Commit-Hash des ausgelieferten Standes nach ~/MA-Server/DEPLOYED-REV (paritaet-check vergleicht ihn mit HEAD und GitHub)."""
+    if DRY:
+        return
+    r = subprocess.run(['git', '-C', PC, 'rev-parse', 'HEAD'], capture_output=True, timeout=30)
+    rev = r.stdout.decode().strip()
+    if r.returncode == 0 and len(rev) == 40:
+        ssh(f"printf '%s %s\\n' '{rev}' \"$(date -u +%FT%TZ)\" > ~/MA-Server/DEPLOYED-REV")
+
+
 def main():
     try:
         web_srv, root_srv, user_srv, regel = server_hashes()
@@ -130,6 +140,7 @@ def main():
             root_send[name] = b
     if not (user_send or web_diff or root_send):
         app_update()
+        write_rev()
         log('Nichts zu tun, Server hat den committeten Stand.')
         return 0
     err = check_syntax({**user_send, **{n: web_files[n] for n in web_diff}, **root_send})
@@ -169,6 +180,7 @@ def main():
         if r.returncode != 0:
             return 1
     app_update()
+    write_rev()
     log('Deploy fertig.')
     return 0
 

@@ -11,6 +11,10 @@
 # Rueckgaengig: sudo rm /etc/sudoers.d/ma-term-sudo && sudo bash ~/MA-Server/server/term-bridge/install.sh   (stellt die eingeschraenkte Unit wieder her)
 set -Eeuo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Bitte mit sudo ausfuehren."; exit 1; }
+LOG=/var/log/ma-sudo-erlauben.log            # lesbar fuer andrew/Claude, damit der Lauf ohne Abtippen ausgewertet werden kann
+touch "$LOG"; chmod 644 "$LOG"
+exec > >(tee -a "$LOG") 2>&1
+echo "==== $(date '+%F %T') sudo-erlauben.sh $* ===="
 D="$(cd "$(dirname "$0")" && pwd)"
 F=/etc/sudoers.d/ma-term-sudo
 getent group ma-sudo >/dev/null || groupadd --system ma-sudo
@@ -21,16 +25,23 @@ else
 fi
 T="$(mktemp)"
 printf '# MA Home: sudo ohne Passwort fuer das Portal-Terminal (Gruppe ma-sudo, nur der Dienst ma-term-bridge). Angelegt von sudo-erlauben.sh\n%s\n' "$RULE" > "$T"
-visudo -cf "$T" >/dev/null || { echo "Sudoers-Regel ungueltig, nichts geaendert."; rm -f "$T"; exit 1; }
+if ! VOUT=$(visudo -cf "$T" 2>&1); then echo "Sudoers-Regel ungueltig, nichts geaendert: $VOUT"; rm -f "$T"; exit 1; fi
+echo "visudo: $VOUT"
 install -m 440 -o root -g root "$T" "$F"; rm -f "$T"
 bash "$D/install.sh"
 echo "== Pruefung =="
+GID_SUDO="$(getent group ma-sudo | cut -d: -f3)"
+# Prozess "wie die Terminal-Bruecke": Benutzer andrew mit genau diesen Gruppen (andrew + ma-web + ma-sudo), danach darf sudo ohne Passwort laufen
+as_term() { setpriv --reuid=andrew --regid=andrew --groups="$(id -g andrew),$(getent group ma-web | cut -d: -f3),$GID_SUDO" -- "$@"; }
+as_plain() { setpriv --reuid=andrew --regid=andrew --init-groups -- "$@"; }
 if [ "${1:-}" = "--user-regel" ]; then
   echo "Benutzerregel aktiv (breiter). Pruefung der Gruppe entfaellt."
 else
-  if runuser -u andrew -g andrew -G ma-sudo -- sudo -n true 2>/dev/null; then echo "OK: Prozess mit Gruppe ma-sudo darf sudo."; else
-    echo "FEHLER: sudo wertet die Gruppe ma-sudo nicht aus. Rueckbau, oder mit --user-regel die breitere Regel setzen."; rm -f "$F"; bash "$D/install.sh"; exit 1; fi
-  if runuser -u andrew -- sudo -n true 2>/dev/null; then echo "WARNUNG: andrew ohne Gruppe darf ebenfalls sudo (hat schon eine eigene Regel?)."; else echo "OK: andrew ohne Gruppe darf weiterhin kein sudo ohne Passwort."; fi
+  if OUT=$(as_term sudo -n true 2>&1); then echo "OK: Prozess mit Gruppe ma-sudo darf sudo."; else
+    echo "FEHLER: Prozess mit Gruppe ma-sudo darf kein sudo. Meldung von sudo: $OUT"
+    echo "Gruppen im Pruefprozess: $(as_term id 2>&1)"
+    echo "Rueckbau. Alternative: mit --user-regel die breitere Regel setzen (siehe Kopfzeilen)."; rm -f "$F"; bash "$D/install.sh"; exit 1; fi
+  if OUT=$(as_plain sudo -n true 2>&1); then echo "WARNUNG: andrew ohne Gruppe darf ebenfalls sudo (hat schon eine eigene Regel?)."; else echo "OK: andrew ohne Gruppe darf weiterhin kein sudo ohne Passwort ($OUT)."; fi
 fi
 sleep 1
 systemctl is-active ma-term-bridge

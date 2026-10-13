@@ -274,3 +274,34 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - FUND 1: `/var/log/ma-deploy.log` zeigt zwei Rueckfaelle heute (04:26, 06:07): "Browser-Test bestanden", dann "Portal antwortet nach dem Einspielen nicht richtig; Oberflaeche zurueckgesetzt". Ursache: Die Nachpruefung las die Version per HTTP aus `/assets/sw.js`; das verlangt eine Anmeldung (401, geprueft mit curl), also fehlte die Version und das Skript setzte immer zurueck. Fix in `server/auto-deploy/ma-deploy.sh`: healthz muss 200 sein, die Oberflaeche 200/401/403 (nicht 5xx/000) und die eingespielte Datei die erwartete Version haben.
 - FUND 2: `deploy-anfordern.sh` scheitert fuer den Chat mit "Read-only file system": die Bruecke (ProtectSystem=strict) durfte nur in `/srv/ma-home/deploy/notify` schreiben, nicht die Datei `request` anlegen. Fix in `server/auto-deploy/install.sh`: Drop-in `ReadWritePaths=-/srv/ma-home/deploy` (der Ordner ist sticky und root-eigen; status.txt bleibt fuer andrew unersetzbar).
 - Wirkung erst nach `sudo bash ~/MA-Server/SUDO-ALLES.sh` (Schritt 2 installiert die Auto-Einspielung neu; das Drop-in gilt nach dem Neustart der Bruecke). Danach kann ich nach Aenderungen selbst einspielen. Nicht geprueft: der Lauf von ma-deploy.sh als Root.
+
+## 2026-10-13 – sudo-erlauben.sh diagnostizierbar gemacht (Server-Kopie)
+
+- Befund nach Philipps Lauf im Web-Terminal: Portal 2026-10-12-20 live, Auto-Einspielung funktioniert (06:39 OK), Gruppe `ma-sudo` (GID 975) existiert, aber `/etc/sudoers.d/ma-term-sudo` fehlt und die Unit der Terminal-Bruecke ist die eingeschraenkte Variante: Schritt 3 hat sich entweder nach der Selbstpruefung zurueckgebaut oder ist vorher abgebrochen; die alte Fassung verwarf die Fehlermeldung. Laut sudo.conf(5) gilt auf Linux `group_source=adaptive` (Gruppenliste des Prozesses), die Gruppenregel sollte also grundsaetzlich greifen.
+- `sudo-erlauben.sh`: schreibt jetzt `/var/log/ma-sudo-erlauben.log` (644), zeigt die visudo-Meldung und den echten sudo-Fehler samt Gruppenliste des Pruefprozesses, und prueft mit `setpriv` (andrew mit genau den Gruppen der Bruecke) statt mit `runuser`. Syntax geprueft; nicht als Root gelaufen.
+- Ergebnis des Laufs (06:51): Gruppenregel greift nicht, Rueckbau. Ursache sehr wahrscheinlich `sudo-rs 0.2.13` (Ubuntu 26.04), das die Zusatzgruppen des Prozesses nicht auswertet; nicht belegt. Entscheidung: im Terminal beim Passwort bleiben, `--user-regel` nur nach ausdruecklichem Ja.
+
+## 2026-10-13 – Neuer Chat vollautomatisch ab 300 000 Token (Server-Kopie, noch nicht live)
+
+- `portal-ui/web/app.js` (`claudePump`): Ist der Kontext nach einer fehlerfreien Antwort ueber 300 000, sendet das Portal selbst den Auftrag „Skill uebergabe ausfuehren“ (Rechte mind. Notizen), und beginnt danach einen leeren Chat mit dem Hinweis „Schreib ‚weiter‘“ (Grundregel 13 laedt dann die Uebergabe). Fehler, verweigerte Werkzeuge oder Rechte-Eskalation: Chat bleibt unveraendert. Syntax und Ablauf nicht geprueft (kein `node`/Browser-Test in dieser Sitzung); Einspielen: `sudo bash ~/MA-Server/portal-ui/deploy-ui.sh`.
+
+## 2026-10-13 – Verbrauchs-Datenbank `usage-db` (Server-Kopie, live)
+
+- Befund: Eine Wissensdatenbank gibt es schon (`vault-q`, SQLite/FTS5, 633 Dateien); keine zweite angelegt. Die Bruecke zaehlt nur Jobs und Token je Kategorie und Tag (`usage.json`), ohne Modell, Sitzung oder Projekt. Das war die Luecke fuer "Aufwand pro Aufgabe".
+- `server/tools/usage-db.py` (Symlink `~/.local/bin/usage-db`, Datenbank `/srv/ma-home/library/.jarvis/usage.db`): liest die Sitzungsprotokolle der Claude-CLI (`~/.claude/projects/*/*.jsonl`) inkrementell, speichert nur Zaehler (Zeit, Sitzung, Projekt, Modell, Token), nie Text. Befehle `report [--days N] [--by day|model|project|session]`, `top`, `stats`. Keine Preise: es wird nur gezaehlt, nicht in Geld umgerechnet. Standardbibliothek, kein Root, kein Eingriff in die Bruecke.
+- Geprueft am echten Bestand (184 Protokolle, 7 Tage): Tagessummen, Aufteilung nach Modell und Projekt, zweiter Lauf liefert identische Zahlen (idempotent), Streaming-Duplikate je Antwort-ID zusammengefuehrt, Platzhalterzeilen `<synthetic>` ausgeschlossen. Nicht geprueft: Abgleich mit der Abrechnung des Anbieters; ob die Protokolle auch Aufgaben der Bruecke vollstaendig enthalten.
+- `paritaet-check.py`: `usage-db.py` in die Liste `FILES` aufgenommen.
+- Ziel Philipp: ein 5-Stunden-Fenster soll fuer zwei Personen reichen. Neu `usage-db windows` (Verbrauch je 5-h-Fenster, Naeherung). Messung 07.-13.10.: groesstes Fenster 4,1 Mio neu + 527k Ausgabe (494 Antworten, 10.10. ab 06:42 UTC), Opus 13 % der neu+raus-Token, Sitzungen mit bis zu 960k Kontext; Cache-Lesen (882 Mio) ist um ein Vielfaches groesser als neu verarbeitet (21,7 Mio). In den Protokollen steht kein Limit-Treffer (weder Beleg dafuer noch dagegen). Wie der Anbieter Cache-Lesen auf das Limit anrechnet, ist nicht belegt.
+- Portal 2026-10-12-22: Kontextgrenze fuer den automatischen neuen Chat als Konstante `CTX_MAX` = 200 000 (vorher 300 000, an drei Stellen verstreut), weil jede Antwort den ganzen Kontext neu liest. Wirkung nicht gemessen; nach dem Einspielen mit `usage-db report --by session` vergleichen. Zwei Personen sind in der Datenbank nicht getrennt (Protokolle tragen kein Benutzerfeld).
+
+## 2026-10-13 – Bilder-Knopf mit Mehrfachauswahl (Server-Kopie)
+
+- Befund: Das Eingabefeld `#cfile` hatte schon `multiple`, `attachAdd` laedt mehrere Dateien, `MainActivity.onShowFileChooser` reicht den Modus korrekt weiter. Vermutung (nicht geprueft): Ohne `accept` oeffnet Android die allgemeine Dateiauswahl, in der Mehrfachauswahl nur per langem Druecken geht; oder die installierte App ist aelter als der Quellcode.
+- `portal-ui/web/app.js`: neuer Knopf 🖼 mit eigenem Feld `#cpic` (`accept="image/*" multiple`) oeffnet die Galerie mit Auswahlkreisen; 📎 bleibt fuer allgemeine Dateien. VERSION 2026-10-12-21 (app.js und sw.js). Nicht im Browser getestet.
+
+## 2026-10-13 – Stand-Vergleich PC / GitHub / Server (Server-Kopie)
+
+- `deploy.py`: neue Funktion `write_rev` schreibt nach jedem erfolgreichen Lauf (auch "Nichts zu tun") den PC-HEAD-Hash nach `~/MA-Server/DEPLOYED-REV` auf dem Server.
+- `paritaet-check.py`: liest `DEPLOYED-REV` (Zeile `R`) und meldet im Bericht unter "Git" den Dreier-Stand PC-HEAD / GitHub (`git ls-remote origin main`) / Server samt Abstand in Commits.
+- Geprueft: nur Syntax (py_compile). Nicht geprueft: Lauf am PC mit echtem SSH und GitHub-Remote. Der Server ist kein Git-Repo; die Aenderung wird per `ClaudeAbgleich` zum PC geholt.
+- Neu, noch nicht gelaufen: `scripts/ma-authelia-diag.sh` (rein lesende Authelia-Diagnose fuer den geplanten QR-/Passkey-Login; Start mit sudo durch Philipp). In `FILES` von `paritaet-check.py` bewusst nicht eingetragen (nur Einmal-Diagnose).

@@ -323,11 +323,12 @@ function claudeResume() {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) claudeResume(); });
 window.addEventListener('pageshow', () => claudeResume());
 window.addEventListener('online', () => claudeResume());
+const CTX_MAX = 200000;      // ab hier: Übergabe sichern und neuer Chat (jede Antwort liest den ganzen Kontext erneut; lange Chats treiben den Verbrauch)
 const fmtTok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + ' Mio' : n >= 1000 ? Math.round(n / 1000) + 'k' : String(n || 0);
 function tokRender() {
   const el = $('#ctok'), t = claudeState.tok; if (!el) return;
-  el.textContent = t ? 'Kontext ' + fmtTok(t.ctx) + ' · Sitzung: ' + fmtTok(t.in) + ' rein / ' + fmtTok(t.out) + ' raus' + (t.cost ? ' · ca. $' + t.cost.toFixed(2) : '') + (t.ctx > 300000 ? ' · groß, besser neuer Chat' : '') : 'Tokens: noch keine Anfrage';
-  el.classList.toggle('warn', !!t && t.ctx > 300000);
+  el.textContent = t ? 'Kontext ' + fmtTok(t.ctx) + ' · Sitzung: ' + fmtTok(t.in) + ' rein / ' + fmtTok(t.out) + ' raus' + (t.cost ? ' · ca. $' + t.cost.toFixed(2) : '') + (t.ctx > CTX_MAX ? ' · groß, besser neuer Chat' : '') : 'Tokens: noch keine Anfrage';
+  el.classList.toggle('warn', !!t && t.ctx > CTX_MAX);
 }
 function claudeRender(toBottom) {
   const box = $('#cmsgs'); if (!box) return;
@@ -514,9 +515,11 @@ async function claudePump(body) {
   S.msgs = S.msgs.filter(m => !(m.r === 'a' && !m.t));
   S.busy = false; S.jobId = null; S.idx = 0; claudeSave(); claudeRender(); jobsRefresh();
   const b = $('#csend'); if (b) b.disabled = false;
+  let escGo = false;
   if (ended && S.escOk && S.denied && S.last && (S.esc || 0) < 2) {     // Rechte reichten nicht: automatisch eine Stufe höher und weitermachen
     const nx = escNext(S.last.opts.mode, S.last.opts.dir, S.denied);
     if (nx) {
+      escGo = true;
       S.esc = (S.esc || 0) + 1;
       const tools = [...new Set(S.denied.map(x => x.tool_name))].join(', ');
       const text = 'Die Rechte wurden automatisch erhöht (' + S.last.opts.mode + ' · ' + S.last.opts.dir + ' → ' + nx.mode + ' · ' + nx.dir + ', verweigert: ' + tools + '). Mach die Aufgabe jetzt zu Ende; führe die vorher verweigerten Schritte aus.';
@@ -525,7 +528,25 @@ async function claudePump(body) {
       setTimeout(() => claudeSend(text, { dir: nx.dir, mode: nx.mode, model, esc: true, isEsc: true }), 400);
     }
   }
-  S.denied = null;
+  const denied = S.denied; S.denied = null;
+  // Neuer Chat vollautomatisch (spart Tokens): Ist der Kontext über der Grenze, sichert Claude zuerst die Übergabe in den Vault (Skill uebergabe),
+  // danach beginnt ein leerer Chat. Wer "weiter" schreibt, bekommt die Übergabe geladen (Grundregel 13). Bei Fehler bleibt der Chat wie er ist.
+  const okEnd = ended && !escGo && !denied && (S.msgs[S.msgs.length - 1] || {}).r !== 'e';
+  if (S.hand === 1) {
+    S.hand = 0;
+    if (okEnd) {
+      claudeState = { msgs: [{ r: 't', t: 'Übergabe gesichert (Vault: _Claude-Memory/Uebergabe.md). Neuer Chat gestartet. Schreib „weiter“, dann lädt Claude die Übergabe.' }], sid: null, busy: false, tok: null };
+      claudeSave(); claudeRender(); toast('Neuer Chat gestartet, Übergabe gesichert');
+    } else toast('Übergabe fehlgeschlagen, Chat bleibt bestehen', 1);
+    return;
+  }
+  if (okEnd && S.sid && S.tok && S.tok.ctx > CTX_MAX && S.last) {
+    S.hand = 1;
+    const lo = S.last.opts;
+    toast('Kontext groß: Übergabe wird gesichert, dann neuer Chat');
+    setTimeout(() => claudeSend('Kontext ist groß. Führe jetzt den Skill uebergabe aus: sichere den Stand dieser Sitzung als Übergabe-Notiz im Vault (_Claude-Memory/Uebergabe.md), antworte danach nur mit einem Satz.', { dir: lo.dir || 'notizen', mode: lo.mode === 'voll' ? 'voll' : 'notizen', model: lo.model, isEsc: true }), 400);
+    return;
+  }
   if (document.hidden) {                              // Seite im Hintergrund: Browser-Meldung (zusätzlich zur Handy-Meldung des Servers)
     try { if ('Notification' in window && Notification.permission === 'granted') new Notification('Claude ist fertig', { body: ((S.msgs.slice().reverse().find(m => m.r === 'a') || {}).t || '').slice(0, 100) }); } catch (er) { /* nicht unterstützt */ }
   }
@@ -799,7 +820,7 @@ async function claude() {
     '<div id="cimgs" class="cimgs"></div><div class="copts"><label>Ordner<select name="dir"><option value="auto">Auto</option><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
     '<label>Rechte<select name="mode"><option value="auto">Auto</option><option value="lesen">Nur lesen</option><option value="plan">Nur planen (Plan-Modus)</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
     '<label>Modell<select name="model"><option value="auto">Auto</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
-    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (/hilfe zeigt Befehle, Bilder und Dateien per 📎, Einfügen oder hineinziehen)"></textarea><input type="file" id="cfile" multiple hidden><button class="btn ghost" type="button" id="cattach" title="Bilder oder Dateien anhängen (bis 10 Stück, je 25 MB)">📎</button><button class="btn ghost" type="button" id="cmic" title="Spracheingabe" hidden>🎤</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
+    '<div class="cin"><textarea name="prompt" rows="2" placeholder="Frag Claude … (/hilfe zeigt Befehle, Bilder und Dateien per 📎, Einfügen oder hineinziehen)"></textarea><input type="file" id="cfile" multiple hidden><input type="file" id="cpic" accept="image/*" multiple hidden><button class="btn ghost" type="button" id="cpicb" title="Mehrere Bilder aus der Galerie wählen (bis 10 Stück)">🖼</button><button class="btn ghost" type="button" id="cattach" title="Dateien anhängen (bis 10 Stück, je 25 MB)">📎</button><button class="btn ghost" type="button" id="cmic" title="Spracheingabe" hidden>🎤</button><button class="btn" id="csend">' + ico('send') + ' Senden</button></div></form></div>';
   claudeRender();
   $('#cseb').onclick = sessionsOpen; jobsWatch();
   $('#cexp').onclick = claudeExport;
@@ -848,6 +869,8 @@ async function claude() {
   try { const q = sessionStorage.getItem('ma-claude-q'); if (q) { sessionStorage.removeItem('ma-claude-q'); $('#cf').prompt.value = q; setTimeout(() => $('#cf').requestSubmit(), 150); } } catch (er) { /* ohne Speicher */ }
   $('#cattach').onclick = () => $('#cfile').click();
   $('#cfile').onchange = e => { attachAdd(e.target.files); e.target.value = ''; };
+  $('#cpicb').onclick = () => $('#cpic').click();                   // eigener Bilder-Knopf: Galerie mit Mehrfachauswahl statt allgemeiner Dateiauswahl
+  $('#cpic').onchange = e => { attachAdd(e.target.files); e.target.value = ''; };
   const cw = document.querySelector('.cwrap');
   cw.addEventListener('dragover', e => { if ([...(e.dataTransfer || {}).types || []].includes('Files')) e.preventDefault(); });
   cw.addEventListener('drop', e => { const fs = [...(e.dataTransfer || {}).files || []]; if (fs.length) { e.preventDefault(); attachAdd(fs); } });
@@ -1584,7 +1607,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-12-20';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-12-22';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {
