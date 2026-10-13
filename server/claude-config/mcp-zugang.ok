@@ -1,0 +1,2 @@
+Freigabe von Philipp (2026-10-12): Verbindungen (MCP) duerfen mit Zugangsdaten vom PC direkt per ssh auf den Server uebertragen werden (nur Windows-Programme nicht).
+Die Zugangsdaten gehen nie in Git, Vault, Log oder Chat. Datei loeschen = Freigabe widerrufen.
