@@ -26,6 +26,8 @@ FILES = [
     ('ask.py', 'scripts/ext-ai/ask.py', '/home/andrew/MA-Server/scripts/ext-ai/ask.py'),
     ('Morgenbrief-Skript (Cron)', 'scripts/server-sync/morgenbrief.py', '/home/andrew/MA-Server/scripts/server-sync/morgenbrief.py'),
     ('Graph-Export (Cron)', 'scripts/server-sync/vault-graph-export.py', '/home/andrew/MA-Server/scripts/server-sync/vault-graph-export.py'),
+    ('Vault-Abfrage (vault-q)', 'scripts/vault-q.py', '/home/andrew/MA-Server/scripts/vault-q.py'),
+    ('Such-Goldstandard (vault-q-gold)', 'scripts/vault-q-gold.py', '/home/andrew/MA-Server/scripts/vault-q-gold.py'),
     ('Server-settings.json', 'server/claude-config/settings.json', '/home/andrew/.claude/settings.json'),
     ('Hook ma-guard', 'server/claude-config/hooks/ma-guard.py', '/home/andrew/.claude/hooks/ma-guard.py'),
     ('Hook council-auto', 'server/claude-config/hooks/council-auto.py', '/home/andrew/.claude/hooks/council-auto.py'),

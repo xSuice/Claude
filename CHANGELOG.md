@@ -305,3 +305,27 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - `paritaet-check.py`: liest `DEPLOYED-REV` (Zeile `R`) und meldet im Bericht unter "Git" den Dreier-Stand PC-HEAD / GitHub (`git ls-remote origin main`) / Server samt Abstand in Commits.
 - Geprueft: nur Syntax (py_compile). Nicht geprueft: Lauf am PC mit echtem SSH und GitHub-Remote. Der Server ist kein Git-Repo; die Aenderung wird per `ClaudeAbgleich` zum PC geholt.
 - Neu, noch nicht gelaufen: `scripts/ma-authelia-diag.sh` (rein lesende Authelia-Diagnose fuer den geplanten QR-/Passkey-Login; Start mit sudo durch Philipp). In `FILES` von `paritaet-check.py` bewusst nicht eingetragen (nur Einmal-Diagnose).
+
+## 2026-10-13 – vault-q: verbesserte Suche (Server-Kopie)
+
+- `scripts/vault-q.py` ersetzt durch den Stand von `vault-q-test.py`: Stoppwörter (de/en, auch Verbformen wie "hatten"), Suche erst mit UND, dann aufgefüllt mit ODER, Gewichtung nach Bereich (Archiv 0,35; Import und `_Claude-Memory/Archiv` 0,5; Romanordner `Projekt Schmejd`, `Crimson Zone` und `30 Technik/Arduino` 0,4; `_Claude-Memory` und `30 Technik` 1,3), Treffer mit gleichem Dateinamen und Titel nur einmal, Datum als zusätzliche Spalte in der Ausgabe.
+- Geprüft: 4 echte Fragen aus dem Chat-Archiv gegen alte und neue Suche (3 von 4 klar besser, 1 mit Restrauschen); danach `vault-q.py search` einmal gelaufen, Datei identisch mit `vault-q-test.py`. Nicht geprüft: Goldstandard mit 20 Fragen, Treffer@5, Skripte, die die Ausgabe zeilenweise auswerten (neue Spalte Datum).
+- Parität: PC-Kopie noch nicht angepasst, geht über `ClaudeAbgleich`.
+- Rückweg: alte Version in `/srv/ma-home/library/vault-snapshots/wissen-vor-umbau-20261013-0921/` (altes `vault-q.py`).
+
+## 2026-10-13 – vault-q: Anfrageprotokoll und `report` (Server-Kopie)
+
+- `scripts/vault-q.py`: neue Tabelle `qlog` (Zeit, Frage, Zone, Trefferzahl, erste fünf Treffer, Dauer) in der Index-Datei `/srv/ma-home/library/.jarvis/vault-index.db`; `search` schreibt jede Anfrage dorthin (`log_query`, Fehler beim Schreiben stören die Suche nicht, aus mit `MA_VQ_NOLOG=1`). Neuer Befehl `vault-q report [-n 15]`: Anfragen ohne oder mit einem Treffer, häufige Wörter als Stoppwort-Kandidaten. Nur Vorschläge, Stoppwörter und Gewichte ändert weiter nur ein Mensch im Code.
+- Datenklasse B: Fragen bleiben lokal in der Index-Datei auf dem Server.
+- Geprüft: `py_compile`, ein Suchlauf und `report` gegen eine Kopie der Datenbank (`/tmp/vq-test.db`, 1 Anfrage erfasst); danach `vault-q.py report` gegen die Live-Datei. Nicht geprüft: längerer Betrieb, parallele Zugriffe, Verhalten nach `ClaudeAbgleich` am PC.
+- Parität: PC-Kopie noch nicht angepasst, geht über `ClaudeAbgleich`.
+- Rückweg: `vault-q.py` aus der Sicherung `/srv/ma-home/library/vault-snapshots/wissen-vor-umbau-20261013-0921/` zurückkopieren; die Tabelle `qlog` kann bleiben oder mit `DROP TABLE qlog` entfernt werden.
+
+## 2026-10-13 – vault-q: Filter --art und --status (Server-Kopie, live)
+- `vault-q search ... --art fakt|entscheidung|aufgabe|annahme --status gueltig|veraltet|offen|erledigt`. Liest `art` und `status` aus dem Frontmatter (nur Vault), Spalten in `notes`; beim ersten Lauf wird der Index einmal komplett neu eingelesen.
+- Geprüft auf Indexkopie und live: `search "Physik" --status aktiv` findet genau die Fachnotiz. Bisher setzt nur `status` in Altnotizen (Freitext: aktiv, aktuell, im aufbau ...), `art` ist noch in keiner Notiz gesetzt.
+- Sicherung der alten Fassung: `vault-snapshots/wissen-vor-umbau-20261013-0921/vault-q.py.vor-filter`. PC-Kopie und `paritaet-check.py` noch offen (kommt über ClaudeAbgleich).
+
+## 2026-10-13 – vault-q-gold.py: Goldstandard der Suche (Server-Kopie)
+- Neues Skript `scripts/vault-q-gold.py`: 20 Fragen, Treffer@5 und MRR, alt (Sicherung) gegen neu (Live-Index). Ergebnis: alt 4/20 (MRR 0,20), neu 18/20 (MRR 0,67). Auswertung und Schwächen: Vault-Notiz `30 Technik/MA-Server/Goldstandard-Suche.md`.
+- Neu in `FILES` von `paritaet-check.py` eintragen, PC-Kopie folgt über ClaudeAbgleich.

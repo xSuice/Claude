@@ -12,6 +12,7 @@ Der Index entsteht und aktualisiert sich selbst (nur geaenderte Dateien); der Va
   vault-q recent [-n 10]                       zuletzt geaenderte Notizen
   vault-q export-neo4j [Ordner]                CSV + Cypher-Skript fuer Neo4j (Graph aus Notizen, Links, Tags)
   vault-q stats                                Groesse und Zustand des Index
+  vault-q report [-n 15]                       Auswertung des Anfrageprotokolls (Tabelle qlog in der Index-Datei): Anfragen ohne Treffer, haeufige Woerter. Nur Vorschlaege.
 "Notiz" = Dateiname ohne .md oder Pfad. Umgebung: MA_VAULT (Vault-Ordner), MA_VAULT_DB (Index-Datei)."""
 import argparse
 import os
@@ -49,13 +50,25 @@ def connect():
         CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(path UNINDEXED, title, body, tokenize='unicode61 remove_diacritics 2');
         CREATE TABLE IF NOT EXISTS links(src TEXT, name TEXT);
         CREATE TABLE IF NOT EXISTS tags(path TEXT, tag TEXT);
+        CREATE TABLE IF NOT EXISTS qlog(ts INTEGER, query TEXT, zone TEXT, hits INTEGER, top TEXT, ms INTEGER);
         CREATE INDEX IF NOT EXISTS links_name ON links(name);
         CREATE INDEX IF NOT EXISTS links_src ON links(src);
         CREATE INDEX IF NOT EXISTS tags_tag ON tags(tag);
     """)
     if 'zone' not in [r[1] for r in con.execute('PRAGMA table_info(notes)')]:      # aeltere Indexdatei erweitern
         con.execute("ALTER TABLE notes ADD COLUMN zone TEXT DEFAULT 'vault'")
+    if 'art' not in [r[1] for r in con.execute('PRAGMA table_info(notes)')]:       # Schema-Felder: alles einmal neu einlesen
+        con.execute("ALTER TABLE notes ADD COLUMN art TEXT DEFAULT ''")
+        con.execute("ALTER TABLE notes ADD COLUMN status TEXT DEFAULT ''")
+        con.execute('UPDATE notes SET mtime=0')
     return con
+
+
+def fm_field(text, key):
+    """Wert eines Frontmatter-Felds (kleingeschrieben) oder ''."""
+    fm = re.match(r'---\n(.*?)\n---\n', text, re.S)
+    m = re.search(r'^%s:\s*(.*)$' % key, fm.group(1), re.M) if fm else None
+    return m.group(1).strip(' "\'').lower() if m else ''
 
 
 def strip_code(t):
@@ -147,7 +160,8 @@ def refresh(con):
                 title, links, tags = parse(text)
             else:
                 title, links, tags = '', set(), set()
-            con.execute('INSERT INTO notes VALUES(?,?,?,?,?,?)', (p, title or name, m, s, int(zone == 'vault' and p.startswith(ARCHIV)), zone))
+            art, status = (fm_field(text, 'art'), fm_field(text, 'status')) if zone == 'vault' else ('', '')
+            con.execute('INSERT INTO notes VALUES(?,?,?,?,?,?,?,?)', (p, title or name, m, s, int(zone == 'vault' and p.startswith(ARCHIV)), zone, art, status))
             con.execute('INSERT INTO fts(path, title, body) VALUES(?,?,?)', (p, name + ' ' + title, text))
             if zone == 'vault':                         # Links und Tags nur aus dem Vault (Graph), nicht aus Projektdoku
                 con.executemany('INSERT INTO links VALUES(?,?)', [(p, l) for l in links])
@@ -167,7 +181,7 @@ def resolve(con, ref):
     return min(rows, key=len) if rows else None
 
 
-STOP = set("""der die das den dem des ein eine einer eines einem einen und oder aber nicht kein keine ich du er sie es wir ihr mein meine meinen meinem meiner dein mich mir dich dir uns was wie wo wann warum wer welche welcher welches wieso ist sind war waren bin bist hat habe haben hatte hast wird werden wurde kann koennen muss soll sollte zu zum zur im in an am auf aus bei mit nach von vor fuer für über ueber um unter zwischen durch gegen ohne als auch noch schon nur so da dann denn dass ob wenn mal bitte gibt geht alles etwas
+STOP = set("""der die das den dem des ein eine einer eines einem einen und oder aber nicht kein keine ich du er sie es wir ihr mein meine meinen meinem meiner dein mich mir dich dir uns was wie wo wann warum wer welche welcher welches wieso ist sind war waren bin bist hat habe haben hatte hast wird werden wurde kann koennen muss soll sollte zu zum zur im in an am auf aus bei mit nach von vor fuer für über ueber um unter zwischen durch gegen ohne als auch noch schon nur so da dann denn dass ob wenn mal bitte gibt geht alles etwas vom hatten haetten hätten hattet wollen wollte sollen sollten koennte könnte können brauche brauchst brauchen wofuer wofür wozu weshalb nochmal eigentlich gesagt gemacht machen mache meinen meiner ihm ihn ihnen
 the a an and or not of to in on for with is are was what how when where why who which my me i do does""".split())
 
 
@@ -183,14 +197,53 @@ def fts_query(q, mode='AND'):
 
 # Gewicht nach Bereich: Archiv und Chat-Importe nach hinten (bm25 ist negativ, kleinerer Betrag = schlechterer Rang)
 RANK = ("bm25(fts, 0, 6.0, 1.0) * CASE WHEN n.path LIKE '90 Archiv/%' THEN 0.35 WHEN n.path LIKE '_Claude-Memory/Import/%' THEN 0.5 "
-        "WHEN n.path LIKE '_Claude-Memory/%' OR n.path LIKE '30 Technik/%' OR n.path LIKE '20 Projekte/%' THEN 1.15 ELSE 1.0 END")
+        "WHEN n.path LIKE '20 Projekte/Projekt Schmejd/%' OR n.path LIKE '20 Projekte/Crimson Zone/%' OR n.path LIKE '30 Technik/Arduino/%' THEN 0.4 "
+        "WHEN n.path LIKE '_Claude-Memory/Archiv/%' THEN 0.5 "
+        "WHEN n.path LIKE '_Claude-Memory/%' OR n.path LIKE '30 Technik/%' THEN 1.3 ELSE 1.0 END")
+
+
+def log_query(con, a, zone, out, t0):
+    """Protokoll der Anfragen (Tabelle qlog, nur lokal in der Index-Datei, Klasse B). Aus mit MA_VQ_NOLOG=1; Fehler stoeren die Suche nie."""
+    if os.environ.get('MA_VQ_NOLOG'):
+        return
+    try:
+        con.execute('INSERT INTO qlog VALUES(?,?,?,?,?,?)', (int(time.time()), a.query[:300], zone, len(out), '\n'.join(l.split(' | ')[0] for l in out[:5]), int((time.time() - t0) * 1000)))
+        con.commit()
+    except sqlite3.Error:
+        pass
+
+
+def cmd_report(con, a):
+    """Auswertung des Anfrageprotokolls. Macht nur Vorschlaege; Stoppwoerter und Gewichte aendert nur ein Mensch im Code."""
+    n, = con.execute('SELECT COUNT(*) FROM qlog').fetchone()
+    if not n:
+        return print('Noch keine Anfragen protokolliert.')
+    first, = con.execute('SELECT MIN(ts) FROM qlog').fetchone()
+    zero, = con.execute('SELECT COUNT(*) FROM qlog WHERE hits=0').fetchone()
+    avg, = con.execute('SELECT AVG(ms) FROM qlog').fetchone()
+    print('Anfragen: %d seit %s | ohne Treffer: %d | mittlere Dauer: %d ms' % (n, time.strftime('%Y-%m-%d', time.localtime(first)), zero, avg))
+    print('\nOhne oder mit nur einem Treffer (zuletzt):')
+    for q, h in con.execute('SELECT query, hits FROM qlog WHERE hits<=1 ORDER BY ts DESC LIMIT ?', (a.n,)):
+        print('  %d | %s' % (h, q))
+    words = {}
+    for (q,) in con.execute('SELECT query FROM qlog'):
+        for w in {w.lower() for w in re.findall(r'[\w-]{2,}', q, re.U)} - STOP:
+            words[w] = words.get(w, 0) + 1
+    print('\nHaeufige Woerter in Anfragen (Kandidaten fuer Stoppwoerter, wenn sie nichts Inhaltliches sind):')
+    print('  ' + ', '.join('%s (%d)' % kv for kv in sorted(words.items(), key=lambda kv: -kv[1])[:a.n * 2]))
 
 
 def cmd_search(con, a):
+    t0 = time.time()
     if not fts_query(a.query):
         return print('Keine Suchbegriffe.')
     zone = 'alle' if a.alles else a.zone
     where = ('' if a.archiv else 'AND n.archiv=0 ') + ('' if zone == 'alle' else "AND n.zone='%s' " % zone.replace("'", ''))
+    params = []
+    for col, val in (('art', a.art), ('status', a.status)):
+        if val:
+            where += 'AND n.%s=? ' % col
+            params.append(val.lower())
     sql = ("SELECT f.path, n.title, n.mtime, snippet(fts, 2, '[', ']', ' ... ', 14) FROM fts f JOIN notes n ON n.path=f.path "
            "WHERE fts MATCH ? " + where + "ORDER BY " + RANK + " LIMIT ?")
     rows, seen, out = [], set(), []
@@ -198,16 +251,17 @@ def cmd_search(con, a):
         if len(rows) >= a.n:
             break
         q = fts_query(a.query, mode)
-        rows += [r for r in con.execute(sql, (q, a.n * 3)).fetchall() if r[0] not in {x[0] for x in rows}]
+        rows += [r for r in con.execute(sql, (q, *params, a.n * 3)).fetchall() if r[0] not in {x[0] for x in rows}]
     for p, t, m, snip in rows:
-        sig = (t.lower(), ' '.join(snip.split())[:80])
-        if sig in seen:                              # inhaltsgleiche Kopien (z. B. Archiv-Duplikate) nur einmal
+        sig = (os.path.basename(p).lower(), t.lower())
+        if sig in seen:                              # gleicher Dateiname und Titel (z. B. Archiv-Kopien) nur einmal
             continue
         seen.add(sig)
         out.append('%s | %s | %s | %s' % (p, t[:60], time.strftime('%Y-%m-%d', time.localtime(m / 1e6)), ' '.join(snip.split())[:170]))
         if len(out) >= a.n:
             break
     print('\n'.join(out) if out else 'Nichts gefunden' + ('' if a.archiv else ' (Roharchiv: --archiv).') + (' Nur Vault; --alles fuer Projekt und Bibliothek.' if zone == 'vault' else ''))
+    log_query(con, a, zone, out, t0)
 
 
 def cmd_links(con, a):
@@ -331,7 +385,8 @@ def main():
     ap = argparse.ArgumentParser(prog='vault-q', description=__doc__.split('\n')[0])
     sp = ap.add_subparsers(dest='cmd', required=True)
     s = sp.add_parser('search'); s.add_argument('query'); s.add_argument('-n', type=int, default=8); s.add_argument('--archiv', action='store_true')
-    s.add_argument('--zone', choices=['vault', 'projekt', 'bib', 'alle'], default='vault'); s.add_argument('--alles', action='store_true', help='Vault, Projekt und Bibliothek'); s.set_defaults(f=cmd_search)
+    s.add_argument('--zone', choices=['vault', 'projekt', 'bib', 'alle'], default='vault'); s.add_argument('--alles', action='store_true', help='Vault, Projekt und Bibliothek')
+    s.add_argument('--art', help='Frontmatter art: fakt|entscheidung|aufgabe|annahme'); s.add_argument('--status', help='Frontmatter status, z. B. gueltig|veraltet|offen|erledigt'); s.set_defaults(f=cmd_search)
     s = sp.add_parser('links'); s.add_argument('note'); s.set_defaults(f=cmd_links)
     s = sp.add_parser('near'); s.add_argument('note'); s.add_argument('-d', type=int, default=2); s.set_defaults(f=cmd_near)
     s = sp.add_parser('tags'); s.add_argument('tag', nargs='?'); s.set_defaults(f=cmd_tags)
@@ -339,6 +394,7 @@ def main():
     s = sp.add_parser('recent'); s.add_argument('-n', type=int, default=10); s.set_defaults(f=cmd_recent)
     s = sp.add_parser('export-neo4j'); s.add_argument('dir', nargs='?', default='neo4j-export'); s.set_defaults(f=cmd_neo4j)
     s = sp.add_parser('stats'); s.set_defaults(f=cmd_stats)
+    s = sp.add_parser('report'); s.add_argument('-n', type=int, default=15); s.set_defaults(f=cmd_report)
     a = ap.parse_args()
     con = connect()
     refresh(con)
