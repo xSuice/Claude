@@ -1315,12 +1315,21 @@ function vdraw() {
 }
 
 /* ---------- Terminal (nur Admin): Befehl ausführen, Ausgabe streamen. Kein interaktives Terminal (keine Eingabe während des Laufs). ---------- */
-const termState = { out: '', hist: [], hi: 0, busy: false, ctl: null };
+const termState = { out: '', hist: [], hi: 0, busy: false, ctl: null, dir: 'auto' };
+const TERM_DIRS = { server: 'Server-Home', maserver: 'MA-Server', bibliothek: 'Bibliothek', notizen: 'Notizen' };
+// Ordner automatisch wählen: nach Pfaden und Werkzeugen im Befehl (Notizen/Vault, Bibliothek, Projekt), sonst Server-Home
+function termAutoDir(cmd) {
+  if (/vault-notizen|vault-q|\bvault\b|\.md\b|obsidian|notiz/i.test(cmd)) return 'notizen';
+  if (/\/srv\/ma-home|\blibrary\b|\binbox\b|\bmedia\b|bibliothek|\.(mp3|flac|pdf|docx?|xlsx?|pptx?|jpe?g|png)\b/i.test(cmd)) return 'bibliothek';
+  if (/MA-Server|\bgit\b|\b(tests?|scripts?|portal-ui|server|docs|app)\//i.test(cmd) || /\b(CHANGELOG|BACKLOG|CLAUDE)\.md\b|portal_smoke|pytest|\bnpm\b|\bnode\b|\bmake\b|\.py\b|\.js\b|\.sh\b/i.test(cmd)) return 'maserver';
+  return 'server';
+}
 async function term() {
   view.innerHTML = head('Terminal', 'Befehle als Benutzer andrew auf dem Server (ohne sudo, höchstens 120 s)', '<button class="btn ghost small" id="tclr">Leeren</button>') +
-    '<div class="cwrap"><pre class="tout" id="tout"></pre><form class="cform" id="tf"><div class="copts"><label>Ordner<select name="dir"><option value="server">Server-Home</option><option value="maserver">MA-Server (Projekt)</option><option value="bibliothek">Bibliothek</option><option value="notizen">Notizen</option></select></label></div>' +
+    '<div class="cwrap"><pre class="tout" id="tout"></pre><form class="cform" id="tf"><div class="copts"><label>Ordner<select name="dir"><option value="auto">Automatisch</option><option value="server">Server-Home</option><option value="maserver">MA-Server (Projekt)</option><option value="bibliothek">Bibliothek</option><option value="notizen">Notizen</option></select></label></div>' +
     '<div class="cin"><input name="cmd" class="tcmd" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Befehl, z. B. df -h"><button class="btn" id="trun">Ausführen</button><button class="btn ghost" type="button" id="tstop" hidden>Stopp</button></div></form></div>';
   const out = $('#tout'), f = $('#tf');
+  f.dir.value = termState.dir; f.dir.onchange = () => { termState.dir = f.dir.value; };
   const show = () => { out.textContent = termState.out; out.scrollTop = out.scrollHeight; };
   const add = t => { termState.out = (termState.out + t).slice(-200000); show(); };
   show();
@@ -1339,10 +1348,11 @@ async function term() {
     termState.ask = '';
     termState.hist.push(cmd); termState.hist = termState.hist.slice(-50); termState.hi = termState.hist.length;
     f.cmd.value = ''; termState.busy = true; $('#trun').disabled = true; $('#tstop').hidden = false;
-    add('$ ' + cmd + '\n');
+    const dir = f.dir.value === 'auto' ? termAutoDir(cmd) : f.dir.value;
+    add((f.dir.value === 'auto' ? '[Ordner: ' + TERM_DIRS[dir] + ']\n' : '') + '$ ' + cmd + '\n');
     termState.ctl = new AbortController();
     try {
-      const r = await fetch('/api/term', { method: 'POST', credentials: 'same-origin', signal: termState.ctl.signal, headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ cmd, dir: f.dir.value }) });
+      const r = await fetch('/api/term', { method: 'POST', credentials: 'same-origin', signal: termState.ctl.signal, headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ cmd, dir }) });
       if (!r.ok) throw new Error(r.status === 403 ? 'Nur für Administratoren.' : 'Fehler ' + r.status);
       const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
       for (;;) {
@@ -1548,7 +1558,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-12-17';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-12-18';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

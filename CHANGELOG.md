@@ -250,3 +250,8 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Navidrome (`server/musik/install.sh`, Docker) bleibt die Erweiterung fuer Handy-Apps (Subsonic: Symfonium, Substreamer) mit Cover, Kuenstlern und Alben; das braucht Sudo und einen Caddy-Eintrag (`caddy-beispiel.txt`). Der Portal-Player braucht beides nicht.
 - `SUDO-ALLES.sh` im Projektstamm: ein Aufruf fuer alle Sudo-Schritte (Terminal-Reparatur, alles installieren, Statusbericht).
 - Test: `portal_smoke.py` 68/68 (Chromium, Platzhalter-API, echte WAV-Wiedergabe: Start, Weiter, Reiterwechsel, Unterordner). Nicht geprueft: Wiedergabe am echten Handy (iPhone/Android), grosse Bibliotheken (Suche laedt bis 3000 Titel einmalig), Sperrbildschirm-Tasten, `/api/audio` im echten Portal (erst nach Einspielung).
+
+## 2026-10-13 – Terminal wählt den Ordner automatisch (Server-Kopie)
+
+- Portal (2026-10-12-18): Im Reiter Terminal ist "Automatisch" jetzt die Standardwahl beim Ordner. `termAutoDir` waehlt nach dem Befehl: Notizen (vault, vault-q, .md, notiz), Bibliothek (/srv/ma-home, library, inbox, media, Mediendateien), MA-Server (git, tests/, scripts/, .py, .sh, .js, CHANGELOG, npm, node), sonst Server-Home. Der gewaehlte Ordner steht vor dem Befehl in der Ausgabe. Eine manuelle Wahl bleibt bestehen (auch beim Reiterwechsel). Die Terminal-Bruecke bleibt unveraendert (bekommt weiter den Ordnernamen).
+- Test: `portal_smoke.py` 73/73 (Standard, drei Zuordnungen, manuelle Wahl). Nicht geprueft: Zuordnung bei ungewoehnlichen Befehlen; die Heuristik ist einfach gehalten.
