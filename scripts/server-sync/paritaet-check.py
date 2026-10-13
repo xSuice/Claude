@@ -27,7 +27,6 @@ FILES = [
     ('Morgenbrief-Skript (Cron)', 'scripts/server-sync/morgenbrief.py', '/home/andrew/MA-Server/scripts/server-sync/morgenbrief.py'),
     ('Graph-Export (Cron)', 'scripts/server-sync/vault-graph-export.py', '/home/andrew/MA-Server/scripts/server-sync/vault-graph-export.py'),
     ('Vault-Abfrage (vault-q)', 'scripts/vault-q.py', '/home/andrew/MA-Server/scripts/vault-q.py'),
-    ('Vault-Index PostgreSQL (vault-pg)', 'scripts/vault-pg.py', '/home/andrew/MA-Server/scripts/vault-pg.py'),
     ('Such-Goldstandard (vault-q-gold)', 'scripts/vault-q-gold.py', '/home/andrew/MA-Server/scripts/vault-q-gold.py'),
     ('Vault-Index PostgreSQL (vault-pg)', 'scripts/vault-pg.py', '/home/andrew/MA-Server/scripts/vault-pg.py'),
     ('Server-settings.json', 'server/claude-config/settings.json', '/home/andrew/.claude/settings.json'),
