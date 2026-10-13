@@ -30,6 +30,11 @@ ACCESS_CASES = [  # (Prompt, erwarteter Modus, erwarteter Ordner, Bestaetigung)
     ("Starte den Docker-Dienst neu", "voll", "server", True),
     ("Ändere das Skript im Repo", "voll", "maserver", True),
     ("Zeig mir den Portal-Code", "lesen", "maserver", False),
+    ("Im Terminal soll der Ordner automatisch gewählt werden", "voll", "maserver", True),
+    ("Mach weiter mit dem Musik Player", "voll", "maserver", True),
+    ("Teste den Reiter Neu und ergänze den CHANGELOG", "voll", "maserver", True),
+    ("Was macht der Musik Player?", "lesen", "maserver", False),
+    ("Wie viel Platz ist auf der Platte?", "lesen", "notizen", False),
 ]
 
 

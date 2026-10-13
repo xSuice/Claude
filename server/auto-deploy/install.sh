@@ -50,9 +50,10 @@ Unit=ma-job-notify.service
 [Install]
 WantedBy=multi-user.target
 UNIT
-# Die Bruecke laeuft mit ProtectSystem=strict und darf nur in diesen Ordner zusaetzlich schreiben:
+# Die Bruecke laeuft mit ProtectSystem=strict und darf nur in diesen Ordner zusaetzlich schreiben (die Datei "request" fuer deploy-anfordern.sh
+# und die Meldungen in notify/; der Ordner ist sticky und root-eigen, andrew kann dort root-eigene Dateien wie status.txt nicht ersetzen):
 install -d /etc/systemd/system/ma-claude-bridge.service.d
-printf '[Service]\nReadWritePaths=-/srv/ma-home/deploy/notify\n' > /etc/systemd/system/ma-claude-bridge.service.d/notify.conf
+printf '[Service]\nReadWritePaths=-/srv/ma-home/deploy\n' > /etc/systemd/system/ma-claude-bridge.service.d/notify.conf
 systemctl daemon-reload
 systemctl enable --now ma-job-notify.path
 systemctl enable --now ma-deploy.path

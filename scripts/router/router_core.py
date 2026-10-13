@@ -86,7 +86,14 @@ def choose(prompt, manual=None, mode=None, has_images=False):
 
 # ---- Rechte und Ordner (Auto) -------------------------------------------------------------
 _SERVER_WORDS = [r'\bserver\b', r'\bdocker\b', r'\bsystemd\b', r'\bdienst', r'\bcaddy\b', r'\bnetzwerk', r'\bpfad\b', r'\bprozess']
-_MASERVER_WORDS = [r'\bskript', r'\bscript', r'\bportal\b', r'\bbrücke\b', r'\bbruecke\b', r'\brepo\b', r'\bcode\b', r'\bapp\b']
+_MASERVER_WORDS = [r'\bskript', r'\bscript', r'\bportal\b', r'\bbrücke\b', r'\bbruecke\b', r'\brepo\b', r'\bcode\b', r'\bapp\b',
+                   r'\breiter\b', r'\btab\b', r'\boberfläche\b', r'\boberflaeche\b', r'\bterminal\b', r'\bplayer\b', r'\bmusik\b', r'\bstatusbericht',
+                   r'\bchangelog\b', r'\bbacklog\b', r'\btests?\b', r'\bapi\b', r'\bversion\b', r'\bautomatisier', r'\babgleich', r'\bkonnektor',
+                   r'\bmcp\b', r'\bgithub\b', r'\bcron\b', r'\bfunktion\b', r'\bfeature\b', r'\bapp\.js\b', r'\.py\b', r'\.sh\b']
+# Umsetzen am Projekt (zusaetzlich zu WRITE): wer so etwas schreibt, will dass Claude Dateien aendert und testet
+_BUILD_WORDS = [r'\bbau(?:e|en)?\b', r'\bergänz', r'\berweiter', r'\bumsetz', r'\bsetze .* um\b', r'\baktualisier', r'\bverbesser', r'\bkorrigier',
+                r'\bentwickl', r'\bprogrammier', r'\bmach(?:e)? (?:das|es|alles|weiter)\b', r'\bweiter\b', r'\btest(?:e|en)\b', r'\bpatch',
+                r'\beinspiel', r'\bhinzufüg', r'\bregulier', r'\bautomatisch']
 _LIB_WORDS = [r'\bdatei(?:en)?\b', r'\bbibliothek\b', r'\bpdf\b', r'\bpowerpoint\b', r'\bpptx\b', r'\bdocx\b', r'\bexcel\b', r'\bxlsx\b']
 _NOTE_WRITE = [r'\bals notiz\b', r'\bnotier', r'\bübergabe', r'\buebergabe', r'\bspeichere\b', r'\bergänze\b', r'\bschreib.* (?:in|nach) ']
 _CMD_WORDS = WRITE + [r'\bstarte\b', r'\bneu starten\b', r'\binstalliere\b', r'\bführe .* aus\b', r'\bausführen\b', r'\blösch']
@@ -104,7 +111,7 @@ def suggest_access(prompt):
         folder = 'bibliothek'
     else:
         folder = 'notizen'
-    if _any(p, _CMD_WORDS) and folder != 'notizen':
+    if (_any(p, _CMD_WORDS) or (folder == 'maserver' and _any(p, _BUILD_WORDS))) and folder != 'notizen':
         return 'voll', folder, True
     if _any(p, _NOTE_WRITE) and folder == 'notizen':
         return 'notizen', folder, False

@@ -71,7 +71,10 @@ if [ $WEBCHANGED = 1 ]; then
   for f in $WEBFILES; do install -m 640 -o root -g ma-web "$T/$f" "$WEB/$f"; done
   ( cd "$WEB" && for f in index.html app.js style.css sw.js manifest.webmanifest; do echo "$(tr -d '\r' < "$f" | sha256sum | cut -d' ' -f1)  $f"; done ) > /opt/ma-home/DEPLOYED-UI.sha256
   chmod 644 /opt/ma-home/DEPLOYED-UI.sha256
-  if curl -sf -o /dev/null http://127.0.0.1:18765/healthz && [ "$(curl -s http://127.0.0.1:18765/assets/sw.js | grep -o "VERSION = '[^']*'" | head -1)" = "$(ver "$T/sw.js")" ]; then
+  # Pruefung: Portal lebt (healthz 200), liefert die Oberflaeche (200, oder 401/403 wegen fehlender Anmeldung; NICHT 5xx/000) und die eingespielte
+  # Datei hat die erwartete Version. Frueher wurde die Version ueber HTTP gelesen; /assets/sw.js verlangt aber eine Anmeldung (401), das fuehrte zum Rueckfall.
+  ASSET_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18765/assets/sw.js)
+  if curl -sf -o /dev/null http://127.0.0.1:18765/healthz && case "$ASSET_CODE" in 200|401|403) true ;; *) false ;; esac && [ "$(ver "$WEB/sw.js")" = "$(ver "$T/sw.js")" ]; then
     MSG="${TESTED}Oberflaeche eingespielt ($(ver "$T/sw.js")). "
   else
     rm -rf "$WEB"; cp -a "$B" "$WEB"; fail "Portal antwortet nach dem Einspielen nicht richtig; Oberflaeche zurueckgesetzt (Sicherung $B)"

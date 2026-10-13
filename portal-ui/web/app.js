@@ -402,10 +402,26 @@ async function attachAdd(files) {
     uploading--; imgChips();
   }
 }
-async function claudeSend(prompt, opts) {
+// Rechte-Eskalation (vollautomatisch): Hat Auto die Rechte gewählt und der Lauf meldet verweigerte Werkzeuge (permission_denials), setzt das Portal die
+// Aufgabe mit der nächsthöheren Stufe fort: Nur lesen → Notizen → Voll; der Ordner folgt dem verweigerten Pfad. Nie Senden/Löschen, höchstens zweimal.
+const ESC_DIRS = [['/srv/ma-home/library/vault-notizen', 'notizen'], ['/srv/ma-home/library', 'bibliothek'], ['/home/andrew/MA-Server', 'maserver'], ['/home/andrew', 'server']];
+function escNext(mode, dir, denials) {
+  const ladder = ['lesen', 'notizen', 'voll'];
+  const paths = denials.map(x => String((x.tool_input || {}).file_path || (x.tool_input || {}).path || '')).filter(Boolean);
+  const hit = paths.map(p => (ESC_DIRS.find(([pre]) => p === pre || p.startsWith(pre + '/')) || [])[1]).find(Boolean);
+  const wantDir = hit || dir;
+  let nm = ladder[Math.min(Math.max(ladder.indexOf(mode === 'plan' ? 'lesen' : mode), 0) + 1, 2)];
+  if (denials.some(x => x.tool_name === 'Bash')) nm = 'voll';
+  if (nm === mode && wantDir === dir) return null;
+  return { mode: nm, dir: wantDir };
+}
+async function claudeSend(prompt, opts0) {
   const S = claudeState;
   if (S.busy || !prompt) return;
-  S.busy = true; S.idx = 0; S.jobId = null; S.opts = { model: opts.model }; S.act = 'Anfrage wird gesendet …'; S.reconn = false; S.fail = 0;
+  const { esc: escOk, isEsc, ...opts } = opts0;                     // nur im Portal gebraucht, nicht an den Server schicken
+  if (!isEsc) S.esc = 0;
+  S.escOk = !!escOk;
+  S.busy = true; S.idx = 0; S.jobId = null; S.opts = { model: opts.model }; S.act = 'Anfrage wird gesendet …'; S.reconn = false; S.fail = 0; S.denied = null;
   const files = pendingFiles; pendingFiles = []; imgChips();
   S.last = { p: prompt, opts: { ...opts, mode: opts.mode === 'voll_senden' ? 'voll' : opts.mode } };   // „Neu erzeugen“ sendet nie erneut mit Senden/Löschen
   S.msgs.push({ r: 'u', p: prompt, t: files.map(x => (isPic(x.name) ? '🖼 ' : '📄 ') + x.name + '\n').join('') + prompt }, { r: 'a', t: '', live: true });
@@ -464,6 +480,7 @@ async function claudePump(body) {
           const a = asst();
           if (a && d.usage) a.u = { m: S.model || '', i: (d.usage.input_tokens || 0) + (d.usage.cache_read_input_tokens || 0) + (d.usage.cache_creation_input_tokens || 0), o: d.usage.output_tokens || 0, c: d.total_cost_usd || 0, s: Math.round((d.duration_ms || 0) / 1000) };     // Verbrauch dieser Antwort
           if (d.usage) { S.tok = S.tok || { in: 0, out: 0, ctx: 0, cost: 0 }; S.tok.in += (d.usage.input_tokens || 0) + (d.usage.cache_read_input_tokens || 0) + (d.usage.cache_creation_input_tokens || 0); S.tok.out += d.usage.output_tokens || 0; S.tok.cost += d.total_cost_usd || 0; }
+          if (Array.isArray(d.permission_denials) && d.permission_denials.length) S.denied = d.permission_denials;
           if (d.is_error) {
             S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Das geht nur einmal und nur mit deinem Konto. Auf deinem PC in PowerShell eingeben: ssh -t ma-server "~/.local/bin/claude". Danach funktioniert dieser Chat dauerhaft.' : String(d.result) });
           } else if (a && !a.t && d.result) a.t = d.result;
@@ -497,6 +514,18 @@ async function claudePump(body) {
   S.msgs = S.msgs.filter(m => !(m.r === 'a' && !m.t));
   S.busy = false; S.jobId = null; S.idx = 0; claudeSave(); claudeRender(); jobsRefresh();
   const b = $('#csend'); if (b) b.disabled = false;
+  if (ended && S.escOk && S.denied && S.last && (S.esc || 0) < 2) {     // Rechte reichten nicht: automatisch eine Stufe höher und weitermachen
+    const nx = escNext(S.last.opts.mode, S.last.opts.dir, S.denied);
+    if (nx) {
+      S.esc = (S.esc || 0) + 1;
+      const tools = [...new Set(S.denied.map(x => x.tool_name))].join(', ');
+      const text = 'Die Rechte wurden automatisch erhöht (' + S.last.opts.mode + ' · ' + S.last.opts.dir + ' → ' + nx.mode + ' · ' + nx.dir + ', verweigert: ' + tools + '). Mach die Aufgabe jetzt zu Ende; führe die vorher verweigerten Schritte aus.';
+      toast('Auto-Rechte erhöht: ' + nx.mode + ' · ' + nx.dir);
+      const model = S.last.opts.model;
+      setTimeout(() => claudeSend(text, { dir: nx.dir, mode: nx.mode, model, esc: true, isEsc: true }), 400);
+    }
+  }
+  S.denied = null;
   if (document.hidden) {                              // Seite im Hintergrund: Browser-Meldung (zusätzlich zur Handy-Meldung des Servers)
     try { if ('Notification' in window && Notification.permission === 'granted') new Notification('Claude ist fertig', { body: ((S.msgs.slice().reverse().find(m => m.r === 'a') || {}).t || '').slice(0, 100) }); } catch (er) { /* nicht unterstützt */ }
   }
@@ -712,20 +741,17 @@ function vollOk(mode) {
 // ohne Bestätigung gesendet: die Auswahl wird sichtbar gesetzt und erst der zweite Druck auf Senden schickt ab.
 async function resolveAccess(p, form) {
   let dir = String(form.dir.value), mode = String(form.mode.value);
-  if (dir !== 'auto' && mode !== 'auto') return { dir, mode, hold: false };
+  const modeAuto = mode === 'auto', anyAuto = modeAuto || dir === 'auto';
+  if (dir !== 'auto' && mode !== 'auto') return { dir, mode, hold: false, auto: false, esc: false };
   let s = { ok: false };
   try { s = await cop('suggest', { prompt: p }); } catch (er) { /* Brücke nicht erreichbar: sichere Voreinstellung */ }
   if (!s.ok) { s = { mode: 'lesen', dir: 'notizen', confirm: false }; }
   if (dir === 'auto') dir = s.dir;
   if (mode === 'auto') mode = (s.mode === 'voll' && s.dir !== dir) ? 'lesen' : s.mode;
   const names = { lesen: 'Nur lesen', plan: 'Plan-Modus', notizen: 'Notizen bearbeiten', voll: 'Voll' };
-  if (mode === 'voll' && !claudeState.vollOk) {
-    form.dir.value = dir; form.mode.value = 'voll';
-    claudeState.vollOk = true; toast('Auto schlägt „Voll“ im Ordner „' + dir + '“ vor. Prüfen und zum Bestätigen noch einmal Senden.', 0);
-    return { dir, mode, hold: true };
-  }
+  // Auto wählt "Voll" nur aus deinem eigenen Text (nie aus Mails/Webseiten) und nie mit Senden/Löschen; darum ohne zweiten Druck (Entscheidung Philipp 2026-10-13)
   toast('Auto: ' + (names[mode] || mode) + ' · ' + dir);
-  return { dir, mode, hold: false };
+  return { dir, mode, hold: false, auto: modeAuto, esc: anyAuto };
 }
 const SLASH_HELP = ['/hilfe  Befehle zeigen', '/neu  neuer Chat', '/notiz <Begriff>  was ich dazu notiert habe', '/verlaeufe  Verlaufsliste öffnen', '/abbrechen  laufende Aufträge stoppen',
   '/plan <Text>  nur planen, nichts verändern', '/council <Idee>  Idee aus fünf Rollen prüfen', '/modell auto|haiku|sonnet|opus',
@@ -811,11 +837,11 @@ async function claude() {
     if (/^\/[a-zäöü?]/i.test(p) && !p.includes('\n')) { if (await slashRun(p, form)) form.prompt.value = ''; return; }
     const a = await resolveAccess(p, form);
     if (a.hold) return;
-    if (!vollOk(a.mode)) return;
+    if (!a.auto && !vollOk(a.mode)) return;               // Auto-Rechte brauchen keine Bestätigung; manuell gewähltes "Voll" weiterhin einmal
     $('#csend').disabled = true; form.prompt.value = '';
     const why = councilAuto(p), auto = !!why;
     if (auto) toast('Council automatisch gestartet (Auslöser: „' + why + '“). Abschalten: „ohne Council“ schreiben.');
-    claudeSend(auto ? COUNCIL(p) : p, { dir: a.dir, mode: a.mode === 'voll_senden' && auto ? 'voll' : a.mode, model: form.model.value });
+    claudeSend(auto ? COUNCIL(p) : p, { dir: a.dir, mode: a.mode === 'voll_senden' && auto ? 'voll' : a.mode, model: form.model.value, esc: a.esc });
     if (a.mode === 'voll_senden') form.mode.value = 'voll';
   };
   try { const dr = sessionStorage.getItem('ma-claude-draft'); if (dr) { sessionStorage.removeItem('ma-claude-draft'); $('#cf').prompt.value = dr; } } catch (er) { /* ohne Speicher */ }
@@ -1325,7 +1351,7 @@ function termAutoDir(cmd) {
   return 'server';
 }
 async function term() {
-  view.innerHTML = head('Terminal', 'Befehle als Benutzer andrew auf dem Server (ohne sudo, höchstens 120 s)', '<button class="btn ghost small" id="tclr">Leeren</button>') +
+  view.innerHTML = head('Terminal', 'Befehle als Benutzer andrew auf dem Server (sudo nach Einrichtung, höchstens 120 s)', '<button class="btn ghost small" id="tclr">Leeren</button>') +
     '<div class="cwrap"><pre class="tout" id="tout"></pre><form class="cform" id="tf"><div class="copts"><label>Ordner<select name="dir"><option value="auto">Automatisch</option><option value="server">Server-Home</option><option value="maserver">MA-Server (Projekt)</option><option value="bibliothek">Bibliothek</option><option value="notizen">Notizen</option></select></label></div>' +
     '<div class="cin"><input name="cmd" class="tcmd" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Befehl, z. B. df -h"><button class="btn" id="trun">Ausführen</button><button class="btn ghost" type="button" id="tstop" hidden>Stopp</button></div></form></div>';
   const out = $('#tout'), f = $('#tf');
@@ -1343,7 +1369,7 @@ async function term() {
     e.preventDefault();
     const cmd = String(f.cmd.value).trim(); if (!cmd || termState.busy) return;
     // Riskante Befehle (Löschen, Formatieren, Neustart, Rechte rekursiv, Pipe in die Shell): erst beim zweiten Absenden desselben Befehls
-    const RISKY = /(^|[;&|]\s*)(sudo\s+)?(rm\s+(-\w*[rf]\w*|--recursive|--force)|dd\s|mkfs|shutdown|reboot|poweroff|chmod\s+-R|chown\s+-R|mv\s+\/)|\|\s*(sudo\s+)?(ba)?sh\b|>\s*\/dev\/(sd|nvme)|:\(\)\s*\{/;
+    const RISKY = /(^|[;&|]\s*)sudo\s|(^|[;&|]\s*)(sudo\s+)?(rm\s+(-\w*[rf]\w*|--recursive|--force)|dd\s|mkfs|shutdown|reboot|poweroff|chmod\s+-R|chown\s+-R|mv\s+\/)|\|\s*(sudo\s+)?(ba)?sh\b|>\s*\/dev\/(sd|nvme)|:\(\)\s*\{/;
     if (RISKY.test(cmd) && termState.ask !== cmd) { termState.ask = cmd; toast('Riskanter Befehl. Zum Bestätigen denselben Befehl noch einmal ausführen.', 1); return; }
     termState.ask = '';
     termState.hist.push(cmd); termState.hist = termState.hist.slice(-50); termState.hi = termState.hist.length;
@@ -1558,7 +1584,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-12-18';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-12-20';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

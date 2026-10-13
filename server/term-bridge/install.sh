@@ -6,7 +6,19 @@ set -Eeuo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Bitte mit sudo ausfuehren."; exit 1; }
 D="$(cd "$(dirname "$0")" && pwd)"
 install -m 755 -o root -g root "$D/ma-term-bridge.py" /usr/local/lib/ma-term-bridge.py
-cat > /etc/systemd/system/ma-term-bridge.service <<'UNIT'
+# Mit Sudo-Freigabe (sudo-erlauben.sh hat /etc/sudoers.d/ma-term-sudo angelegt) bekommt NUR dieser Dienst die Gruppe ma-sudo und darf neue Rechte erlangen;
+# ohne Freigabe bleibt er stark eingeschraenkt (kein sudo, schreibgeschuetztes System).
+if [ -f /etc/sudoers.d/ma-term-sudo ]; then
+  SEC='NoNewPrivileges=no
+SupplementaryGroups=ma-sudo
+ProtectSystem=no'
+else
+  SEC='NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/home/andrew /srv/ma-home/library
+CapabilityBoundingSet='
+fi
+cat > /etc/systemd/system/ma-term-bridge.service <<UNIT
 [Unit]
 Description=MA Home Terminal-Bruecke (Portal -> bash als andrew)
 After=network.target
@@ -17,12 +29,9 @@ RuntimeDirectory=ma-term
 RuntimeDirectoryMode=0750
 ExecStart=/usr/bin/python3 /usr/local/lib/ma-term-bridge.py
 Restart=on-failure
-NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=strict
-ReadWritePaths=/home/andrew /srv/ma-home/library
-CapabilityBoundingSet=
 Environment=HOME=/home/andrew
+$SEC
 [Install]
 WantedBy=multi-user.target
 UNIT

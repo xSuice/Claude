@@ -20,6 +20,16 @@ NDJSON = '\n'.join(json.dumps(x) for x in [
     {'type': 'stream_event', 'event': {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'Welt\n\n```\ndf -h\n```\n\n```html\n<b>Vorschau-Test</b>\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |'}}},
     {'type': 'result', 'result': 'Hallo Welt', 'usage': {'input_tokens': 1200, 'cache_read_input_tokens': 3000, 'output_tokens': 40}, 'total_cost_usd': 0.01, 'duration_ms': 8200},
     {'type': 'bridge_end', 'code': 0}]) + '\n'
+DENY = '\n'.join(json.dumps(x) for x in [
+    {'type': 'bridge_model', 'model': 'haiku'}, {'type': 'bridge_job', 'id': 'job123'},
+    {'type': 'stream_event', 'event': {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'Ich darf hier nicht schreiben.'}}},
+    {'type': 'result', 'result': 'Ich darf hier nicht schreiben.', 'permission_denials': [{'tool_name': 'Write', 'tool_input': {'file_path': '/home/andrew/MA-Server/CHANGELOG.md'}}]},
+    {'type': 'bridge_end', 'code': 0}]) + '\n'
+OKESK = '\n'.join(json.dumps(x) for x in [
+    {'type': 'bridge_model', 'model': 'haiku'}, {'type': 'bridge_job', 'id': 'job123'},
+    {'type': 'stream_event', 'event': {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'Erledigt-ESK'}}},
+    {'type': 'result', 'result': 'Erledigt-ESK'}, {'type': 'bridge_end', 'code': 0}]) + '\n'
+ESC = {'on': False}
 TERM = '\n'.join(json.dumps(x) for x in [{'type': 'out', 't': 'hallo-terminal\n'}, {'type': 'end', 'code': 0}]) + '\n'
 # Verbindungsabbruch: erste Antwort endet ohne bridge_end, danach muss sich das Portal per attach ab Position 3 wieder anhaengen
 PART = '\n'.join(json.dumps(x) for x in [
@@ -48,6 +58,9 @@ def api(route, request):
         return j({'items': []})
     if path.startswith('/api/claude/op'):
         op = json.loads(body or '{}').get('op')
+        if op == 'suggest':
+            vollt = 'Terminal' in str(json.loads(body).get('prompt')) and 'ESKALATION' not in str(json.loads(body).get('prompt'))
+            return j({'ok': True, 'mode': 'voll' if vollt else 'lesen', 'dir': 'maserver' if vollt else 'notizen', 'confirm': vollt})
         if op == 'sched_set':
             SCHED_SET.append(json.loads(json.loads(body)['data']))
             return j({'ok': True, 'tasks': [dict(SCHED_SET[-1], id='abcd1234', enabled=True, last='')]})
@@ -85,6 +98,13 @@ def api(route, request):
         CALLS.append(req)
         if req.get('attach'):
             return route.fulfill(status=200, content_type='application/x-ndjson', body=REST)
+        if 'ESKALATION' in str(req.get('prompt')):
+            ESC['on'] = True
+        if ESC['on']:
+            if req.get('mode') == 'voll':
+                ESC['on'] = False
+                return route.fulfill(status=200, content_type='application/x-ndjson', body=OKESK)
+            return route.fulfill(status=200, content_type='application/x-ndjson', body=DENY)
         return route.fulfill(status=200, content_type='application/x-ndjson', body=PART if 'DROP' in str(req.get('prompt')) else NDJSON)
     if path.startswith('/api/term'):
         TERM_CALLS.append(json.loads(body or '{}'))
@@ -223,6 +243,19 @@ def main():
         page.wait_for_function("document.querySelector('#cmsgs').innerText.includes('ohne Council')", timeout=8000)
         check('„ohne Council“ schaltet ihn ab', not str(CALLS[-1].get('prompt')).startswith('AI-Council:'))
         page.wait_for_function("!document.querySelector('#csend').innerText.toLowerCase().includes('stopp')", timeout=8000)
+        page.fill('#cf textarea', 'Im Terminal soll der Ordner automatisch gewählt werden')
+        page.click('#csend')
+        page.wait_for_function("document.querySelector('#cmsgs').innerText.includes('Im Terminal soll')", timeout=8000)
+        check('Auto wählt „Voll“ im Projekt und sendet sofort (ohne zweiten Druck)', CALLS[-1].get('mode') == 'voll' and CALLS[-1].get('dir') == 'maserver' and 'Terminal' in str(CALLS[-1].get('prompt')), CALLS[-1])
+        page.wait_for_function("!document.querySelector('#csend').innerText.toLowerCase().includes('stopp')", timeout=8000)
+        n0 = len(CALLS)
+        page.fill('#cf textarea', 'ESKALATION: ergänze etwas')
+        page.click('#csend')
+        page.wait_for_function("document.querySelector('#cmsgs').innerText.includes('Erledigt-ESK')", timeout=15000)
+        seq = [(c.get('mode'), c.get('dir')) for c in CALLS[n0:]]
+        check('Rechte-Eskalation: lesen → notizen → voll, Ordner folgt dem verweigerten Pfad', seq == [('lesen', 'notizen'), ('notizen', 'maserver'), ('voll', 'maserver')], seq)
+        check('Rechte-Eskalation: Fortsetzung nennt die Erhöhung und läuft in derselben Sitzung', 'automatisch erhöht' in str(CALLS[-1].get('prompt')) and 'esc' not in CALLS[-1] and 'isEsc' not in CALLS[-1], CALLS[-1])
+        page.wait_for_function("!document.querySelector('#csend').innerText.toLowerCase().includes('stopp')", timeout=8000)
         page.set_input_files('#cfile', {'name': 'bild.png', 'mimeType': 'image/png', 'buffer': b'\x89PNG\r\n\x1a\n' + b'0' * 200})
         page.wait_for_function("document.querySelector('#cimgs').innerText.includes('bild.png')", timeout=6000)
         check('Anhang als Chip', 'bild.png' in page.inner_text('#cimgs'))
@@ -326,6 +359,14 @@ def main():
         page.wait_for_function("!document.querySelector('#trun').disabled", timeout=6000)
         check('Terminal: manuell gewählter Ordner bleibt bestehen', TERM_CALLS[-1].get('dir') == 'bibliothek', TERM_CALLS[-1:])
         page.select_option('#tf select[name=dir]', 'auto')
+        n = len(TERM_CALLS)
+        page.fill('#tf input[name=cmd]', 'sudo systemctl status ssh')
+        page.click('#trun')
+        page.wait_for_timeout(500)
+        check('Terminal: sudo-Befehl wird beim ersten Absenden nicht gesendet', len(TERM_CALLS) == n, TERM_CALLS[-1:])
+        page.click('#trun')
+        page.wait_for_function("!document.querySelector('#trun').disabled", timeout=6000)
+        check('Terminal: sudo-Befehl läuft beim zweiten Absenden', len(TERM_CALLS) == n + 1 and TERM_CALLS[-1].get('cmd', '').startswith('sudo '), TERM_CALLS[-1:])
         n = len(TERM_CALLS)
         page.fill('#tf input[name=cmd]', 'rm -rf /tmp/testordner')
         page.click('#trun')
