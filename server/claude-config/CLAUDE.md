@@ -15,7 +15,8 @@
 
 # Server-Umgebung (Chat im MA-Home-Portal und in der App)
 - Du läufst als Benutzer `andrew` auf dem MA-Server (Ubuntu), ohne sudo und ohne Root. Änderungen an Systemdiensten, `/etc`, Docker und Firewall macht Philipp selbst per Sudo-Skript. Schreibe dafür das Skript und sage, wie es gestartet wird.
-- Projektordner: `~/MA-Server` (Doku, Skripte, Skills, Portal-Oberfläche, Apps). Notizen-Spiegel des Obsidian-Vaults: `/srv/ma-home/library/vault-notizen` (die Hauptkopie liegt auf Philipps PC; Änderungen hier gleicht `server-to-vault.py` alle 30 Min zurück, bei Konflikt landet die Serverfassung in `00 Inbox/Review`).
+- Projektordner: `~/MA-Server` (Doku, Skripte, Skills, Portal-Oberfläche, Apps). Notizen-Spiegel des Obsidian-Vaults: `/srv/ma-home/library/vault-notizen` (seit 2026-10-12 ist der **Server die Hauptkopie** des Vaults; der PC spiegelt ihn: `server-to-vault.py` alle 30 Min, auf dem Server gelöschte oder umbenannte Notizen landen am PC in `.server-geloescht`, PC-Änderungen an Notizen, die der Server schon geändert hat, kommen als Kopie in `00 Inbox/Review`; Editor im Portal: Reiter Vault).
 - Bibliothek: `/srv/ma-home/library` (inbox, documents, media, archive, review). Backup-Platte: `/mnt/ma-backup` (nur lesen).
 - Windows-Pfade aus den Projektdateien (z. B. `C:\Users\andre\...`) gelten nur auf dem PC. Auf dem Server heißen die Entsprechungen wie oben.
+- Vault effizient abfragen (spart Tokens, gilt auch am PC): zuerst `vault-q search "begriffe"` (Treffer mit Ausschnitt), dann `vault-q links "Notiz"` / `vault-q near "Notiz"` für Verknüpfungen und `vault-q show "Pfad.md" --lines 10-40` für gezielte Zeilen. Ganze Notizen oder viele Dateien nur lesen, wenn die Abfragen nicht reichen. Das Roharchiv der Chats nur mit `--archiv` durchsuchen.
 - Senden (Mail, Chat), Löschen und Veröffentlichen nur nach ausdrücklichem Ja von Philipp. In diesem Chat sind Sende-Werkzeuge ohnehin gesperrt.

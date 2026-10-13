@@ -1,0 +1,3 @@
+# MCP-Verbindungen, die bewusst NUR am PC laufen sollen (ein Name pro Zeile, wie in ~/.claude.json unter mcpServers).
+# Alles andere wird von claude-abgleich.py automatisch auf den Server uebertragen, wenn es keine Zugangsdaten und keine Windows-Programme braucht.
+# Beispiel: gmx   (mcp-email-server.exe mit dem Passwort aus dem PC-Katalog, am Server erst nach Linux-Installation moeglich)

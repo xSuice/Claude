@@ -1,0 +1,17 @@
+Caddy-Eintrag fuer Navidrome (Beispiel, NICHT geprueft – die vorhandene Caddy- und Authelia-Konfiguration konnte ich nicht einsehen).
+
+Vorgehen:
+ 1. In der Caddy-Konfiguration den Block von ntfy (Adresse ntfy.ma-server.duckdns.org) kopieren.
+ 2. Adresse aendern in:  musik.ma-server.duckdns.org
+ 3. Das Ziel (reverse_proxy) auf Navidrome aendern:  127.0.0.1:4533
+    Laeuft Caddy selbst in Docker, ist 127.0.0.1 falsch: dann die Adresse des Docker-Hosts nehmen, so wie sie die anderen Bloecke nutzen.
+ 4. Die Authelia-Einbindung (forward_auth o. ae.) genauso lassen wie im kopierten Block.
+ 5. Caddy neu laden und im Browser aufrufen; beim ersten Mal den Administrator-Zugang in Navidrome anlegen.
+ 6. Pruefen, ob der Name musik.ma-server.duckdns.org aufgeloest wird (wie bei ntfy).
+
+Handy-Apps und Authelia:
+ Subsonic-Apps (Symfonium, Substreamer, Tempo) koennen keine Authelia-Anmeldeseite mit Zwei-Faktor bedienen. Zwei Wege:
+  a) Fuer den Pfad /rest/* Authelia umgehen (bypass). Navidrome verlangt dort weiterhin Benutzer und Passwort. Etwas weniger Schutz,
+     dafuer ein starkes eigenes Passwort und die Weboberflaeche weiter hinter Authelia lassen.
+  b) Apps nur im Heimnetz oder ueber ein VPN nutzen (sicherer, aber nicht unterwegs ohne VPN).
+ Mein Rat: erst b), und a) nur, wenn du unterwegs ohne VPN hoeren willst.

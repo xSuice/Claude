@@ -1,7 +1,7 @@
 /* MA Home Service Worker. Netz zuerst: Jede Aenderung am Portal ist beim naechsten Oeffnen sofort da, ohne Update.
    Nur wenn das Netz fehlt, springt der Zwischenspeicher ein (Oberflaeche startet, Daten aus /api kommen nie aus dem Cache).
    Die Version steht in app.js (VERSION) und hier; bei Aenderung am Portal beide hochzaehlen. */
-const VERSION = '2026-10-11-4';
+const VERSION = '2026-10-12-17';
 const CACHE = 'ma-home-' + VERSION;
 const SHELL = ['/', '/assets/app.js', '/assets/style.css', '/assets/manifest.webmanifest', '/assets/icon-192.png'];
 

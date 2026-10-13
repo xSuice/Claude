@@ -5,7 +5,7 @@
  2. Neue Textdateien (.md .txt) im Server-Eingang (/srv/ma-home/library/inbox) -> 00 Inbox/Server-Eingang (Autopflege sortiert sie dann).
     Andere Dateien im Eingang werden nur in 00 Inbox/Server-Eingang/Server-Eingang.md aufgelistet und bleiben auf dem Server.
 Log: ~/.claude/state/server-sync.log   Aufruf: python server-to-vault.py [--dry]"""
-import os, sys, json, subprocess, time, tarfile, io, re
+import os, sys, json, subprocess, time, tarfile, io, re, shutil
 
 VAULT = r"C:\Users\andre\Documents\Obsidian Vault"
 STATE = os.path.expanduser("~/.claude/state/server-sync.json")      # von vault-to-server.py: {rel: [mtime,size]} des zuletzt gesendeten Standes
@@ -54,6 +54,25 @@ def fetch(base, names):
     return files
 
 
+FLAG = "/srv/ma-home/library/.jarvis/server-master"      # Datei auf dem Server: der Server ist die Hauptkopie des Vaults
+
+
+def master_on():
+    try:
+        return ssh(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip() == "1"
+    except Exception:
+        return False
+
+
+def vanished(sent, srv, unchanged_here):
+    """Hauptkopie-Modus: Textnotizen, die auf dem Server nicht mehr vorkommen (geloescht oder umbenannt) und hier seit dem letzten Abgleich
+    unveraendert sind. Sicherheitsstopp, wenn die Server-Liste auffaellig klein ist (Fehler, Ordner fehlt)."""
+    known = [r for r in sent if r.lower().endswith(EXT) and r.split("/")[0] not in SKIP_TOP]
+    if not known or len([r for r in srv if r.lower().endswith(EXT)]) < 0.5 * len(known):
+        return []
+    return [r for r in known if r not in srv and unchanged_here(r, sent[r])]
+
+
 def safe(name):
     return re.sub(r'[<>:"|?*]', "_", name)
 
@@ -74,6 +93,20 @@ def main():
     except Exception as e:
         log(f"Server nicht erreichbar: {e}")
         return 0
+    master = master_on()
+    if master and not dry:
+        def unchanged_here(rel, base):
+            loc = os.path.join(VAULT, rel.replace("/", os.sep))
+            return os.path.exists(loc) and int(os.stat(loc).st_mtime) == base[0] and os.stat(loc).st_size == base[1]
+        gone = vanished(sent, srv, unchanged_here)
+        for rel in gone:                                   # nie hart loeschen: in .server-geloescht verschieben (Obsidian-Papierkorb liegt daneben)
+            src = os.path.join(VAULT, rel.replace("/", os.sep))
+            dst = os.path.join(VAULT, ".server-geloescht", time.strftime("%Y%m%d"), rel.replace("/", os.sep))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.move(src, dst)
+            sent.pop(rel, None); pulled.pop(rel, None)
+        if gone:
+            log(f"Hauptkopie: {len(gone)} auf dem Server entfernte Notizen nach .server-geloescht verschoben")
     take, conflicts = [], []
     for rel, (mt, sz) in srv.items():
         if not rel.lower().endswith(EXT) or rel.split("/")[0] in SKIP_TOP or sz > MAXSIZE:

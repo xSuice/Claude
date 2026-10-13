@@ -9,6 +9,9 @@ D="$(cd "$(dirname "$0")" && pwd)"
 install -m 755 -o root -g root "$D/ma-claude-bridge.py" /usr/local/lib/ma-claude-bridge.py
 install -m 644 -o root -g root "$D/../../scripts/router/router_core.py" /usr/local/lib/router_core.py
 python3 "$D/patch-portal-images.py"
+python3 "$D/patch-portal-attach.py"
+python3 "$D/../musik/patch-portal-audio.py"
+# Achtung: ein Neustart der Bruecke beendet laufende Claude-Auftraege. Vorher im Portal pruefen, dass nichts laeuft.
 systemctl restart ma-claude-bridge
 systemctl restart ma-home-web
 sleep 3

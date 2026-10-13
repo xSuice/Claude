@@ -29,22 +29,46 @@ FILES = [
     ('Server-settings.json', 'server/claude-config/settings.json', '/home/andrew/.claude/settings.json'),
     ('Hook ma-guard', 'server/claude-config/hooks/ma-guard.py', '/home/andrew/.claude/hooks/ma-guard.py'),
     ('Hook council-auto', 'server/claude-config/hooks/council-auto.py', '/home/andrew/.claude/hooks/council-auto.py'),
+    ('Terminal-Brücke', 'server/term-bridge/ma-term-bridge.py', '/usr/local/lib/ma-term-bridge.py'),
+    ('Auto-Einspielung (Root-Skript)', 'server/auto-deploy/ma-deploy.sh', '/usr/local/lib/ma-deploy.sh'),
+    ('Meldung Auftrag fertig (Root-Skript)', 'server/auto-deploy/ma-job-notify.sh', '/usr/local/lib/ma-job-notify.sh'),
 ]
 # Hooks, die es bewusst nur am PC gibt (Grund steht dabei). Jeder andere PC-Hook ohne Gegenstück wird gemeldet.
 PC_ONLY_HOOKS = {'kontext-waechter.py': 'Token-Zähler der PC-Sitzung', 'uebergabe-laden.py': 'Übergabe-Start nur am PC',
                  'coach_gate_launcher.mjs': 'fixmyprompt-Plugin (PC)'}
 # Jobs: (Name, Höchstalter des letzten Laufs in Stunden)
 PC_TASKS = [('VaultZuServer', 2), ('VaultVomServer', 1.5), ('ClaudeAbgleich', 2), ('VaultDateienZuServer', 26), ('VaultAutopflege', 26), ('MA-Paritaet-Check', 26)]
-SERVER_TIMERS = ['ma-home-maintenance.timer', 'ma-usb-backup.timer', 'ma-watchdog.timer', 'ma-sicherheitsbericht.timer']
-SERVER_CRON = ['vault-graph-export.py', 'morgenbrief.py', 'fristen-erinnerung.py']
+SERVER_TIMERS = ['ma-home-maintenance.timer', 'ma-usb-backup.timer', 'ma-watchdog.timer', 'ma-sicherheitsbericht.timer', 'ma-deploy.path', 'ma-job-notify.path']
+SERVER_CRON = ['vault-graph-export.py', 'morgenbrief.py', 'fristen-erinnerung.py', 'lern-impuls.py', 'fristen-ics.py']
+
+
+def _aus_registry():
+    """Automatisierungen aus server/automations.json (eine Quelle fuer PC und Server) zu den Erwartungen ergaenzen."""
+    import json
+    try:
+        items = json.load(open(os.path.join(PC, 'server', 'automations.json'), encoding='utf-8'))['automations']
+    except Exception:
+        return
+    for a in items:
+        if 'pc' in a.get('ort', []) and a.get('pc_task') and a['pc_task'] not in [t[0] for t in PC_TASKS]:
+            PC_TASKS.append((a['pc_task'], a.get('max_alter_h', 26)))
+        if 'server' in a.get('ort', []) and os.path.basename(a.get('skript', '')) not in SERVER_CRON:
+            SERVER_CRON.append(os.path.basename(a['skript']))
+
+
+_aus_registry()
 VAULT = r'C:\Users\andre\Documents\Obsidian Vault'
 SERVER_NOTIZEN = '/srv/ma-home/library/vault-notizen'
 # /opt/ma-home/web ist nur fuer root und ma-web lesbar: deploy-ui.sh schreibt die Pruefsummen der installierten Dateien nach DEPLOYED
 PORTAL_FILES = ('index.html', 'app.js', 'style.css', 'sw.js', 'manifest.webmanifest')
 DEPLOYED = '/opt/ma-home/DEPLOYED-UI.sha256'
 MARKERS = [('PWA im Portal', 'MA-PWA'), ('Claude-Verwaltung im Portal', 'MA-CLAUDE-OPS'),
-           ('Dateien/Bilder an Claude', "'images', 'files'"), ('Suggest/Upload im Portal', "'suggest', 'upload'")]
-SERVICES = ['ma-claude-bridge', 'ma-home-web']
+           ('Dateien/Bilder an Claude', "'images', 'files'"), ('Suggest/Upload im Portal', "'suggest', 'upload'"),
+           ('Weiterlaufende Aufträge (attach)', "'attach', 'from'"), ('Suche und Zeitplan im Portal', "'search', 'sched_list'"),
+           ('Terminal im Portal', 'MA-TERM-BRIDGE')]
+SERVICES = ['ma-claude-bridge', 'ma-home-web', 'ma-term-bridge']
+# Lokale MCP-Verbindungen, die bewusst nur am PC laufen (Name -> Grund). Alles andere soll auf beiden Seiten gleich heißen.
+PC_ONLY_MCP = {}
 TOOLS = ['soffice', 'pandoc', 'ffmpeg', 'convert']
 IGNORE_SKILLS = {'synced'}
 
@@ -77,7 +101,24 @@ def server_script():
     lines.append('for t in ' + ' '.join(SERVER_TIMERS) + '; do echo "TM $t $(systemctl is-active $t 2>&1) $(systemctl is-enabled $t 2>&1)"; done')
     lines.append('for c in ' + ' '.join(SERVER_CRON) + '; do crontab -l 2>/dev/null | grep -v "^#" | grep -qF "$c" && echo "CR $c 1" || echo "CR $c 0"; done')
     lines.append('echo "VN $(find ' + SERVER_NOTIZEN + ' -type f -name "*.md" 2>/dev/null | wc -l)"')
+    # Namen der lokalen MCP-Verbindungen (nur die Namen, nie Zugangsdaten)
+    lines.append("python3 -c 'import json,os\n"
+                 "try: d=json.load(open(os.path.expanduser(\"~/.claude.json\")))\n"
+                 "except Exception: d={}\n"
+                 "[print(\"MC \"+k) for k in sorted(d.get(\"mcpServers\",{}))]'")
     return '\n'.join(lines) + '\n'
+
+
+def local_mcp():
+    """Namen der lokalen MCP-Verbindungen am PC (Benutzerebene und .mcp.json im Projekt); keine Zugangsdaten."""
+    import json
+    names = set()
+    for p in (os.path.expanduser('~/.claude.json'), os.path.join(PC, '.mcp.json')):
+        try:
+            names |= set(json.load(open(p, encoding='utf-8')).get('mcpServers', {}))
+        except Exception:
+            pass
+    return names
 
 
 def ask_server():
@@ -182,7 +223,7 @@ def main():
         return 2
     deployed = {}
     srv_hash, markers, services, tools, skills, agents = {}, {}, {}, {}, set(), set()
-    srv_hooks, timers, cron, vn = set(), {}, {}, None
+    srv_hooks, timers, cron, vn, srv_mcp = set(), {}, {}, None, set()
     for line in out:
         kind, _, rest = line.partition(' ')
         if kind == 'H':
@@ -215,6 +256,8 @@ def main():
             cron[n] = v.strip() == '1'
         elif kind == 'VN':
             vn = int(rest.strip() or 0)
+        elif kind == 'MC':
+            srv_mcp.add(rest.strip())
 
     rows, problems = [], []
 
@@ -243,6 +286,10 @@ def main():
     row('Agenten', la == agents, ('fehlen auf dem Server: ' + ', '.join(sorted(la - agents)) + '. ' if la - agents else '') +
         ('nur auf dem Server: ' + ', '.join(sorted(agents - la)) if agents - la else '') or f'{len(la)} gleich')
 
+    pm = local_mcp()
+    nur_pc, nur_srv = sorted(pm - srv_mcp - set(PC_ONLY_MCP)), sorted(srv_mcp - pm)
+    row('Verbindungen (MCP)', not nur_pc and not nur_srv,
+        ('nur am PC: ' + ', '.join(nur_pc) + '. ' if nur_pc else '') + ('nur auf dem Server: ' + ', '.join(nur_srv) if nur_srv else '') or f'{len(pm)} gleich')
     extra_checks(row, rows, srv_hooks, timers, cron, vn)
     stamp = time.strftime('%Y-%m-%d %H:%M')
     verdict = 'alles gleich' if not problems else f'{len(problems)} Abweichung(en)'

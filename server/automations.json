@@ -1,0 +1,15 @@
+{
+  "_hinweis": "Zentrale Liste aller Automatisierungen (eine Quelle fuer PC und Server). 'ort': wo sie laufen; 'zeiten': Uhrzeiten HH:MM; 'tage': taeglich oder Liste 0-6 (0 = Montag); 'pc_task': Name der Windows-Aufgabe; 'max_alter_h': so alt darf der letzte Lauf hoechstens sein (PC-Pruefung). Neue Automatisierung = hier eintragen; scripts/automations.py erzeugt daraus den Server-Zeitplan, scripts/server-sync/paritaet-check.py prueft beide Seiten.",
+  "automations": [
+    {"id": "morgenbrief", "titel": "Morgenbrief (Fristen, Mails, Server)", "skript": "scripts/server-sync/morgenbrief.py", "ort": ["server"], "zeiten": ["06:55"], "tage": "taeglich"},
+    {"id": "fristen-erinnerung", "titel": "Fristen-Erinnerung per ntfy", "skript": "scripts/server-sync/fristen-erinnerung.py", "ort": ["server"], "zeiten": ["07:30", "17:30"], "tage": "taeglich"},
+    {"id": "status-bericht", "titel": "Statusbericht Server (Updates, Version, Neues, Offenes) fuer den Reiter Neu", "skript": "scripts/server-sync/status-bericht.py", "ort": ["server"], "zeiten": ["07:00", "13:00", "19:00"], "tage": "taeglich"},
+    {"id": "fristen-ics", "titel": "Fristen als Kalenderdatei", "skript": "scripts/server-sync/fristen-ics.py", "ort": ["server"], "zeiten": ["06:50"], "tage": "taeglich"},
+    {"id": "lern-impuls", "titel": "Lern-Impuls (drei Fragen aus eigenen Notizen)", "skript": "scripts/server-sync/lern-impuls.py", "ort": ["server"], "zeiten": ["18:30"], "tage": "taeglich"},
+    {"id": "vault-graph-export", "titel": "Graph des Vaults fuer die Wissen-Ansicht", "skript": "scripts/server-sync/vault-graph-export.py", "ort": ["server"], "zeiten": null, "tage": "taeglich", "hinweis": "bereits in der Crontab von andrew; Zeit dort"},
+    {"id": "claude-abgleich", "titel": "Abgleich Projekt, Skills, Agenten, Regeln PC <-> Server (+ GitHub)", "skript": "scripts/server-sync/claude-abgleich.py", "ort": ["pc"], "pc_task": "ClaudeAbgleich", "max_alter_h": 2},
+    {"id": "vault-zu-server", "titel": "Vault PC -> Server", "skript": "scripts/server-sync/vault-to-server.py", "ort": ["pc"], "pc_task": "VaultZuServer", "max_alter_h": 2},
+    {"id": "vault-vom-server", "titel": "Vault Server -> PC", "skript": "scripts/server-sync/server-to-vault.py", "ort": ["pc"], "pc_task": "VaultVomServer", "max_alter_h": 1.5},
+    {"id": "paritaet-check", "titel": "Paritaetspruefung PC <-> Server", "skript": "scripts/server-sync/paritaet-check.py", "ort": ["pc"], "pc_task": "MA-Paritaet-Check", "max_alter_h": 26}
+  ]
+}

@@ -11,7 +11,10 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.view.View;
 import android.view.Window;
+import android.print.PrintAttributes;
+import android.print.PrintManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
@@ -79,6 +82,18 @@ public class MainActivity extends Activity {
                 return true;
             }
         });
+        // Druckbruecke: window.print() geht im WebView nicht, das Portal ruft stattdessen MaApp.print() (nur eigene Seite, siehe shouldOverrideUrlLoading).
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void print() {
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        PrintManager pm = (PrintManager) getSystemService(PRINT_SERVICE);
+                        pm.print("MA Home", web.createPrintDocumentAdapter("MA Home"), new PrintAttributes.Builder().build());
+                    }
+                });
+            }
+        }, "MaApp");
         web.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String ua, String cd, String mime, long len) {

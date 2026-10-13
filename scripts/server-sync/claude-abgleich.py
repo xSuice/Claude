@@ -233,6 +233,140 @@ print(json.dumps(out))
 PY"""
 
 
+SECRET_KEY = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)
+WIN_PATH = re.compile(r"[A-Za-z]:[\\/]|\\\\|\.exe\b|\.cmd\b|\.bat\b|\.ps1\b", re.I)
+PORTABLE_CMDS = {"npx", "node", "uvx", "uv", "python", "python3", "docker", "bunx", "deno"}
+
+
+def mcp_portable(cfg):
+    """Eine MCP-Verbindung darf automatisch auf den Server, wenn sie keine Zugangsdaten und keine Windows-Programme/-Pfade braucht."""
+    if not isinstance(cfg, dict):
+        return False
+    if cfg.get("type") in ("http", "sse") or "url" in cfg:
+        return not cfg.get("headers") and "command" not in cfg and not SECRET_KEY.search(str(cfg.get("url", "")))
+    cmd = str(cfg.get("command", ""))
+    args = [str(a) for a in cfg.get("args", [])]
+    if os.path.basename(cmd).lower() not in PORTABLE_CMDS or WIN_PATH.search(cmd + " " + " ".join(args)):
+        return False
+    return not any(SECRET_KEY.search(str(k)) for k in (cfg.get("env") or {})) and not any(SECRET_KEY.search(a) and "=" in a for a in args)
+
+
+def mcp_windows(cfg):
+    """Verbindung braucht ein Windows-Programm/-Pfad oder ein unbekanntes Programm: geht nicht einfach auf den Server."""
+    if not isinstance(cfg, dict):
+        return True
+    if cfg.get("type") in ("http", "sse") or "url" in cfg:
+        return "command" in cfg
+    cmd = str(cfg.get("command", ""))
+    return os.path.basename(cmd).lower() not in PORTABLE_CMDS or bool(WIN_PATH.search(cmd + " " + " ".join(str(a) for a in cfg.get("args", []))))
+
+
+def mcp_plan(pc, srv, nur_pc, mit_zugang=False):
+    """(hinzufuegen, abweichend, nicht_portabel): Verbindungen, die auf dem Server fehlen und portabel sind, werden hinzugefuegt.
+    mit_zugang (ausdrueckliche Freigabe von Philipp, siehe mcp-zugang.ok): auch solche mit Zugangsdaten, solange kein Windows-Programm noetig ist."""
+    add, differ, nicht = {}, [], []
+    for name, cfg in pc.items():
+        if name in nur_pc:
+            continue
+        if name in srv:
+            if srv[name] != cfg:
+                differ.append(name)
+        elif mcp_portable(cfg) or (mit_zugang and not mcp_windows(cfg)):
+            add[name] = cfg
+        else:
+            nicht.append(name)
+    return add, differ, nicht
+
+
+MCP_MERGE = r"""python3 -c '
+import json, os, shutil, sys
+p = os.path.expanduser("~/.claude.json"); add = json.load(sys.stdin)
+d = json.load(open(p)) if os.path.exists(p) else {}
+if os.path.exists(p): shutil.copy2(p, p + ".ma-bak")
+m = d.setdefault("mcpServers", {})
+[m.setdefault(k, v) for k, v in add.items()]
+tmp = p + ".ma-tmp"; json.dump(d, open(tmp, "w"), indent=2); os.chmod(tmp, 0o600); os.replace(tmp, p)
+print(len(add))'"""
+
+
+def sync_mcp(changes):
+    """Lokale MCP-Verbindungen (Namen und Einstellungen, nie Geheimnisse) vom PC auf den Server angleichen. Fehler stoppen den Abgleich nicht."""
+    try:
+        pc = json.load(open(os.path.expanduser("~/.claude.json"), encoding="utf-8")).get("mcpServers", {})
+        srv = json.loads(ssh("cat ~/.claude.json 2>/dev/null || echo '{}'")).get("mcpServers", {})
+        nur_pc = set()
+        try:
+            nur_pc = {l.strip() for l in open(os.path.join(CFG, "mcp-nur-pc.txt"), encoding="utf-8") if l.strip() and not l.startswith("#")}
+        except OSError:
+            pass
+        zugang = "--mcp-zugang" in sys.argv or os.path.exists(os.path.join(CFG, "mcp-zugang.ok"))
+        add, differ, nicht = mcp_plan(pc, srv, nur_pc, zugang)
+        if add and not DRY:
+            ssh(MCP_MERGE, data=json.dumps(add).encode())          # nur ueber ssh-Stdin in ~/.claude.json (0600) auf dem Server; Werte nie in Log, Git oder Bericht
+        changes += [f"Verbindung (MCP) zum Server übertragen: {n}" + (" (mit Zugangsdaten, direkt per ssh)" if not mcp_portable(add[n]) else "") for n in add]
+        changes += [f"Verbindung (MCP) `{n}` weicht auf dem Server ab (nicht überschrieben)" for n in differ]
+        changes += [f"Verbindung (MCP) `{n}` nur am PC: braucht Zugangsdaten oder ein Windows-Programm (am Server einrichten oder in mcp-nur-pc.txt eintragen)" for n in nicht]
+    except Exception as e:
+        log(f"MCP-Abgleich fehlgeschlagen: {e!r}")
+
+
+SECRET_FILE = re.compile(r"(^|/)(\.env[^/]*|[^/]*\.(key|pem|pfx|p12|keystore)|[^/]*(credential|token|passwor|secret)[^/]*)$", re.I)
+SECRET_TEXT = re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9]{32,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}")
+
+
+def git(*args, data=None, timeout=60):
+    return subprocess.run(["git", "-C", PC, "-c", "core.safecrlf=false", *args], input=data, capture_output=True, timeout=timeout)
+
+
+def git_secrets(paths):
+    """Dateien, die wie Geheimnisse aussehen (Name oder Inhalt); sie werden nie committet."""
+    bad = []
+    for p in paths:
+        if SECRET_FILE.search(p):
+            bad.append(p)
+            continue
+        try:
+            full = os.path.join(PC, p.replace("/", os.sep))
+            if os.path.getsize(full) <= 2_000_000 and SECRET_TEXT.search(open(full, "rb").read()):
+                bad.append(p)
+        except OSError:
+            pass
+    return bad
+
+
+def git_publish(pulled):
+    """Vom Server geholte Dateien committen (nur diese, nach Geheimnis-Pruefung) und alles pushen, was dem Remote voraus ist.
+    Unfertige PC-Arbeit bleibt ungemeldet im Arbeitsordner (der Auto-Deploy liefert nur Committetes). Gibt Meldungen fuer den Bericht zurueck."""
+    notes = []
+    try:
+        if pulled:
+            bad = git_secrets(pulled)
+            ok = [p for p in pulled if p not in bad]
+            if bad:
+                notes.append("GitHub: NICHT committet (mögliche Geheimnisse): " + ", ".join(bad[:5]))
+            if ok:
+                nul = ("\0".join(ok) + "\0").encode()
+                git("add", "--pathspec-from-file=-", "--pathspec-file-nul", data=nul)
+                r = git("commit", "-q", "-m", "Automatischer Abgleich: Änderungen vom Server (%d Dateien)" % len(ok), "--pathspec-from-file=-", "--pathspec-file-nul", data=nul)
+                if r.returncode == 0:
+                    notes.append("GitHub: %d vom Server geholte Dateien committet" % len(ok))
+                elif b"nothing to commit" not in r.stdout + r.stderr:
+                    notes.append("GitHub: Commit fehlgeschlagen: " + (r.stderr or r.stdout).decode("utf-8", "replace").strip().splitlines()[0][:150])
+        status = git("status", "-sb").stdout.decode("utf-8", "replace").splitlines()
+        if status and "ahead" in status[0]:
+            r = git("push", "-q", timeout=120)
+            if r.returncode == 0:
+                notes.append("GitHub: aktualisiert (gepusht)")
+            else:
+                notes.append("GitHub: Push fehlgeschlagen: " + (r.stderr or r.stdout).decode("utf-8", "replace").strip().splitlines()[-1][:150])
+    except Exception as e:
+        log(f"GitHub-Veröffentlichung fehlgeschlagen: {e!r}")
+        notes.append("GitHub: Fehler bei der Veröffentlichung (siehe Log)")
+    for n in notes:
+        log(n)
+    return notes
+
+
 def sync_history(changes):
     """Claude-Verlaeufe (~/.claude/projects/**/*.jsonl) in beide Richtungen: Fehlendes wird kopiert, bei Unterschied gewinnt die
     groessere Datei (Protokolle wachsen nur). Dateien mit Schluesselmustern (Klasse C) werden nie kopiert, nur gemeldet."""
@@ -287,6 +421,7 @@ def main():
     try:
         push_config(changes)
         sync_global(st, changes)
+        sync_mcp(changes)
         sync_history(changes)
         srv = json.loads(ssh(SRV_LIST))
     except Exception as e:
@@ -333,11 +468,8 @@ def main():
         rep = json.loads(ssh(REPORT_CMD % st.get("last", time.time() - 86400)))
     except Exception as e:
         rep = {"fehler": str(e)[:200]}
-    if pull and not DRY:
-        subprocess.run(["git", "-C", PC, "add", "-A"], capture_output=True)
-        r = subprocess.run(["git", "-C", PC, "-c", "core.safecrlf=false", "commit", "-q", "-m", "Automatischer Abgleich: Aenderungen vom Server"], capture_output=True)
-        if r.returncode == 0:
-            subprocess.run(["git", "-C", PC, "push", "-q"], capture_output=True, timeout=120)
+    if not DRY:
+        changes += git_publish(pull)
     if not DRY:
         st["last"] = time.time()
         json.dump(st, open(STATE, "w", encoding="utf-8"))
