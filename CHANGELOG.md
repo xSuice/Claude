@@ -403,3 +403,11 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - `paritaet-check.py`: `vault-pg.py` in `FILES` aufgenommen.
 - Geprueft 2026-10-13: nach `sudo usermod -aG ma-web andrew` liefert `vault-pg search` und `stats` vom PC dieselben Treffer wie auf dem Server. Die Weitergabe der Argumente macht `scripts/vault-pg-pc.py` (shlex-Quoting, sonst zerfallen Suchbegriffe mit Leerzeichen).
 - Rueckweg: `scripts/vault-pg.cmd` loeschen; Gruppe mit `sudo gpasswd -d andrew ma-web` entfernen.
+
+## 2026-10-13 – git-sync aktiv: Server pusht auf GitHub-Zweig server-live (Server-Kopie, live)
+
+- Belegt: Login mit dem Deploy-Key an `xSuice/Claude` ("successfully authenticated"), `git-sync.py init` (Fetch `main` ok), erster `run`: Commit und Push auf `server-live` ok (53 Dateien). Timer `ma-git-sync.timer` alle 15 Min über die Sudo-Brücke eingerichtet, erster Lauf Status 0/SUCCESS.
+- Befund: Viele Dateien unterscheiden sich zu `main` nur im Zeilenende (PC CRLF, Server LF) oder im Dateimodus. Fix in `git-sync.py`: nur echte Inhaltsänderungen committen (`--ignore-cr-at-eol`); im Server-Repo `core.fileMode=false`. Der erste Commit enthält trotzdem rund 50 Dateien mit 0 Zeilenänderung (nur Modus), harmlos.
+- Nicht geprüft: Ob der Timerlauf ohne Terminal auch pusht (Status 0, aber keine Ausgabe gelesen); Zusammenführung `server-live` → `main` am PC; Umstellung von `claude-abgleich.py` und `paritaet-check.py` auf Commit-Stände.
+- Offen: PC holt `server-live` per `git fetch` und führt bewusst zusammen; `claude-abgleich.py` am PC danach anpassen, damit beide Wege sich nicht überschneiden.
+- Rückweg: `sudo systemctl disable --now ma-git-sync.timer; sudo rm /etc/systemd/system/ma-git-sync.{service,timer}`; Deploy-Key in GitHub löschen, `rm -r ~/.config/ma-github`.

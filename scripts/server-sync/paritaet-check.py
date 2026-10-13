@@ -29,6 +29,7 @@ FILES = [
     ('Vault-Abfrage (vault-q)', 'scripts/vault-q.py', '/home/andrew/MA-Server/scripts/vault-q.py'),
     ('Such-Goldstandard (vault-q-gold)', 'scripts/vault-q-gold.py', '/home/andrew/MA-Server/scripts/vault-q-gold.py'),
     ('Vault-Index PostgreSQL (vault-pg)', 'scripts/vault-pg.py', '/home/andrew/MA-Server/scripts/vault-pg.py'),
+    ('Server nach GitHub (git-sync)', 'scripts/server-sync/git-sync.py', '/home/andrew/MA-Server/scripts/server-sync/git-sync.py'),
     ('Server-settings.json', 'server/claude-config/settings.json', '/home/andrew/.claude/settings.json'),
     ('Hook ma-guard', 'server/claude-config/hooks/ma-guard.py', '/home/andrew/.claude/hooks/ma-guard.py'),
     ('Hook council-auto', 'server/claude-config/hooks/council-auto.py', '/home/andrew/.claude/hooks/council-auto.py'),
