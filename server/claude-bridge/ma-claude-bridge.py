@@ -1012,30 +1012,56 @@ def show_session(sid):
 
 
 
-CONN_CACHE = {'t': 0.0, 'data': None}
+CONN_CACHE = {'t': 0.0, 'data': None, 'err': '', 'busy': False}
+CONN_LOCK = threading.Lock()
 CONN_LINE = re.compile(r'^(?P<name>.+?): (?P<url>\S+) - (?P<mark>\S+) (?P<state>.+)$')
+CONN_WAIT = 10          # Das Portal wartet nur 15 s auf die Bruecke (sonst 502): hoechstens so lange auf `claude mcp list` warten
+
+
+def connectors_refresh():
+    """Liest `claude mcp list` (prueft jede Verbindung, kann deutlich laenger als 15 s dauern) und fuellt den Zwischenspeicher. Laeuft im Hintergrund."""
+    try:
+        out = subprocess.run([CLAUDE, 'mcp', 'list'], capture_output=True, text=True, timeout=120, cwd='/home/andrew', stdin=subprocess.DEVNULL).stdout
+        items = []
+        for line in out.splitlines():
+            m = CONN_LINE.match(line.strip())
+            if not m:
+                continue
+            state = 'ok' if 'Connected' in m['state'] else 'login' if 'authentication' in m['state'] else 'fehler'
+            items.append({'name': m['name'].replace('claude.ai ', '', 1), 'url': m['url'], 'state': state})
+        with CONN_LOCK:
+            if items:
+                CONN_CACHE.update(t=time.time(), data={'ok': True, 'items': items, 'error': ''}, err='')
+            else:
+                CONN_CACHE['err'] = 'Keine Verbindungen gelesen'
+    except (OSError, subprocess.SubprocessError) as exc:
+        with CONN_LOCK:
+            CONN_CACHE['err'] = f'claude mcp list fehlgeschlagen: {exc.__class__.__name__}'
+    finally:
+        with CONN_LOCK:
+            CONN_CACHE['busy'] = False
 
 
 def connectors_status():
-    """Verbindungen mit Status fuer den Portal-Reiter (nur lesen, 60 s Zwischenspeicher), Quelle: `claude mcp list`."""
-    now = time.time()
-    if CONN_CACHE['data'] and now - CONN_CACHE['t'] < 60:
-        return CONN_CACHE['data']
-    try:
-        out = subprocess.run([CLAUDE, 'mcp', 'list'], capture_output=True, text=True, timeout=60, cwd='/home/andrew', stdin=subprocess.DEVNULL).stdout
-    except (OSError, subprocess.SubprocessError) as exc:
-        return {'ok': False, 'items': [], 'error': f'claude mcp list fehlgeschlagen: {exc.__class__.__name__}'}
-    items = []
-    for line in out.splitlines():
-        m = CONN_LINE.match(line.strip())
-        if not m:
-            continue
-        state = 'ok' if 'Connected' in m['state'] else 'login' if 'authentication' in m['state'] else 'fehler'
-        items.append({'name': m['name'].replace('claude.ai ', '', 1), 'url': m['url'], 'state': state})
-    res = {'ok': bool(items), 'items': items, 'error': '' if items else 'Keine Verbindungen gelesen'}
-    if items:
-        CONN_CACHE.update(t=now, data=res)
-    return res
+    """Verbindungen mit Status fuer den Portal-Reiter (nur lesen), Quelle: `claude mcp list`.
+    Antwortet sofort aus dem Zwischenspeicher (aelter als 60 s wird im Hintergrund aufgefrischt); ohne Daten wartet sie hoechstens CONN_WAIT Sekunden."""
+    with CONN_LOCK:
+        stale = time.time() - CONN_CACHE['t'] >= 60
+        if stale and not CONN_CACHE['busy']:
+            CONN_CACHE['busy'] = True
+            threading.Thread(target=connectors_refresh, daemon=True).start()
+        data = CONN_CACHE['data']
+    if data:
+        return data
+    end = time.time() + CONN_WAIT
+    while time.time() < end:
+        time.sleep(0.5)
+        with CONN_LOCK:
+            if CONN_CACHE['data']:
+                return CONN_CACHE['data']
+            if not CONN_CACHE['busy']:
+                return {'ok': False, 'items': [], 'error': CONN_CACHE['err'] or 'Keine Verbindungen gelesen'}
+    return {'ok': False, 'items': [], 'error': 'Verbindungen werden noch geprüft. In etwa einer halben Minute erneut öffnen (Aktualisieren).'}
 
 
 class Handler(socketserver.StreamRequestHandler):
