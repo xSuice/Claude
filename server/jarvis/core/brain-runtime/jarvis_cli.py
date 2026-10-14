@@ -122,6 +122,16 @@ def cmd_tick(app, cfg, a):
             c.execute("INSERT OR REPLACE INTO meta(k,value) VALUES('v16-consolidated',?)", (today,))
     res['self_ms'] = int((time.monotonic() - t0) * 1000)
     res['self_cpu_ms'] = int((time.process_time() - c0) * 1000)
+    if a.log and (res.get('worked') or res.get('recovered') or res.get('consolidated')):
+        log = Path(a.log)
+        try:
+            if log.exists() and log.stat().st_size > 2_000_000:   # keep the newest half, no logrotate needed
+                tail = log.read_bytes()[-1_000_000:]
+                log.write_bytes(tail[tail.find(b'\n') + 1:])
+            with open(log, 'a', encoding='utf-8') as fh:
+                fh.write(time.strftime('%Y-%m-%dT%H:%M:%S ') + json.dumps(res, ensure_ascii=False, default=str)[:4000] + '\n')
+        except OSError:
+            pass
     return out(res)
 
 
@@ -163,7 +173,7 @@ def main(argv=None):
     s = sp.add_parser('events'); s.add_argument('job'); s.add_argument('--since', type=int, default=0)
     s = sp.add_parser('list'); s.add_argument('--limit', type=int, default=20)
     s = sp.add_parser('approve'); s.add_argument('job'); s.add_argument('--step'); s.add_argument('--answer', default='')
-    s = sp.add_parser('tick'); s.add_argument('--max-seconds', type=int, default=50)
+    s = sp.add_parser('tick'); s.add_argument('--max-seconds', type=int, default=50); s.add_argument('--log')
     sp.add_parser('usage'); sp.add_parser('learned'); sp.add_parser('meta'); sp.add_parser('doctor')
     s = sp.add_parser('caps'); s.add_argument('--discover', action='store_true'); s.add_argument('--no-selftest', action='store_true')
     s = sp.add_parser('forget'); s.add_argument('kind', choices=['template', 'lesson', 'memory']); s.add_argument('ident')
