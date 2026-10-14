@@ -49,6 +49,8 @@ def connect():
         CREATE TABLE IF NOT EXISTS links(src text, name text);
         CREATE INDEX IF NOT EXISTS links_name ON links(name);
         CREATE INDEX IF NOT EXISTS links_src ON links(src);
+        CREATE TABLE IF NOT EXISTS replaces(src text, name text);
+        CREATE INDEX IF NOT EXISTS replaces_name ON replaces(name);
         CREATE TABLE IF NOT EXISTS tags(path text, tag text);
         CREATE INDEX IF NOT EXISTS tags_tag ON tags(tag);
         CREATE TABLE IF NOT EXISTS qlog(ts bigint, query text, zone text, hits int, top text, ms int);
@@ -75,8 +77,9 @@ def cmd_sync(con, a):
                     con.execute('DELETE FROM notes WHERE zone=%s', (zone,))
                     con.execute('DELETE FROM links WHERE src = ANY(%s)', ([p for p in disk],))
                     con.execute('DELETE FROM tags WHERE path = ANY(%s)', ([p for p in disk],))
+                    con.execute('DELETE FROM replaces WHERE src = ANY(%s)', ([p for p in disk],))
                 for p in gone + changed:
-                    for t, c in (('notes', 'path'), ('links', 'src'), ('tags', 'path')):
+                    for t, c in (('notes', 'path'), ('links', 'src'), ('tags', 'path'), ('replaces', 'src')):
                         con.execute('DELETE FROM %s WHERE %s=%%s' % (t, c), (p,))
                 for p in changed:
                     m, s = disk[p]
@@ -96,6 +99,9 @@ def cmd_sync(con, a):
                         with con.cursor() as cur:
                             cur.executemany('INSERT INTO links VALUES(%s,%s)', [(p, l) for l in links])
                             cur.executemany('INSERT INTO tags VALUES(%s,%s)', [(p, t) for t in tags])
+                        ers = vq.fm_field(text, 'ersetzt').strip('[] ').removesuffix('.md').lower()   # Frontmatter ersetzt: Notizname wertet die Zielnotiz ab
+                        if ers:
+                            con.execute('INSERT INTO replaces VALUES(%s,%s)', (p, ers))
             n_ch += len(changed)
             n_gone += len(gone)
         print('Abgleich: %d neu/geaendert, %d entfernt, %.1f s' % (n_ch, n_gone, time.time() - t0))
@@ -141,12 +147,14 @@ def cmd_search(con, a):
         if val:
             extra += ' AND %s=%%s' % col
             eargs.append(val.lower())
-    rows = []
-    for op in (' & ', ' | '):                       # erst alle Begriffe (UND), bei zu wenigen Treffern ODER wie vault-q
+    rows, seen = [], set()
+    for op in (' & ', ' | '):                       # erst alle Begriffe (UND), bei zu wenigen Treffern ODER anhaengen (UND-Treffer bleiben)
         q = op.join(w.replace("'", '').replace(':', '') + ':*' for w in words)
-        rows = con.execute("""SELECT path, title, ts_rank_cd(tsv, to_tsquery('german', unaccent(%%s))) * CASE WHEN lower(status) IN ('veraltet','ungueltig','zurueckgezogen') THEN 0.3 ELSE 1.0 END AS r,
+        found = con.execute("""SELECT path, title, ts_rank_cd(tsv, to_tsquery('german', unaccent(%%s))) * CASE WHEN lower(status) IN ('veraltet','ungueltig','zurueckgezogen') OR lower(regexp_replace(path, '^.*/|\\.md$', '', 'g')) IN (SELECT name FROM replaces) THEN 0.3 ELSE 1.0 END AS r,
                               ts_headline('german', body, to_tsquery('german', unaccent(%%s)), 'MaxFragments=1,MaxWords=22,MinWords=8') AS snip
                               FROM notes WHERE %s%s ORDER BY r DESC LIMIT %%s""" % (where, extra), [q, q, q] + eargs + [a.n * 3]).fetchall()
+        rows += [r for r in found if r[0] not in seen]
+        seen.update(r[0] for r in found)
         if len(rows) >= 3 or len(words) == 1:
             break
     rows = sorted(rows, key=lambda r: -r[2] * weight(r[0]))[:a.n]
