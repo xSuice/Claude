@@ -46,6 +46,8 @@ NOTES = {'Plan.md': '# Plan\nSiehe [[Fahrschule]] und #planung\n\n![[bild.png]]\
 JOBS = []          # laufende Auftraege, die die Platzhalter-Bruecke meldet
 FEEDBACK = []
 TERM_CALLS = []
+JV = {'state': 'waiting_approval'}
+JV_CALLS = []
 
 
 def api(route, request):
@@ -56,6 +58,30 @@ def api(route, request):
         return j({'user': 'andrew', 'admin': True, 'domain': BASE, 'modules': {}})
     if path.startswith('/api/items/'):
         return j({'items': []})
+    if path.startswith('/api/jarvis'):
+        d = json.loads(body or '{}'); c = d.get('cmd'); JV_CALLS.append(d)
+        job = {'id': 'j20261014-abc123', 'state': JV['state'], 'request': 'Teste Freigabe', 'summary': '', 'effects': [], 'created': 1790000000, 'claude_calls': 1, 'tokens_new': 2000,
+               'steps': [{'sid': 's1', 'title': 'Schreiben', 'kind': 'claude', 'state': 'waiting' if JV['state'] == 'waiting_approval' else 'done', 'capability': None, 'detail': ''}]}
+        if c == 'usage':
+            return j({'ok': True, 'data': {'ledger': {'claude': {'calls_24h': 5, 'tokens_24h': 53000, 'limits': {'calls_per_day': 40, 'tokens_per_day': 1500000}}, 'plan_block': None}}})
+        if c == 'list':
+            return j({'ok': True, 'data': {'jobs': [job]}})
+        if c == 'status':
+            return j({'ok': True, 'data': job})
+        if c == 'events':
+            return j({'ok': True, 'data': {'events': [{'id': 1, 'ts': 1790000000, 'kind': 'submitted', 'text': 'Datenklasse internal'}]}})
+        if c == 'approve':
+            JV['state'] = 'done'
+            return j({'ok': True, 'data': {'ok': True}})
+        if c == 'result':
+            return j({'ok': True, 'data': {'files': ['BERICHT.md'], 'state': 'done'}})
+        if c == 'submit':
+            return j({'ok': True, 'data': {'job_id': 'j20261014-abc123', 'state': 'queued'}})
+        if c == 'caps':
+            return j({'ok': True, 'data': {'caps': [{'name': 'python.run', 'status': 'tested', 'host': 'server', 'title': 'x'}]}})
+        if c == 'learned':
+            return j({'ok': True, 'data': {'templates': [], 'lessons': []}})
+        return j({'ok': True, 'data': {}})
     if path.startswith('/api/claude/op'):
         op = json.loads(body or '{}').get('op')
         if op == 'suggest':
@@ -379,6 +405,19 @@ def main():
         page.goto(BASE + '/?text=Hallo%20Teilen')
         page.wait_for_selector('#cf textarea', timeout=6000)
         check('Teilen-Menü legt Text als Entwurf in den Chat', page.input_value('#cf textarea') == 'Hallo Teilen', page.input_value('#cf textarea'))
+        page.evaluate("location.hash = '#/jarvis'")
+        page.wait_for_selector('#jvlist .row', timeout=5000)
+        check('JARVIS-Reiter: Navigation markiert, Auftrag gelistet', page.locator('#nav button[data-t=jarvis][aria-current=page]').count() == 1 and 'Teste Freigabe' in page.inner_text('#jvlist'))
+        page.fill('#jvf textarea', 'Neuer Auftrag eins')
+        page.click('#jvf button')
+        page.wait_for_function("document.querySelector('#jvdet').innerText.includes('braucht Freigabe')", timeout=6000)
+        sub = [x for x in JV_CALLS if x.get('cmd') == 'submit']
+        check('JARVIS: Auftrag wird mit Schlüssel gesendet, Detail zeigt Freigabe', len(sub) == 1 and sub[0].get('request') == 'Neuer Auftrag eins' and len(sub[0].get('client_id', '')) >= 8, sub)
+        page.click('#jvok')
+        page.wait_for_function("document.querySelector('#jvdet').innerText.includes('BERICHT.md')", timeout=6000)
+        ap = [x for x in JV_CALLS if x.get('cmd') == 'approve']
+        check('JARVIS: Freigabe sendet Schritt, danach erscheinen Ergebnisdateien', len(ap) == 1 and ap[0].get('step') == 's1', ap)
+        check('JARVIS: kein Querscrollen', page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'))
         check('keine JavaScript-Fehler', not errors, '; '.join(errors[:3]))
         browser.close()
     failed = [n for n, ok in results if not ok]

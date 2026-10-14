@@ -1119,6 +1119,74 @@ def plan_usage():
         return PLAN_CACHE['data']
 
 
+# ---- JARVIS V16 im Portal: duenne Huelle um jarvis_cli.py (dieselbe Steuerung wie der PC-Client), nur Unterbefehle der Zulassungsliste ----
+# Keine Sandbox-Befehle hier (caps --discover, doctor, tick): die Bruecke laeuft ohne Rechte fuer bwrap; den Takt macht Cron.
+JARVIS_PY = os.environ.get('MA_JARVIS_PY', '/home/andrew/.local/share/ma-jarvis/current/brain-runtime/jarvis_cli.py')
+JARVIS_CFGDIR = os.environ.get('MA_JARVIS_CFGDIR', '/home/andrew/.config/ma-jarvis')
+JARVIS_JOB = re.compile(r'j\d{8}-[0-9a-f]{6}')
+JARVIS_SIMPLE = ('usage', 'caps', 'learned', 'meta')
+
+
+def jarvis_config(user):
+    """Portal-Benutzer -> JARVIS-Konfiguration (portal-users.json im Konfigurationsordner). Unbekannte Benutzer bekommen nichts."""
+    name = json_load(os.path.join(JARVIS_CFGDIR, 'portal-users.json'), {}).get(str(user or ''))
+    if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9._-]+\.json', name):
+        return None
+    path = os.path.join(JARVIS_CFGDIR, name)
+    return path if os.path.isfile(path) else None
+
+
+def jarvis_api(req):
+    cmd, user = str(req.get('cmd') or ''), str(req.get('user') or '')
+    cfg = jarvis_config(user)
+    if not cfg:
+        return {'ok': False, 'error': 'Kein JARVIS-Konto fuer diesen Portal-Benutzer'}
+    job = str(req.get('job') or '')
+    args, stdin = [], b''
+    if cmd in ('status', 'result', 'cancel', 'events', 'approve'):
+        if not JARVIS_JOB.fullmatch(job):
+            return {'ok': False, 'error': 'Ungueltige Auftrags-ID'}
+        args = [cmd, job]
+        if cmd == 'events':
+            args += ['--since', str(max(0, int(req.get('since') or 0)))]
+        if cmd == 'approve':
+            if req.get('step'):
+                if not re.fullmatch(r'[A-Za-z0-9._:-]{1,60}', str(req['step'])):
+                    return {'ok': False, 'error': 'Ungueltiger Schritt'}
+                args += ['--step', str(req['step'])]
+            args += ['--answer', str(req.get('answer') or '')[:2000]]
+    elif cmd == 'list':
+        args = ['list', '--limit', str(min(50, max(1, int(req.get('limit') or 20))))]
+    elif cmd == 'submit':
+        text = str(req.get('request') or '').strip()
+        if not text or len(text) > 8000:
+            return {'ok': False, 'error': 'Auftragstext leer oder laenger als 8000 Zeichen'}
+        key = str(req.get('client_id') or '')       # Idempotenz-Schluessel je Absenden (Doppelklick = derselbe Auftrag), sonst zufaellig
+        if not re.fullmatch(r'[A-Za-z0-9_.-]{8,60}', key):
+            key = uuid.uuid4().hex
+        args, stdin = ['submit'], json.dumps({'request': text, 'client_id': 'portal:%s:%s' % (user[:20], key), 'options': {}}).encode() + b'\n'
+    elif cmd in JARVIS_SIMPLE:
+        args = [cmd]
+    elif cmd == 'kill':                              # nur der eigene Not-Aus; der globale bleibt der Kommandozeile vorbehalten
+        args = ['kill', 'on' if req.get('state') == 'on' else 'off']
+    elif cmd == 'forget':
+        kind, ident = str(req.get('kind') or ''), str(req.get('ident') or '')
+        if kind not in ('template', 'lesson', 'memory') or not re.fullmatch(r'[A-Za-z0-9._:-]{1,80}', ident):
+            return {'ok': False, 'error': 'Ungueltige Angabe'}
+        args = ['forget', kind, ident]
+    else:
+        return {'ok': False, 'error': 'Unbekannter JARVIS-Befehl'}
+    try:
+        p = subprocess.run(['/usr/bin/python3', JARVIS_PY, '--config', cfg] + args, input=stdin, capture_output=True, timeout=40, cwd='/')
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {'ok': False, 'error': 'JARVIS nicht erreichbar (%s)' % type(exc).__name__}
+    try:
+        data = json.loads(p.stdout.decode('utf-8', 'replace').strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {'ok': False, 'error': 'Unlesbare Antwort', 'rc': p.returncode}
+    return {'ok': p.returncode == 0 and not (isinstance(data, dict) and data.get('error')), 'rc': p.returncode, 'data': data}
+
+
 class Handler(socketserver.StreamRequestHandler):
     def reply(self, obj):
         self.wfile.write(json.dumps(obj).encode() + b'\n')
@@ -1158,6 +1226,8 @@ class Handler(socketserver.StreamRequestHandler):
                     tasks = [x for x in sched_load() if x.get('id') != str(req.get('id') or '')]
                     sched_save(tasks)
                     return self.reply({'type': 'sched', 'ok': True, 'tasks': tasks})
+            if op == 'jarvis':
+                return self.reply({'type': 'jarvis', **jarvis_api(req)})
             if op == 'note':
                 return self.reply({'type': 'note', **note_api(req.get('data') or '')})
             if op == 'connectors':
