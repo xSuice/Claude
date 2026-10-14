@@ -137,10 +137,14 @@ def cmd_search(con, a):
         eargs.append(zone)
     if not a.archiv:
         extra += ' AND NOT archiv'
+    for col, val in (('art', a.art), ('status', a.status)):
+        if val:
+            extra += ' AND %s=%%s' % col
+            eargs.append(val.lower())
     rows = []
     for op in (' & ', ' | '):                       # erst alle Begriffe (UND), bei zu wenigen Treffern ODER wie vault-q
         q = op.join(w.replace("'", '').replace(':', '') + ':*' for w in words)
-        rows = con.execute("""SELECT path, title, ts_rank_cd(tsv, to_tsquery('german', unaccent(%%s))) AS r,
+        rows = con.execute("""SELECT path, title, ts_rank_cd(tsv, to_tsquery('german', unaccent(%%s))) * CASE WHEN lower(status) IN ('veraltet','ungueltig','zurueckgezogen') THEN 0.3 ELSE 1.0 END AS r,
                               ts_headline('german', body, to_tsquery('german', unaccent(%%s)), 'MaxFragments=1,MaxWords=22,MinWords=8') AS snip
                               FROM notes WHERE %s%s ORDER BY r DESC LIMIT %%s""" % (where, extra), [q, q, q] + eargs + [a.n * 3]).fetchall()
         if len(rows) >= 3 or len(words) == 1:
@@ -189,7 +193,8 @@ def main():
     sp = ap.add_subparsers(dest='cmd', required=True)
     s = sp.add_parser('sync'); s.add_argument('--voll', action='store_true'); s.set_defaults(f=cmd_sync)
     s = sp.add_parser('search'); s.add_argument('query'); s.add_argument('-n', type=int, default=8); s.add_argument('--archiv', action='store_true')
-    s.add_argument('--zone', default='vault', choices=['vault', 'projekt', 'bib', 'alle']); s.add_argument('--alles', action='store_true'); s.set_defaults(f=cmd_search)
+    s.add_argument('--zone', default='vault', choices=['vault', 'projekt', 'bib', 'alle']); s.add_argument('--alles', action='store_true')
+    s.add_argument('--art', help='Frontmatter art: fakt|entscheidung|aufgabe|annahme'); s.add_argument('--status', help='Frontmatter status, z. B. gueltig|veraltet|offen|erledigt'); s.set_defaults(f=cmd_search)
     s = sp.add_parser('show'); s.add_argument('path'); s.add_argument('--lines'); s.set_defaults(f=cmd_show)
     s = sp.add_parser('links'); s.add_argument('note'); s.set_defaults(f=cmd_links)
     s = sp.add_parser('report'); s.add_argument('-n', type=int, default=15); s.set_defaults(f=cmd_report)
