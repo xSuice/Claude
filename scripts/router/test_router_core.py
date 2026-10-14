@@ -3,7 +3,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from router_core import choose, classify, suggest_access  # noqa: E402
+from router_core import choose, classify, route_task, suggest_access  # noqa: E402
 
 MODEL_CASES = [  # (Prompt, erwartetes Modell)  -- uebernommen aus dem alten Router-Test, plus Bruecke/Council
     ("Liste die Dateien auf.", "haiku"), ("Liste die Dateien im aktuellen Projekt auf.", "haiku"),
@@ -57,6 +57,17 @@ def main():
         ("Bilder nie Haiku", classify("Was ist das?", "lesen", True)[0] != "haiku"),
         ("voll_senden nie vorgeschlagen", all(suggest_access(p)[0] != "voll_senden" for p, *_ in ACCESS_CASES + [("Sende die Mail ab und lösche den Entwurf", 0, 0, 0)])),
         ("Aufwand: opus hoch, haiku niedrig", choose("Liste die Dateien auf.")[1] == "low" and choose("Entwirf eine Zero-Trust-Sicherheitsarchitektur")[1] == "high"),
+        # JARVIS route_task (V11.1/V16-Vertrag)
+        ("route: privilegiert -> Mensch", route_task({"risk": "privileged", "data_class": "public"})["target"] == "human"),
+        ("route: unbekanntes Risiko -> Mensch", route_task({"risk": "egal"})["target"] == "human"),
+        ("route: bestaetigter Ablauf -> lokal", route_task({"risk": "read", "has_procedure": True})["target"] == "local"),
+        ("route: langer oeffentlicher Text -> Helfer", route_task({"risk": "read", "data_class": "public", "task_type": "translate", "size_chars": 4000})["target"] == "helper:gemini"),
+        ("route: kurzer oeffentlicher Text -> Claude", route_task({"risk": "read", "data_class": "public", "task_type": "translate", "size_chars": 400})["target"].startswith("claude:")),
+        ("route: interne Daten nie Helfer", route_task({"risk": "read", "data_class": "internal", "task_type": "translate", "size_chars": 9000})["target"].startswith("claude:")),
+        ("route: private Daten nie Helfer", route_task({"risk": "read", "data_class": "private", "task_type": "text_draft", "size_chars": 9000})["target"].startswith("claude:")),
+        ("route: Diagnose nie Helfer", route_task({"risk": "read", "data_class": "public", "task_type": "diagnose_hint", "size_chars": 9000})["target"].startswith("claude:")),
+        ("route: Fable nie", route_task({"risk": "read", "data_class": "internal", "model": "fable"})["target"] == "claude:sonnet"),
+        ("route: kaputte Eingabe", route_task("x")["target"] == "human"),
     ]
     for name, ok in checks:
         bad += not ok
