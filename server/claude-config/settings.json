@@ -47,6 +47,11 @@
             "type": "command",
             "command": "python3 /home/andrew/.claude/hooks/council-auto.py",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 /home/andrew/.claude/hooks/kontext-waechter.py",
+            "timeout": 10
           }
         ]
       }
