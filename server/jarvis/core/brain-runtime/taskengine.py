@@ -721,6 +721,8 @@ class Engine:
             return {'progress': False, 'why': 'kill switch'}
         if s['attempts'] >= self.jd['step_attempts'] + j['fix_rounds']:
             self._step_set(s['id'], state='failed', result={'detail': 'zu viele Versuche'})
+            self.event(j['id'], 'step_failed', f'Schritt {s["sid"]} ({s["title"]}) gescheitert: zu viele Versuche '
+                                               f'({s["attempts"]})')
             return {'progress': True}
         kind = s['kind']
         if kind == 'human':
@@ -742,15 +744,16 @@ class Engine:
             return {'progress': True, 'state': 'waiting_pc'}
         self._step_set(s['id'], state='running', attempts=s['attempts'] + 1, started=now_s(self.clock))
         try:
+            # a deferral (budget, plan quota, RAM/CPU pressure) is not an attempt: give the attempt back
             if kind == 'claude':
                 r = self._run_claude_step(j, s)
                 if r is None:
-                    self._step_set(s['id'], state='ready')
+                    self._step_set(s['id'], state='ready', attempts=s['attempts'])
                     return {'progress': False, 'why': 'deferred'}
             else:
                 r = self._run_local_step(j, s)
                 if r is None:
-                    self._step_set(s['id'], state='ready')
+                    self._step_set(s['id'], state='ready', attempts=s['attempts'])
                     return {'progress': False, 'why': 'deferred'}
         except BudgetExceeded as e:
             self._step_set(s['id'], state='failed', result={'detail': str(e)})

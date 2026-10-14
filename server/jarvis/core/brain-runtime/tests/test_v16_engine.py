@@ -151,6 +151,24 @@ class LimitsAndSafety(unittest.TestCase):
         self.assertEqual(eng.status(j['job_id'])['state'], 'queued')
         self.assertIn('5h', ' '.join(e['text'] for e in eng.events(j['job_id'])))
 
+    def test_long_deferral_does_not_use_up_step_attempts(self):
+        # live finding 2026-10-14: every deferral (plan guard) consumed a step attempt, so the 3rd tick failed the job
+        t = tmpdir(self)
+        fake = FakeClaude(WC_PLAN, wc_steps())
+        block = {'on': True}  # plan quota is full as soon as planning is done
+        eng = make_app(t, fake, plan_probe=lambda: {'ok': True, 'five': {'p': 91.0 if block['on'] and fake.planning_calls else 10.0},
+                                                    'week': {'p': 10.0}})
+        j = eng.submit('Wortzähler mit Tests')
+        for _ in range(6):  # more deferrals than step attempts
+            eng.tick(max_seconds=2)
+        self.assertEqual(fake.planning_calls, 1)
+        st = eng.status(j['job_id'])
+        self.assertNotIn(st['state'], ('failed', 'partial'), st['summary'])
+        self.assertGreaterEqual(st['deferrals'], 6)
+        block['on'] = False
+        st = run_until(eng, job=j['job_id'])
+        self.assertEqual(st['state'], 'done', st['summary'])
+
     def test_memory_pressure_defers(self):
         t = tmpdir(self)
         fake = FakeClaude(WC_PLAN, wc_steps())
