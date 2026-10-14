@@ -1,0 +1,16 @@
+Source,Target,Weight,Type
+I1L,I2L,10,chemical
+I1L,I3,3,chemical
+I1L,I5,2,chemical
+I1L,I6,1,chemical
+I1L,M2L,3,chemical
+I1R,I2R,6,chemical
+I1R,I3,1,chemical
+I2L,I1L,2,chemical
+I2L,I2R,3,chemical
+I2L,I4,13,chemical
+I2R,I1R,1,chemical
+I2R,I2L,3,chemical
+I2R,I4,20,chemical
+I3,I1L,1,chemical
+I3,I5,2,chemical
