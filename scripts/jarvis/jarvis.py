@@ -6,7 +6,8 @@
   python jarvis.py status [JOB] | events JOB [--since N] | wait JOB [--minutes 9] | list | usage | caps | learned | doctor
   python jarvis.py result JOB [--fetch] [--to ORDNER]      (Standard-Ziel: Dokumente/JARVIS-Ergebnisse/<JOB>)
   python jarvis.py cancel JOB | approve JOB [--step S] [--answer TEXT] | forget template|lesson ID | flush
-  python jarvis.py pc-report | pc-worker [--once]          (PC-Fähigkeiten; nur mit lokaler Freigabe)
+  python jarvis.py pc-report | pc-worker [--once] [--allow-once CAP] | pc-gradle-seed
+                                                          (PC-Fähigkeiten; isoliert, nur mit lokaler Freigabe)
   Global: --json (Rohdaten)
 
 Transport: the existing SSH alias `ma-server` (BatchMode, no new ports). If the server is unreachable, `submit` stores the
@@ -163,41 +164,85 @@ def fmt_status(s: dict) -> str:
 
 
 # ---------------------------------------------------------------- PC worker (Windows; only allowed capabilities)
-def pc_allowed() -> set[str]:
+# Every PC step runs in winsandbox (AppContainer + Job Object): no network unless "<cap>:network" is allowed, file access
+# only to its own step folder and the separate JARVIS Gradle home, memory/process/CPU caps, tree killed at the end.
+# There is deliberately NO unsandboxed fallback: if the sandbox cannot start, the step fails.
+GRADLE_HOME = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'ma-jarvis' / 'gradle-home'
+JAVA_LIMITS = {'mem_mb': 3072, 'procs': 32, 'cpu_pct': 75, 'timeout_s': 1800}
+SKIP_OUT = {'.gradle', '.home', '.tmp', 'build-cache'}
+
+
+def pc_config() -> dict:
     try:
-        return set(json.loads(PC_ALLOW.read_text(encoding='utf-8')).get('allowed') or [])
+        return json.loads(PC_ALLOW.read_text(encoding='utf-8'))
     except (OSError, ValueError):
-        return set()
+        return {}
 
 
-def _run(cmd, cwd, timeout=1800):
-    try:
-        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, errors='replace', timeout=timeout,
-                           shell=False, env={**os.environ, 'GRADLE_OPTS': os.environ.get('GRADLE_OPTS', '-Xmx2g')})
-        return p.returncode, (p.stdout + p.stderr)[-3000:]
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return 124, f'{type(e).__name__}: {e}'
+def pc_allowed() -> set[str]:
+    return {a.split(':')[0] for a in (pc_config().get('allowed') or [])}
 
 
-def java_build(work: Path, args: dict) -> tuple[bool, str]:
+def pc_network(cap: str) -> bool:
+    return f'{cap}:network' in set(pc_config().get('allowed') or [])
+
+
+def _sandbox():
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import winsandbox
+    return winsandbox
+
+
+def java_home() -> str:
+    cfg = pc_config().get('java_home')
+    if cfg:
+        return cfg
+    root = Path(os.environ.get('ProgramFiles', r'C:\Program Files')) / 'Eclipse Adoptium'
+    jdks = sorted(root.glob('jdk-21*'), reverse=True) + sorted(root.glob('jdk-*'), reverse=True)
+    return str(jdks[0]) if jdks else ''
+
+
+def _sbx_run(cmd: list[str], work: Path, network: bool = False, timeout: int | None = None) -> tuple[int, str]:
+    wsb = _sandbox()
+    GRADLE_HOME.mkdir(parents=True, exist_ok=True)
+    sb = wsb.Sandbox()
+    marker = GRADLE_HOME / '.jarvis-granted'
+    if not marker.exists():  # grant once; files created later inherit the ACE
+        wsb.grant(GRADLE_HOME, sb.sid)
+        marker.write_text(sb.sid)
+    jh = java_home()
+    env = wsb.base_env(work, {'GRADLE_USER_HOME': str(GRADLE_HOME), **({'JAVA_HOME': jh} if jh else {}),
+                              'GRADLE_OPTS': '-Xmx1536m', 'PATH': ';'.join(filter(None, [str(Path(jh) / 'bin') if jh else '',
+                                                                                         wsb.base_env(work)['PATH']]))})
+    lim = wsb.Limits(network=network, **{**JAVA_LIMITS, **({'timeout_s': timeout} if timeout else {})})
+    r = sb.run(cmd, work, lim, env)
+    head = (f'[sandbox: AppContainer, Netz {"an" if network else "aus"}, max {lim.mem_mb} MB / {lim.procs} Prozesse / '
+            f'{lim.cpu_pct} % CPU / {lim.timeout_s} s; Spitze {r.peak_mem_mb} MB, {r.processes} Prozesse, {r.seconds} s'
+            f'{", ZEITLIMIT" if r.timed_out else ""}]\n')
+    return r.code, head + r.output[-3000:]
+
+
+def java_build(work: Path, args: dict, network: bool = False) -> tuple[bool, str]:
     d = (work / (args.get('dir') or '.')).resolve()
     if work.resolve() not in (d, *d.parents):
         return False, 'dir außerhalb des Arbeitsordners'
-    if (d / 'gradlew.bat').is_file() and os.name == 'nt':
-        code, out = _run([str(d / 'gradlew.bat'), 'build', '--no-daemon', '--console=plain'], d)
+    gradle_flags = ['build', '--no-daemon', '--console=plain'] + ([] if network else ['--offline'])
+    if (d / 'gradlew.bat').is_file():
+        code, out = _sbx_run([str(d / 'gradlew.bat'), *gradle_flags], d, network)
     elif (d / 'build.gradle').is_file() or (d / 'build.gradle.kts').is_file():
-        code, out = _run(['gradle', 'build', '--no-daemon', '--console=plain'], d)
-    else:  # plain Java: javac + jar, no network
-        srcs = [str(p) for p in d.rglob('*.java')]
+        dists = sorted(GRADLE_HOME.glob('wrapper/dists/gradle-*-bin/*/gradle-*/bin/gradle.bat'), reverse=True)
+        if not dists:
+            return False, 'kein Gradle im JARVIS-Gradle-Home (python jarvis.py pc-gradle-seed)'
+        code, out = _sbx_run([str(dists[0]), *gradle_flags], d, network)
+    else:  # plain Java: javac + jar
+        srcs = [str(p.relative_to(d)) for p in d.rglob('*.java')]
         if not srcs:
             return False, 'keine Java-Quellen gefunden'
-        (d / 'build' / 'classes').mkdir(parents=True, exist_ok=True)
-        code, out = _run(['javac', '-d', str(d / 'build' / 'classes'), *srcs], d)
+        code, out = _sbx_run(['javac', '-d', 'build/classes', *srcs], d)
         if code == 0:
             (d / 'build' / 'libs').mkdir(parents=True, exist_ok=True)
-            res = d / 'src' / 'main' / 'resources'
-            extra = ['-C', str(res), '.'] if res.is_dir() else []
-            code, out2 = _run(['jar', 'cf', str(d / 'build' / 'libs' / f'{d.name}.jar'), '-C', str(d / 'build' / 'classes'), '.', *extra], d)
+            extra = ['-C', 'src/main/resources', '.'] if (d / 'src' / 'main' / 'resources').is_dir() else []
+            code, out2 = _sbx_run(['jar', 'cf', f'build/libs/{d.name}.jar', '-C', 'build/classes', '.', *extra], d)
             out += out2
     return code == 0, out
 
@@ -205,34 +250,82 @@ def java_build(work: Path, args: dict) -> tuple[bool, str]:
 PC_CAPS = {'java.build': java_build}
 
 
+def safe_files(root: Path):
+    """Regular files below root - never through junctions/symlinks (a sandboxed build must not smuggle user files out)."""
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = [n for n in dirnames if n not in SKIP_OUT and not _is_reparse(Path(dirpath) / n)]
+        for n in filenames:
+            p = Path(dirpath) / n
+            if not _is_reparse(p) and p.is_file():
+                yield p
+
+
+def _is_reparse(p: Path) -> bool:
+    try:
+        st = os.lstat(p)
+    except OSError:
+        return True
+    return bool(getattr(st, 'st_file_attributes', 0) & 0x400) or os.path.islink(p)  # FILE_ATTRIBUTE_REPARSE_POINT
+
+
+def pc_gradle_seed() -> int:
+    """Copy Gradle distributions and the public dependency caches from ~/.gradle into the JARVIS Gradle home, so that
+    sandboxed builds work offline. Never copies gradle.properties, init scripts or credentials."""
+    import shutil
+    src = Path.home() / '.gradle'
+    parts = [('wrapper/dists', True), ('caches/modules-2', True), ('caches/fabric-loom', True)]
+    for rel, _ in parts:
+        s_, d_ = src / rel, GRADLE_HOME / rel
+        if not s_.is_dir():
+            print(f'  {rel}: nicht vorhanden')
+            continue
+        t = time.time()
+        shutil.copytree(s_, d_, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.lck', '*.lock', 'gc.properties'))
+        print(f'  {rel}: kopiert ({time.time() - t:.0f} s)')
+    _sandbox().grant(GRADLE_HOME, _sandbox().container_sid())
+    print(f'JARVIS-Gradle-Home: {GRADLE_HOME} (für den AppContainer freigegeben; ~/.gradle bleibt unsichtbar)')
+    return 0
+
+
 def pc_probe() -> dict:
     caps = {}
-    code, out = _run(['java', '-version'], str(Path.home()), 60)
-    jv = out.strip().splitlines()[0] if out.strip() else ''
-    if code != 0:
-        caps['java.build'] = {'status': 'missing', 'detail': 'java nicht gefunden'}
-    else:  # real self-test: compile and pack a tiny program (no network)
-        import tempfile
-        t = Path(tempfile.mkdtemp(prefix='jarvis-pc-'))
-        (t / 'src').mkdir()
-        (t / 'src' / 'Hallo.java').write_text('public class Hallo { public static void main(String[] a) { System.out.println("ok"); } }')
-        ok, detail = java_build(t, {})
-        caps['java.build'] = {'status': 'tested' if ok and any(t.rglob('*.jar')) else 'failed', 'version': jv, 'detail': detail[-200:]}
+    jh = java_home()
+    if os.name != 'nt' or not jh:
+        caps['java.build'] = {'status': 'missing', 'detail': 'java nicht gefunden' if os.name == 'nt' else 'nur Windows'}
+    else:  # real self-test inside the sandbox: compile and pack a tiny program (no network)
+        try:
+            wsb = _sandbox()
+            t = wsb.new_workdir('selftest')
+            try:
+                (t / 'src').mkdir()
+                (t / 'src' / 'Hallo.java').write_text('public class Hallo { public static void main(String[] a) { System.out.println("ok"); } }')
+                ok, detail = java_build(t, {})
+                status = 'tested' if ok and any(t.rglob('*.jar')) else 'failed'
+            finally:
+                wsb.cleanup(t)
+        except OSError as e:
+            status, detail = 'failed', f'Sandbox nicht verfügbar: {e}'
+        caps['java.build'] = {'status': status, 'version': Path(jh).name, 'detail': detail.splitlines()[0][:200]}
     for name, cmd in (('blender.render', ['blender', '--version']), ('ollama.ask', ['ollama', '--version'])):
-        code, out = _run(cmd, str(Path.home()), 60)
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, errors='replace', timeout=60)
+            code, out = p.returncode, p.stdout + p.stderr
+        except (OSError, subprocess.TimeoutExpired) as e:
+            code, out = 127, f'{type(e).__name__}: {e}'
         caps[name] = {'status': 'available' if code == 0 else 'missing', 'version': (out.strip().splitlines() or [''])[0][:60],
                       'detail': 'noch kein Selbsttest/PC-Adapter in V16' if code == 0 else 'nicht installiert'}
     return caps
 
 
-def pc_worker(once: bool) -> int:
-    allowed = pc_allowed() & set(PC_CAPS)
+def pc_worker(once: bool, allow_once: set[str] | None = None) -> int:
+    allowed = (pc_allowed() | (allow_once or set())) & set(PC_CAPS)
     if not allowed:
         print(f'PC-Worker: keine PC-Fähigkeit freigegeben. Freigabe durch Philipp: Datei {PC_ALLOW} mit '
-              '{"allowed": ["java.build"]} anlegen (Builds laufen am PC ohne Sandbox und mit Netz für Abhängigkeiten).')
+              '{"allowed": ["java.build"]} anlegen. Builds laufen isoliert (AppContainer, ohne Netz, begrenzter Speicher); '
+              'Netz nur mit zusätzlich "java.build:network".')
         return 3
     import shutil
-    import tempfile
+    wsb = _sandbox()
     while True:
         code, r = call(['pc-lease'], json.dumps({'caps': sorted(allowed), 'worker': os.environ.get('COMPUTERNAME', 'pc')}).encode())
         lease = r.get('lease') if code == 0 else None
@@ -243,33 +336,34 @@ def pc_worker(once: bool) -> int:
             time.sleep(60)
             continue
         job, sid = lease['job_id'], lease['sid']
-        work = Path(tempfile.mkdtemp(prefix=f'jarvis-{job}-'))
+        work = wsb.new_workdir(job)
         try:
             code, raw = call(['pc-pull', job], binary=True, timeout=900)
             if code != 0:
                 raise RuntimeError('Arbeitsordner nicht ladbar')
             with tarfile.open(fileobj=io.BytesIO(raw), mode='r:gz') as tf:
                 for m in tf.getmembers():
-                    if not m.isfile() or m.name.startswith(('/', '..')) or '..' in Path(m.name).parts:
+                    if not m.isfile() or m.name.startswith(('/', '..')) or '..' in Path(m.name).parts or ':' in m.name:
                         continue
                     dst = work / m.name
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     with tf.extractfile(m) as s, open(dst, 'wb') as fh:
                         shutil.copyfileobj(s, fh)
-            before = {p: p.stat().st_mtime for p in work.rglob('*') if p.is_file()}
-            ok, detail = PC_CAPS[lease['capability']](work, lease.get('args') or {})
+            before = {p: p.stat().st_mtime for p in safe_files(work)}
+            cap = lease['capability']
+            ok, detail = PC_CAPS[cap](work, lease.get('args') or {}, network=pc_network(cap))
             buf = io.BytesIO()
             with tarfile.open(fileobj=buf, mode='w:gz') as tf:
-                for p in work.rglob('*'):
-                    if p.is_file() and not p.is_symlink() and before.get(p) != p.stat().st_mtime and '.gradle' not in p.parts:
+                for p in safe_files(work):
+                    if before.get(p) != p.stat().st_mtime:
                         tf.add(str(p), arcname=str(p.relative_to(work)).replace('\\', '/'), recursive=False)
             code, r = call(['pc-push', job, sid, '--ok' if ok else '--fail', '--detail', detail[-1500:]], buf.getvalue(), timeout=900)
-            print(f'PC-Worker: {job}/{sid} {lease["capability"]}: {"ok" if ok else "gescheitert"} -> {r}')
+            print(f'PC-Worker: {job}/{sid} {cap}: {"ok" if ok else "gescheitert"} -> {r}')
         except Exception as e:  # noqa: BLE001
             call(['pc-push', job, sid, '--fail', '--detail', f'PC-Worker-Fehler: {type(e).__name__}: {e}'])
             print(f'PC-Worker: Fehler {e}')
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            wsb.cleanup(work)
         if once:
             return 0
 
@@ -293,6 +387,8 @@ def main(argv=None) -> int:
     for name in ('list', 'usage', 'caps', 'learned', 'doctor', 'flush', 'pc-report', 'meta'):
         sp.add_parser(name)
     s = sp.add_parser('pc-worker'); s.add_argument('--once', action='store_true')
+    s.add_argument('--allow-once', action='append', default=[], help='Fähigkeit nur für diesen Lauf freigeben (Test)')
+    sp.add_parser('pc-gradle-seed')
     a = ap.parse_args(argv)
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
         try:
@@ -399,7 +495,9 @@ def main(argv=None) -> int:
             code, r = call(['pc-report'], json.dumps({'caps': caps}).encode())
             return show(code, {'pc': caps, 'server': r}, lambda x: json.dumps(x, ensure_ascii=False, indent=1))
         if a.cmd == 'pc-worker':
-            return pc_worker(a.once)
+            return pc_worker(a.once, set(a.allow_once))
+        if a.cmd == 'pc-gradle-seed':
+            return pc_gradle_seed()
     except Offline as e:
         print(f'JARVIS-Server nicht erreichbar: {e}. Nichts verändert.')
         return 4
