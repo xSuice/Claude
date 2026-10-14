@@ -151,6 +151,21 @@ class LimitsAndSafety(unittest.TestCase):
         self.assertEqual(eng.status(j['job_id'])['state'], 'queued')
         self.assertIn('5h', ' '.join(e['text'] for e in eng.events(j['job_id'])))
 
+    def test_every_call_is_recorded_with_all_token_kinds(self):
+        t = tmpdir(self)
+        fake = FakeClaude(WC_PLAN, wc_steps())
+        eng = make_app(t, fake)
+        j = eng.submit('Wortzähler mit Tests')
+        st = run_until(eng, job=j['job_id'])
+        self.assertEqual(st['state'], 'done', st['summary'])
+        self.assertEqual(len(st['calls']), st['claude_calls'])
+        self.assertEqual(len(st['calls']), len(fake.calls))
+        # fake usage: in = new//2, cache_write = new//4, out = rest, cache_read = 5000 per call
+        self.assertEqual(st['tokens']['cache_read'], 5000 * len(fake.calls))
+        self.assertEqual(st['tokens']['tokens_in'] + st['tokens']['cache_write'] + st['tokens']['tokens_out'], st['tokens_new'])
+        self.assertTrue(st['tokens']['all_known'])
+        self.assertEqual(st['calls'][0]['sid'], 'plan')
+
     def test_long_deferral_does_not_use_up_step_attempts(self):
         # live finding 2026-10-14: every deferral (plan guard) consumed a step attempt, so the 3rd tick failed the job
         t = tmpdir(self)
