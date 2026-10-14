@@ -3,6 +3,7 @@
 Auftraege des Portals (ma-web) ueber einen Unix-Socket an. Startet `claude -p` mit festen Rechten
 und streamt die JSON-Zeilen zurueck. Kein TCP-Port, kein sudo (NoNewPrivileges)."""
 import base64
+import calendar
 import json
 import os
 import re
@@ -14,6 +15,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
 
 SOCK = os.environ.get('MA_CLAUDE_SOCK', '/run/ma-claude/bridge.sock')
@@ -1064,6 +1067,58 @@ def connectors_status():
     return {'ok': False, 'items': [], 'error': 'Verbindungen werden noch geprüft. In etwa einer halben Minute erneut öffnen (Aktualisieren).'}
 
 
+# ---- Plan-Limits (Sitzung 5 Std., Woche): dieselben Werte wie die Claude-App, Quelle: Nutzungs-Schnittstelle von Anthropic ----
+# Nicht dokumentiert, kann sich aendern; bei Fehlern zeigt das Portal einen Hinweis statt Werte. Das Token wird nur hier gelesen und nie ausgegeben.
+PLAN_CACHE = {'t': 0.0, 'data': None, 'busy': False}
+PLAN_LOCK = threading.Lock()
+PLAN_TTL = 120          # Sekunden zwischen zwei Abfragen (das Portal fragt alle 4 s, die Schnittstelle nicht)
+CRED_FILE = '/home/andrew/.claude/.credentials.json'
+
+
+def plan_epoch(iso):
+    """ISO-Zeit (UTC, z. B. 2026-10-14T09:09:59.6+00:00) in Unix-Sekunden."""
+    try:
+        return int(calendar.timegm(time.strptime(str(iso)[:19], '%Y-%m-%dT%H:%M:%S'))) if iso else 0
+    except ValueError:
+        return 0
+
+
+def plan_refresh():
+    """Fragt die Plan-Limits ab und fuellt den Zwischenspeicher. Laeuft im Hintergrund; gespeichert werden nur Prozent, Reset-Zeit und Fehlertext."""
+    res = {'ok': False, 'error': 'Keine Werte'}
+    try:
+        tok = json_load(CRED_FILE, {}).get('claudeAiOauth', {}).get('accessToken')
+        if not tok:
+            res['error'] = 'Claude nicht angemeldet'
+        else:
+            rq = urllib.request.Request('https://api.anthropic.com/api/oauth/usage',
+                                        headers={'Authorization': 'Bearer ' + tok, 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': 'ma-home-bridge'})
+            with urllib.request.urlopen(rq, timeout=10) as r:
+                d = json.load(r)
+            res = {'ok': True}
+            for key, name in (('five_hour', 'five'), ('seven_day', 'week')):
+                x = d.get(key) or {}
+                if isinstance(x.get('utilization'), (int, float)):
+                    res[name] = {'p': round(float(x['utilization']), 1), 'r': plan_epoch(x.get('resets_at'))}
+            if 'five' not in res and 'week' not in res:
+                res = {'ok': False, 'error': 'Schnittstelle liefert keine Limits'}
+    except urllib.error.HTTPError as exc:
+        res['error'] = 'Anmeldung abgelaufen (einmal im Chat schreiben)' if exc.code in (401, 403) else 'Abfrage HTTP %d' % exc.code
+    except (OSError, ValueError) as exc:
+        res['error'] = 'Abfrage fehlgeschlagen: ' + exc.__class__.__name__
+    with PLAN_LOCK:
+        PLAN_CACHE.update(t=time.time(), data=res, busy=False)
+
+
+def plan_usage():
+    """Antwortet sofort aus dem Zwischenspeicher; ist er aelter als PLAN_TTL, wird im Hintergrund aufgefrischt."""
+    with PLAN_LOCK:
+        if time.time() - PLAN_CACHE['t'] >= PLAN_TTL and not PLAN_CACHE['busy']:
+            PLAN_CACHE['busy'] = True
+            threading.Thread(target=plan_refresh, daemon=True).start()
+        return PLAN_CACHE['data']
+
+
 class Handler(socketserver.StreamRequestHandler):
     def reply(self, obj):
         self.wfile.write(json.dumps(obj).encode() + b'\n')
@@ -1076,7 +1131,7 @@ class Handler(socketserver.StreamRequestHandler):
             if op == 'jobs':
                 with JOBS_LOCK:
                     jobs = [{'id': k, 'sec': int(time.time() - v['start']), 'prompt': v['prompt'], 'model': v['model'], 'mode': v['mode']} for k, v in JOBS.items() if not v['done']]
-                return self.reply({'type': 'jobs', 'jobs': jobs})
+                return self.reply({'type': 'jobs', 'jobs': jobs, 'plan': plan_usage()})
             if op == 'cancel':
                 with JOBS_LOCK:
                     job = JOBS.get(str(req.get('id')))

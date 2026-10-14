@@ -455,3 +455,28 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Prüfung: Syntax mit esprima geprüft (Kopie mit ES2020-Operatoren ersetzt). Verhalten im Browser nicht geprüft. Die Limit-Anzeige liefert laut Philipp keine Werte; belegt sind in den Protokollen nur rejected-Ereignisse mit status, resetsAt, rateLimitType.
 - Rückweg: `/opt/ma-home/web.bak-*` (letzte Sicherung vor diesem Stand: 20261014-043154).
 - Offen: Quelle für Prozentwerte (wie die Claude-App) unbekannt; Weg über Anmelde-Token nur mit Freigabe von Philipp.
+
+## 2026-10-14 – Portal: Sitzungs- und Wochenlimit automatisch im Claude-Reiter (Version 2026-10-14-4)
+
+- Auftrag: Anzeige wie in der Claude-App (Sitzung 5 Std., Woche) immer automatisch.
+- Betroffene Dateien: `server/claude-bridge/ma-claude-bridge.py` (plan_usage, Antwort von `jobs` um `plan` ergaenzt), `portal-ui/web/app.js` (planRender, ersetzt den Weg ueber rate_limit_event), `portal-ui/web/sw.js`.
+- Aenderung: Die Bruecke fragt alle 120 s `https://api.anthropic.com/api/oauth/usage` mit dem Token von andrew ab (undokumentierte Schnittstelle, nur Prozent und Reset werden gespeichert, das Token nie ausgegeben). Das Portal liest `plan` aus der `jobs`-Abfrage (alle 4 s, solange der Reiter Claude offen ist).
+- Pruefung: Syntax von app.js (esprima, Kopie) und Bruecke (py_compile) ok. Probe `usage-probe.py` am 2026-10-14 06:49: five_hour 22 %, seven_day 25 %, Woche stimmt mit der Claude-App ueberein. Anzeige im Browser noch nicht geprueft.
+- Rueckweg: Bruecke `sudo cp /usr/local/lib/ma-claude-bridge.py.bak /usr/local/lib/ma-claude-bridge.py && sudo systemctl restart ma-claude-bridge`; Portal `/opt/ma-home/web.bak-*`.
+- Risiko/Offen: Schnittstelle kann sich aendern; Token laeuft ab (wird beim naechsten Chat erneuert), dann zeigt die Anzeige einen Hinweis. Paritaet: noch nicht am PC, Abgleich ueber ClaudeAbgleich.
+
+## 2026-10-14 – Portal: Label der Sitzungsanzeige gekürzt (noch nicht eingespielt)
+
+- Auftrag: Im Handy-Screenshot brach „Sitzung (5 Std.)“ auf drei Zeilen um.
+- Aenderung: `portal-ui/web/app.js` (planRender), Label „Sitzung (5 Std.)“ zu „Sitzung 5h“.
+- Pruefung: nur Textaenderung, nicht im Browser geprueft. Einspielen mit `deploy-ui.sh` (Sudo-Bruecke) steht aus.
+- Rueckweg: Label zurueckaendern. Paritaet: Abgleich ueber ClaudeAbgleich (BACKLOG B33).
+
+## 2026-10-14 – Kontext-Wächter-Hook für den Server (nur im Projekt, noch nicht aktiv)
+
+- Auftrag: Server-Chat meldet große Sitzungen wie der PC (Übergabe-Schritt 4).
+- Dateien: neu `server/claude-config/hooks/kontext-waechter.py`; `server/claude-config/settings.json` (zweiter UserPromptSubmit-Hook neben council-auto.py).
+- Verhalten: liest Token der letzten Antwort aus `transcript_path`; ab 250 000 Hinweis, ab 300 000 Auftrag `/uebergabe`; Abschalten mit „ohne waechter“; bei Fehlern still (Exit 0).
+- Pruefung: Testlauf mit künstlichen Transcripts (100k: keine Ausgabe, 260k: Warnung, 310k: Übergabe, „ohne waechter“ und fehlende Datei: still); settings.json ist gültiges JSON. Nicht in einer echten Sitzung getestet.
+- Offen: Einspielen nach `~/.claude/hooks/` und `~/.claude/settings.json` (Abgleich oder Installer); ob die Brücke `transcript_path` an Hooks liefert, ist ungeprüft.
+- Rueckweg: Eintrag in settings.json entfernen, Datei löschen. Paritaet: PC hat eigenen Wächter.

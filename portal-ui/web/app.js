@@ -329,26 +329,28 @@ const CTX_MAX = 200000;      // ab hier: Übergabe sichern und neuer Chat (jede 
 const fmtTok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + ' Mio' : n >= 1000 ? Math.round(n / 1000) + 'k' : String(n || 0);
 function tokRender() {
   const el = $('#ctok'), t = claudeState.tok; if (!el) return;
-  if (!t) { el.textContent = 'Tokens: noch keine Anfrage'; el.classList.remove('warn'); return; }
+  if (!t) { el.innerHTML = '<div class="ctoks">Tokens: noch keine Anfrage</div>' + planRender(); el.classList.remove('warn'); return; }
   const win = /1m/i.test(claudeState.model || '') ? 1e6 : 200000, pct = Math.min(100, Math.round(t.ctx / win * 100));      // Fenstergroesse: 200k, mit [1m]-Modell 1 Mio
   el.innerHTML = '<div class="ctokh"><span>Kontextfenster</span><span>' + fmtTok(t.ctx) + ' / ' + fmtTok(win) + ' (' + pct + ' %)</span></div>' +
     '<div class="ctokbar"><i style="width:' + pct + '%"></i></div>' +
     '<div class="ctoks">Sitzung: ' + fmtTok(t.in) + ' rein / ' + fmtTok(t.out) + ' raus' + (t.cost ? ' · ca. $' + t.cost.toFixed(2) : '') + (t.ctx > CTX_MAX ? ' · groß, besser neuer Chat' : '') + '</div>';
-  el.innerHTML += rlRender(t.rl);
+  el.innerHTML += planRender();
   el.classList.toggle('warn', t.ctx > CTX_MAX);
 }
-// Sitzungs-/Wochenlimit aus rate_limit_event; ohne gemeldeten Prozentwert nur Status und Rücksetzzeit (kein erfundener Wert)
-const RL_NAMES = { five_hour: '5-Stunden-Fenster', seven_day: 'Woche', seven_day_opus: 'Woche (Opus)', seven_day_sonnet: 'Woche (Sonnet)', overage: 'Zusatzkontingent' };
-function rlRender(rl) {
-  if (!rl) return '';
-  return Object.keys(rl).map(k => {
-    const x = rl[k], reset = x.r ? new Date(x.r * 1000) : null;
-    const left = reset ? Math.max(0, Math.round((reset - Date.now()) / 60000)) : null;
-    const when = reset ? 'Reset ' + reset.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + (left !== null && left < 1440 ? ' (in ' + Math.floor(left / 60) + ' h ' + (left % 60) + ' min)' : '') : '';
-    const st = x.s === 'rejected' ? 'Limit erreicht' : x.s === 'allowed_warning' ? 'bald erreicht' : 'frei';
-    const pct = x.u !== null && x.u !== undefined ? Math.round(x.u <= 1 ? x.u * 100 : x.u) : null;
-    return '<div class="ctokh"><span>' + esc(RL_NAMES[k] || k) + '</span><span>' + st + (pct !== null ? ' · ' + pct + ' % belegt' : '') + (when ? ' · ' + when : '') + '</span></div>' +
-      (pct !== null ? '<div class="ctokbar"><i style="width:' + Math.min(100, pct) + '%"></i></div>' : '');
+// Sitzungs- (5 Std.) und Wochenlimit: Werte liefert die Brücke in der Antwort von "jobs" (siehe plan_usage in ma-claude-bridge.py)
+let PLAN = null;
+function planRender() {
+  if (!PLAN) return '';
+  if (!PLAN.ok) return '<div class="ctoks">Limits: ' + esc(PLAN.error || 'nicht verfügbar') + '</div>';
+  const when = r => {
+    if (!r) return '';
+    const d = new Date(r * 1000), min = Math.max(0, Math.round((d - Date.now()) / 60000));
+    const left = min < 1440 ? 'in ' + Math.floor(min / 60) + ' Std. ' + (min % 60) + ' Min.' : d.toLocaleDateString('de-DE', { weekday: 'short' }) + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return ' · Reset ' + left;
+  };
+  return [['five', 'Sitzung 5h'], ['week', 'Woche']].filter(x => PLAN[x[0]]).map(x => {
+    const v = PLAN[x[0]], pct = Math.min(100, Math.round(v.p));
+    return '<div class="ctokh"><span>' + x[1] + '</span><span>' + pct + ' % verbraucht' + when(v.r) + '</span></div><div class="ctokbar"><i style="width:' + pct + '%"></i></div>';
   }).join('');
 }
 function claudeRender(toBottom) {
@@ -506,11 +508,6 @@ async function claudePump(body) {
           if (d.is_error) {
             S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Das geht nur einmal und nur mit deinem Konto. Auf deinem PC in PowerShell eingeben: ssh -t ma-server "~/.local/bin/claude". Danach funktioniert dieser Chat dauerhaft.' : String(d.result) });
           } else if (a && !a.t && d.result) a.t = d.result;
-        } else if (d.type === 'rate_limit_event' && d.rate_limit_info) {
-          const r = d.rate_limit_info;      // belegt: status, resetsAt (Unix-Sekunden), rateLimitType (five_hour ...); utilization nur falls vom CLI mitgeliefert
-          S.tok = S.tok || { in: 0, out: 0, ctx: 0, cost: 0 };
-          S.tok.rl = S.tok.rl || {};
-          S.tok.rl[r.rateLimitType || 'limit'] = { s: r.status, r: r.resetsAt || 0, u: typeof r.utilization === 'number' ? r.utilization : null, t: Date.now() };
         } else if (d.type === 'bridge_model') {
           S.model = d.model;
           if (!opts.model || opts.model === 'auto') S.msgs.splice(Math.max(0, S.msgs.findIndex(m => m.live)), 0, { r: 't', t: 'Modell automatisch gewählt: ' + d.model });
@@ -608,6 +605,7 @@ async function jobsRefresh() {
   if (!box) { clearInterval(jobsTimer); jobsTimer = null; return; }
   try {
     const d = await cop('jobs', {}), jobs = d.jobs || [];
+    if (d.plan) { PLAN = d.plan; tokRender(); }
     box.innerHTML = jobs.map(j => '<div class="cjob"><span>⏳ ' + esc(j.prompt) + ' · ' + esc(j.model) + ' · ' + Math.floor(j.sec / 60) + ':' + String(j.sec % 60).padStart(2, '0') + '</span>' + (claudeState.busy ? '' : '<button class="btn ghost small" data-view="' + esc(j.id) + '" data-p="' + esc(j.prompt) + '">Ansehen</button>') + '<button class="btn ghost small" data-id="' + esc(j.id) + '">Abbrechen</button></div>').join('');
     box.hidden = !jobs.length;
     box.querySelectorAll('button[data-id]').forEach(b => { b.onclick = async () => { b.disabled = true; try { await cop('cancel', { id: b.dataset.id }); toast('Auftrag abgebrochen'); } catch (er) { toast(er.message, 1); } jobsRefresh(); }; });
@@ -1704,7 +1702,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-14-3';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-14-4';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {
