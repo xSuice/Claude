@@ -411,3 +411,12 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Nicht geprüft: Ob der Timerlauf ohne Terminal auch pusht (Status 0, aber keine Ausgabe gelesen); Zusammenführung `server-live` → `main` am PC; Umstellung von `claude-abgleich.py` und `paritaet-check.py` auf Commit-Stände.
 - Offen: PC holt `server-live` per `git fetch` und führt bewusst zusammen; `claude-abgleich.py` am PC danach anpassen, damit beide Wege sich nicht überschneiden.
 - Rückweg: `sudo systemctl disable --now ma-git-sync.timer; sudo rm /etc/systemd/system/ma-git-sync.{service,timer}`; Deploy-Key in GitHub löschen, `rm -r ~/.config/ma-github`.
+
+## 2026-10-14 – JARVIS V16 am Server installiert (PC-Kopie, live belegt)
+
+- Auftrag: V11.1 zu V16 ausbauen, am Server in Betrieb nehmen (Masterauftrag V11.1→V16).
+- Neu: `server/jarvis/` (V11.1 unverändert unter `core/`, dazu bwrap-Sandbox und V16-Module in `core/brain-runtime/`), `scripts/router/router_core.py`, `scripts/jarvis/jarvis.py` + Skill `/jarvis`, `install-v16.sh`, `rollback-v16.sh`. Doku: `docs/jarvis/STAND-V16.md`, `BENCHMARK-V16.md`.
+- Installation am Server ohne sudo als `andrew`: Release unter `~/.local/share/ma-jarvis/releases/`, Cron jede Minute (`flock`, `nice`, `ionice`), Konfiguration `~/.config/ma-jarvis/jarvis.json`. Erster Lauf wurde von roten Tests gestoppt (Pfad der Drop-in-Beispiele im Release, pandoc „Cannot allocate memory“); Korrekturen: Installer kopiert `dropin-beispiele` in den Release, Test sucht an beiden Orten und wiederholt einen fehlgeschlagenen Selbsttest einmal, `rollback-v16.sh --start` nutzt den eigenen Ordner statt `~/MA-Server`.
+- Geprüft 2026-10-14: 294 Tests am Server grün (4 übersprungen); `--stop` entfernt Cron und setzt KILL, `--start` stellt wieder her; Cron feuert laut journalctl jede Minute, `tick.err` leer; zwei echte Aufträge (Primzahlen-Skript) erledigt und am PC unabhängig geprüft; Wiederholung über Vorlage mit 61 % weniger neuen Token (n=1); `pc-report`: `java.build` tested; Leerlauflast mit Cron: CPU-Median 5,3 % (vorher 5,8 %), HA-Latenz Median 9,4 ms (vorher 7,2 ms).
+- Nicht geprüft: Last während eines Jobs, Gate B live, PC-Worker, Helfer/Canary, Benchmark (12 Aufgaben), `doc.office_pdf` (scheitert in der Sandbox).
+- Rückweg: `bash ~/jarvis-stage/v16/server/jarvis/rollback-v16.sh --stop` (Cron weg, Not-Aus); vollständig: Cron-Zeile aus `crontab -e` entfernen, `~/.local/share/ma-jarvis` und `~/.config/ma-jarvis` löschen. Sicherung vor der Installation: `~/.local/share/ma-jarvis/backups/`.
