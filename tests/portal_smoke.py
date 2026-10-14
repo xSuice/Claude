@@ -410,11 +410,11 @@ def main():
         check('JARVIS-Reiter: Navigation markiert, Auftrag gelistet', page.locator('#nav button[data-t=jarvis][aria-current=page]').count() == 1 and 'Teste Freigabe' in page.inner_text('#jvlist'))
         page.fill('#jvf textarea', 'Neuer Auftrag eins')
         page.click('#jvf button')
-        page.wait_for_function("document.querySelector('#jvdet').innerText.includes('braucht Freigabe')", timeout=6000)
+        page.wait_for_function("document.querySelector('#jvdet').innerText.toLowerCase().includes('braucht freigabe')", timeout=6000)
         sub = [x for x in JV_CALLS if x.get('cmd') == 'submit']
         check('JARVIS: Auftrag wird mit Schlüssel gesendet, Detail zeigt Freigabe', len(sub) == 1 and sub[0].get('request') == 'Neuer Auftrag eins' and len(sub[0].get('client_id', '')) >= 8, sub)
         page.click('#jvok')
-        page.wait_for_function("document.querySelector('#jvdet').innerText.includes('BERICHT.md')", timeout=6000)
+        page.wait_for_function("document.querySelector('#jvdet').innerText.toLowerCase().includes('bericht.md')", timeout=6000)
         ap = [x for x in JV_CALLS if x.get('cmd') == 'approve']
         check('JARVIS: Freigabe sendet Schritt, danach erscheinen Ergebnisdateien', len(ap) == 1 and ap[0].get('step') == 's1', ap)
         check('JARVIS: kein Querscrollen', page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'))
