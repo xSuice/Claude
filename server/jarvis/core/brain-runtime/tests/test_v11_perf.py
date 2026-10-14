@@ -149,7 +149,10 @@ class RealStress(unittest.TestCase):
             self.assertGreater(r['metrics']['cpu_busy_pct'], 80)
 
     def test_io_stress_raises_io_metrics(self):
-        with tempfile.TemporaryDirectory() as t:
+        # V16: on Ubuntu >= 25.10 /tmp is a tmpfs (RAM) - writes there never reach a disk. Use the
+        # filesystem this test lives on instead, which is a real block device on the server.
+        tmp_fs = next((ln.split()[2] for ln in open('/proc/mounts') if ln.split()[1] == '/tmp'), '')
+        with tempfile.TemporaryDirectory(dir=str(ROOT) if tmp_fs == 'tmpfs' else None) as t:
             c = Collector(disk_paths=[t]); c.sample()
             f = Path(t) / 'blob'
             t0 = time.time()

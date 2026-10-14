@@ -94,6 +94,8 @@ class Cli(unittest.TestCase):
         (d / 'actions.json').write_text(json.dumps({'actions': {'ok': {'argv': ['/bin/true']}}}))
         (d / 'daemon.json').write_text(json.dumps({'brain_config': 'brain.json', 'actions': 'actions.json', 'workspace': 'ws',
                                                    'project': 'ma-home'}))
+        for f in d.glob('*.json'):  # V16: Ubuntu umask 0002 makes files group-writable; configs are refused then (test_v10)
+            os.chmod(f, 0o600)
         run = lambda *a: subprocess.run([PY, str(ROOT / 'daemon.py'), '--config', str(d / 'daemon.json'), *a],  # noqa: E731
                                         capture_output=True, text=True, timeout=60)
         u = run('unit')
