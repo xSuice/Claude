@@ -15,6 +15,7 @@ const ICONS = {
   term: '<path d="M4 6l6 6-6 6M13 18h7"/>',
   vault: '<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3zM5 17a3 3 0 013-3h11M9 8h6"/>',
   verbindungen: '<path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 01-10 0zM12 16v5"/>',
+  einstellungen: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
   system: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
@@ -61,7 +62,7 @@ async function api(path, opts = {}) {
 }
 const items = k => api('/api/items/' + k).then(d => d.items);
 
-const TABS = [['home', 'Lage'], ['neu', 'Neu'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['musik', 'Musik'], ['claude', 'Claude'], ['term', 'Terminal'], ['vault', 'Vault'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['verbindungen', 'Verbindungen'], ['system', 'System']];
+const TABS = [['home', 'Lage'], ['neu', 'Neu'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['musik', 'Musik'], ['claude', 'Claude'], ['term', 'Terminal'], ['vault', 'Vault'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['verbindungen', 'Verbindungen'], ['einstellungen', 'Einstellungen'], ['system', 'System']];
 function buildNav() {
   $('#nav').innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${ico(id)}<span>${name}</span></button>`).join('');
   $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) location.hash = '#/' + b.dataset.t; });
@@ -333,7 +334,22 @@ function tokRender() {
   el.innerHTML = '<div class="ctokh"><span>Kontextfenster</span><span>' + fmtTok(t.ctx) + ' / ' + fmtTok(win) + ' (' + pct + ' %)</span></div>' +
     '<div class="ctokbar"><i style="width:' + pct + '%"></i></div>' +
     '<div class="ctoks">Sitzung: ' + fmtTok(t.in) + ' rein / ' + fmtTok(t.out) + ' raus' + (t.cost ? ' · ca. $' + t.cost.toFixed(2) : '') + (t.ctx > CTX_MAX ? ' · groß, besser neuer Chat' : '') + '</div>';
+  el.innerHTML += rlRender(t.rl);
   el.classList.toggle('warn', t.ctx > CTX_MAX);
+}
+// Sitzungs-/Wochenlimit aus rate_limit_event; ohne gemeldeten Prozentwert nur Status und Rücksetzzeit (kein erfundener Wert)
+const RL_NAMES = { five_hour: '5-Stunden-Fenster', seven_day: 'Woche', seven_day_opus: 'Woche (Opus)', seven_day_sonnet: 'Woche (Sonnet)', overage: 'Zusatzkontingent' };
+function rlRender(rl) {
+  if (!rl) return '';
+  return Object.keys(rl).map(k => {
+    const x = rl[k], reset = x.r ? new Date(x.r * 1000) : null;
+    const left = reset ? Math.max(0, Math.round((reset - Date.now()) / 60000)) : null;
+    const when = reset ? 'Reset ' + reset.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + (left !== null && left < 1440 ? ' (in ' + Math.floor(left / 60) + ' h ' + (left % 60) + ' min)' : '') : '';
+    const st = x.s === 'rejected' ? 'Limit erreicht' : x.s === 'allowed_warning' ? 'bald erreicht' : 'frei';
+    const pct = x.u !== null && x.u !== undefined ? Math.round(x.u <= 1 ? x.u * 100 : x.u) : null;
+    return '<div class="ctokh"><span>' + esc(RL_NAMES[k] || k) + '</span><span>' + st + (pct !== null ? ' · ' + pct + ' % belegt' : '') + (when ? ' · ' + when : '') + '</span></div>' +
+      (pct !== null ? '<div class="ctokbar"><i style="width:' + Math.min(100, pct) + '%"></i></div>' : '');
+  }).join('');
 }
 function claudeRender(toBottom) {
   const box = $('#cmsgs'); if (!box) return;
@@ -490,6 +506,11 @@ async function claudePump(body) {
           if (d.is_error) {
             S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Das geht nur einmal und nur mit deinem Konto. Auf deinem PC in PowerShell eingeben: ssh -t ma-server "~/.local/bin/claude". Danach funktioniert dieser Chat dauerhaft.' : String(d.result) });
           } else if (a && !a.t && d.result) a.t = d.result;
+        } else if (d.type === 'rate_limit_event' && d.rate_limit_info) {
+          const r = d.rate_limit_info;      // belegt: status, resetsAt (Unix-Sekunden), rateLimitType (five_hour ...); utilization nur falls vom CLI mitgeliefert
+          S.tok = S.tok || { in: 0, out: 0, ctx: 0, cost: 0 };
+          S.tok.rl = S.tok.rl || {};
+          S.tok.rl[r.rateLimitType || 'limit'] = { s: r.status, r: r.resetsAt || 0, u: typeof r.utilization === 'number' ? r.utilization : null, t: Date.now() };
         } else if (d.type === 'bridge_model') {
           S.model = d.model;
           if (!opts.model || opts.model === 'auto') S.msgs.splice(Math.max(0, S.msgs.findIndex(m => m.live)), 0, { r: 't', t: 'Modell automatisch gewählt: ' + d.model });
@@ -1660,7 +1681,18 @@ async function musik() {
   musRefresh(); browse('');
 }
 
-const ROUTES = { home, neu, musik, tasks, notes, money, training, claude, term, vault, wissen, files, verbindungen, system };
+// Reiter "Einstellungen": Anmeldung (Passkey/Code legt Authelia selbst an), Chat-Grenze, Version. Die Admin-Schalter bleiben im Reiter Claude (Code greift per ID zu).
+async function einstellungen() {
+  const row = (t, s, extra = '') => '<div class="row"><div><b>' + t + '</b><div class="sub">' + s + '</div></div>' + extra + '</div>';
+  view.innerHTML = head('Einstellungen', 'Anmeldung, Claude-Chat und Portal') +
+    '<div class="list">' +
+    row('Anmeldung', 'Passkey ist serverseitig eingeschaltet. Ob du schon einen angelegt hast, zeigt die Seite dort. Im Menü oben links „Sicherheit“ wählen, dann Passkey oder Code (TOTP) hinzufügen.', '<a class="btn small ghost" href="/auth/settings" target="_blank" rel="noopener">Öffnen</a>') +
+    row('Claude-Chat', 'Neuer Chat wird ab ' + fmtTok(CTX_MAX) + ' Kontext vorgeschlagen (fest eingestellt). Auto-Einspielung und Sudo-Schalter (nur Admin) stehen im Reiter Claude.') +
+    row('Portal', 'Version ' + esc(VERSION) + (me.admin ? ' · Administrator' : ' · Benutzer')) +
+    '</div>';
+}
+
+const ROUTES = { home, neu, musik, tasks, notes, money, training, claude, term, vault, wissen, files, verbindungen, einstellungen, system };
 async function route() {
   const id = (location.hash.slice(2).split('?')[0]) || 'home';
   const fn = ROUTES[id] || home;
@@ -1672,7 +1704,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-13-5';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-14-3';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {
