@@ -1,0 +1,38 @@
+{
+ "V8": {
+  "steps_verified_without_session": 0,
+  "sessions_needed_at_least": 4,
+  "next_step_proposed": "Konfiguration erzeugen",
+  "independent_check": false,
+  "resume_after_crash": "manual",
+  "model_calls_started": 0
+ },
+ "V9": {
+  "step_status": {
+   "Konfiguration erzeugen": [
+    "verified",
+    1
+   ],
+   "Backup-Marker schreiben": [
+    "verified",
+    1
+   ],
+   "Selbsttest": [
+    "verified",
+    1
+   ],
+   "Defekte Aufgabe": [
+    "blocked",
+    2
+   ]
+  },
+  "steps_verified_without_session": 3,
+  "steps_blocked_for_review": 1,
+  "non_idempotent_rerun_after_crash": false,
+  "local_process_runs": 9,
+  "timer_ticks": 8,
+  "model_calls_started": 0,
+  "wall_ms": 294,
+  "child_cpu_ms": 205
+ }
+}

@@ -1,0 +1,98 @@
+{
+ "cloud_enabled": false,
+ "allowed_hosts": [
+  "api.groq.com",
+  "openrouter.ai",
+  "generativelanguage.googleapis.com"
+ ],
+ "max_response_bytes": 200000,
+ "daily_call_budget": 0,
+ "daily_token_budget": 0,
+ "global_daily_token_budget": 0,
+ "breaker_failures": 3,
+ "breaker_cooldown_s": 900,
+ "providers": {
+  "groq": {
+   "enabled": false,
+   "base_url": "https://api.groq.com/openai/v1",
+   "model": "MODELL-AUS-DER-GROQ-KONSOLE",
+   "key_file": "~/.config/ma-home-brain/keys/groq.key",
+   "task_types": [
+    "diagnose_hint",
+    "summarize_log"
+   ],
+   "data_classes": [
+    "public",
+    "internal"
+   ],
+   "json_reliable": true,
+   "max_context_chars": 12000,
+   "timeout_s": 20,
+   "limits": {
+    "rpm": 0,
+    "rpd": 0,
+    "tpd": 0
+   },
+   "price_per_mtok": {
+    "in": 0,
+    "out": 0
+   },
+   "note": "Free-Limits je Modell unter console.groq.com/docs/rate-limits prüfen und limits darunter setzen."
+  },
+  "openrouter": {
+   "enabled": false,
+   "base_url": "https://openrouter.ai/api/v1",
+   "model": "MODELL-ID-MIT-:free-SUFFIX",
+   "key_file": "~/.config/ma-home-brain/keys/openrouter.key",
+   "task_types": [
+    "diagnose_hint"
+   ],
+   "data_classes": [
+    "public"
+   ],
+   "json_reliable": false,
+   "max_context_chars": 12000,
+   "timeout_s": 30,
+   "limits": {
+    "rpm": 0,
+    "rpd": 0,
+    "tpd": 0
+   },
+   "price_per_mtok": {
+    "in": 0,
+    "out": 0
+   },
+   "note": ":free-Modelle: 20 rpm; 50 rpd (<10 Credits gekauft) bzw. 1000 rpd. Free-Anbieter können Prompts protokollieren -> nur public."
+  },
+  "gemini": {
+   "enabled": false,
+   "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+   "model": "MODELL-AUS-AI-STUDIO",
+   "key_file": "~/.config/ma-home-brain/keys/gemini.key",
+   "task_types": [
+    "summarize_log"
+   ],
+   "data_classes": [
+    "public"
+   ],
+   "json_reliable": true,
+   "max_context_chars": 16000,
+   "timeout_s": 30,
+   "limits": {
+    "rpm": 0,
+    "rpd": 0,
+    "tpd": 0
+   },
+   "price_per_mtok": {
+    "in": 0,
+    "out": 0
+   },
+   "note": "Free Tier: Inhalte dürfen zur Produktverbesserung genutzt werden -> niemals private/internal."
+  }
+ },
+ "egress": {},
+ "canary": {
+  "enabled": false,
+  "max_calls_per_run": 3
+ }
+}

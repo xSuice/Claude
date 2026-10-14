@@ -1,0 +1,51 @@
+{
+ "quality": {
+  "grounded": {
+   "step": "verified",
+   "helper_counted_success": 1,
+   "requests": 1,
+   "crash": null
+  },
+  "ok": {
+   "step": "verified",
+   "helper_counted_success": 1,
+   "requests": 1,
+   "crash": null
+  },
+  "empty": {
+   "step": "pending",
+   "helper_counted_success": 0,
+   "requests": 1,
+   "crash": "ValueError: content must be a nonempty string <= 4000 characters"
+  },
+  "fabricated": {
+   "step": "verified",
+   "helper_counted_success": 1,
+   "requests": 1,
+   "crash": null
+  },
+  "inject": {
+   "step": "verified",
+   "helper_counted_success": 1,
+   "requests": 1,
+   "crash": null
+  }
+ },
+ "quality_summary": {
+  "correct_done": 1,
+  "false_done": 3,
+  "crashes": 1,
+  "false_trust_points": 3
+ },
+ "shadow": {
+  "executed": "helper:fake",
+  "would_call_helper": true
+ },
+ "parallel_budget": {
+  "budget": 3,
+  "requests_reached_provider": 10
+ },
+ "token_budget_zero": {
+  "requests_reached_provider": 1
+ }
+}

@@ -1,0 +1,103 @@
+{
+ "_hinweis": "Zweiter, unabhängiger Testsatz. Fixiert VOR der Komposita-Korrektur (14.10.2026). Nicht anpassen.",
+ "notes": {
+  "Haus/Heizung.md": "# Heizung\nDie Gastherme wird jedes Jahr im September gewartet. Wartungsvertrag bei Firma Klein.",
+  "Haus/Photovoltaik.md": "# Photovoltaik\nDie Anlage hat 9,8 kWp. Der Wechselrichter meldet Fehler 3502 bei Netzüberspannung.",
+  "Haus/Wasser.md": "# Wasser\nDer Haupthahn ist im Keller links. Zählerstand jährlich im Dezember melden.",
+  "Server/Nextcloud.md": "# Nextcloud\nDateisynchronisation für die Familie. Updates nur nach Snapshot der Datenbank.",
+  "Server/Monitoring.md": "# Monitoring\nUptime Kuma prüft alle Dienste minütlich und sendet Benachrichtigungen per Telegram.",
+  "Server/Passwortmanager.md": "# Vaultwarden\nPasswörter liegen in Vaultwarden. Admin-Token steht nur im Passwortmanager selbst.",
+  "Server/Medienserver.md": "# Jellyfin\nFilme und Serien. Hardwarebeschleunigung über Intel Quick Sync aktiviert.",
+  "Server/Firewall.md": "# Firewall\nNur Port 443 ist nach außen offen. Portweiterleitung in der Fritzbox auf den Proxy.",
+  "Claude/Kosten.md": "# Kosten\nKein API-Guthaben. Nutzung ausschließlich über das Pro-Abo; Extra-Usage bleibt ausgeschaltet.",
+  "Claude/Gedächtnis.md": "# Gedächtnis\nObsidian ist die maßgebliche Wissensquelle. Claude darf Vorschläge machen, bestätigt werden sie manuell.",
+  "Wissen/Git.md": "# Git\nFeature-Branches, danach Squash-Merge. Commit-Nachrichten auf Deutsch.",
+  "Wissen/Linux-Rechte.md": "# Dateirechte\nKonfigurationsdateien mit Geheimnissen immer chmod 600. Gruppenschreibrecht vermeiden.",
+  "Notizen/Urlaub.md": "# Urlaub\nIm August zwei Wochen Ostsee, Ferienwohnung gebucht.",
+  "Notizen/Auto.md": "# Auto\nReifenwechsel im Oktober und April. TÜV fällig im März.",
+  "Notizen/Alt-Kosten.md": "---\nstatus: retracted\n---\n# Kosten alt\nAPI-Guthaben 50 Euro aufgeladen."
+ },
+ "queries": [
+  {
+   "q": "Heizungswartung",
+   "expect": [
+    "Haus/Heizung.md"
+   ]
+  },
+  {
+   "q": "Wechselrichterfehler",
+   "expect": [
+    "Haus/Photovoltaik.md"
+   ]
+  },
+  {
+   "q": "Wo ist der Wasserhaupthahn",
+   "expect": [
+    "Haus/Wasser.md"
+   ]
+  },
+  {
+   "q": "Nextcloud Update vorher sichern",
+   "expect": [
+    "Server/Nextcloud.md"
+   ]
+  },
+  {
+   "q": "Benachrichtigung wenn ein Dienst ausfällt",
+   "expect": [
+    "Server/Monitoring.md"
+   ]
+  },
+  {
+   "q": "Wo liegt das Admin-Token",
+   "expect": [
+    "Server/Passwortmanager.md"
+   ]
+  },
+  {
+   "q": "Jellyfin Hardwarebeschleunigung",
+   "expect": [
+    "Server/Medienserver.md"
+   ]
+  },
+  {
+   "q": "Welche Ports sind offen",
+   "expect": [
+    "Server/Firewall.md"
+   ]
+  },
+  {
+   "q": "Haben wir API-Guthaben",
+   "expect": [
+    "Claude/Kosten.md"
+   ]
+  },
+  {
+   "q": "maßgebliche Wissensquelle",
+   "expect": [
+    "Claude/Gedächtnis.md"
+   ]
+  },
+  {
+   "q": "Commitnachrichten Sprache",
+   "expect": [
+    "Wissen/Git.md"
+   ]
+  },
+  {
+   "q": "Rechte für Konfigurationsdateien",
+   "expect": [
+    "Wissen/Linux-Rechte.md"
+   ]
+  },
+  {
+   "q": "Reifenwechsel",
+   "expect": [
+    "Notizen/Auto.md"
+   ]
+  }
+ ],
+ "forbidden_everywhere": [
+  "Notizen/Alt-Kosten.md"
+ ]
+}

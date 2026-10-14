@@ -1,0 +1,370 @@
+{
+ "port_v10": [
+  {
+   "answer": "**Ursache:** Ein Portkonflikt auf 8080. Der Dienst \"web\" kann sich nicht an Port 8080 binden, weil der neu installierte Metrics-Agent diesen Port bereits belegt.\n\n**Belege:**\n- `logs/web.log:6004ff.` enthält jede Sekunde `error bind() to 0.0.0.0:8080 failed (98: Address already in use)`.\n- `web/server.conf:2` setzt `listen 8080;`.\n- `metrics/agent.conf:1,3` besagt `# metrics agent (installed 2026-10-13)` und `listen_address = 0.0.0.0:8080`.\n- Der Agent wurde am 13.10. installiert und läuft laut `logs/metrics.log` seit 22:00 Uhr ohne Fehler. Der Webdienst scheitert erst seit dem 14.10. um 02:11 Uhr, vermutlich beim ersten Neustart nach der Installation.\n\n**Korrektur (bevorzugt):** Den Port des Metrics-Agents ändern, damit \"web\" auf 8080 bleibt. Die Webadresse bleibt so für die Nutzer gleich.\n1. In `metrics/agent.conf` die Zeile 3 ändern auf `listen_address = 0.0.0.0:9100`. Der Wert 9100 ist ein Vorschlag. Jeder freie Port geht.\n2. Den Metrics-Agent neu starten, danach den Dienst \"web\" starten.\n3. Prüfen, ob `ss -ltnp | grep -E '8080|9100'` den Webdienst auf 8080 und den Agenten auf 9100 zeigt. Im `web.log` sollten keine neuen bind-Fehler mehr erscheinen.\n\n**Alternative:** In `web/server.conf` `listen 8080;` auf einen freien Port setzen, zum Beispiel 8081. Dann müssen aber alle Clients und Proxys angepasst werden, die auf 8080 zugreifen.\n\nWenn Prometheus oder andere Systeme den Agenten auf 8080 abfragen, muss deren Scrape-Ziel auf den neuen Port umgestellt werden.\n\nIch habe nichts geändert oder ausgeführt. Es gibt auch keine Plandatei, weil ich in diesem Modus nur lesen durfte und die Antwort hier steht.",
+   "cost_usd": 0.06405359999999999,
+   "turns": 9,
+   "duration_ms": 14612,
+   "wall_s": 16.1,
+   "is_error": false,
+   "input": 8,
+   "output": 1644,
+   "cache_read": 32482,
+   "cache_write": 11025,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "variant": "A",
+   "run": 1,
+   "prompt_chars": 135,
+   "packet_chars": 0,
+   "workspace_unchanged": true,
+   "grade": {
+    "port_8080": true,
+    "occupant_metrics": true,
+    "concrete_fix": true,
+    "pass": true
+   }
+  },
+  {
+   "answer": "**Wahrscheinlichste Ursache:** Port 8080 ist schon belegt. Beim Start schlägt `bind()` auf 0.0.0.0:8080 fehl (Fehler 98, \"Address already in use\"). Danach beendet sich der Dienst mit \"could not open listening socket, exiting\". Vermutlich hält ein alter oder verwaister web-Prozess, oder ein anderer Dienst, den Port. Welcher Prozess das ist, steht nicht im Paket.\n\n**Belege** (`web.log`):\n- `2026-10-14T02:11:09Z error bind() to 0.0.0.0:8080 failed (98: Address already in use)`. Diese Zeile kommt 40 Mal vor, also gab es wiederholte Startversuche.\n- `2026-10-14T02:11:30Z fatal web: could not open listening socket, exiting`\n- Der Sensor meldet `failed` für web.service (Schwere 5).\n- Die Warnung \"cache miss ratio high\" ist wahrscheinlich nicht die Ursache.\n\n**Ungereimtheit:** Die Logeinträge sind von 02:11, die Sensoränderung von 13:42. Der Sensorverlauf zeigt zudem `active` und `failed` in derselben Minute. Der Dienst startet also möglicherweise in einer Schleife oder ist zwischendurch gelaufen. Prüfen Sie, ob die Fehler noch aktuell sind.\n\n**Sichere Korrektur (für den Operator):**\n1. Prüfen, wer Port 8080 hält: `ss -ltnp 'sport = :8080'` (oder `lsof -i :8080`).\n2. Den Prozess zuordnen, mit `systemctl status web.service` und `ps -fp <PID>`:\n   - Wenn es ein verwaister oder alter web-Prozess ist, ihn sauber beenden (`kill <PID>`, erst danach bei Bedarf `kill -9`).\n   - Wenn es ein fremder Dienst ist, nicht beenden. Stattdessen den Port von web oder dem anderen Dienst in dessen Konfiguration ändern.\n3. Falls web.service in einer Restart-Schleife hängt, zuerst `systemctl stop web.service`.\n4. Danach `systemctl start web.service` und mit `systemctl is-active web.service` und `tail web.log` prüfen, dass kein bind-Fehler mehr auftritt.\n5. Zur Vorbeugung in der Unit `KillMode=control-group` setzen (oder prüfen, dass es gesetzt ist). So bleiben bei einem Restart keine Kindprozesse zurück, die den Port halten.\n\n**Konfidenz:** Mittel bis hoch (ca. 75 %) für die Ursache \"Port 8080 belegt\". Niedrig für die Frage, welcher Prozess ihn hält, denn dazu fehlen Daten.",
+   "cost_usd": 0.027107199999999998,
+   "turns": 2,
+   "duration_ms": 12059,
+   "wall_s": 13.8,
+   "is_error": false,
+   "input": 4,
+   "output": 1093,
+   "cache_read": 14050,
+   "cache_write": 3652,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "variant": "B",
+   "run": 1,
+   "prompt_chars": 805,
+   "packet_chars": 608,
+   "workspace_unchanged": true,
+   "grade": {
+    "port_8080": true,
+    "occupant_metrics": false,
+    "concrete_fix": true,
+    "pass": false
+   }
+  },
+  {
+   "answer": "**Ursache:** Der Port 8080 ist doppelt belegt. Der Metrics-Agent hat ihn sich genommen, deshalb kann \"web\" nicht mehr darauf lauschen.\n\n**Belege:**\n- `logs/web.log` ab Zeile 6004 (2026-10-14T02:11:00Z) wiederholt sekündlich `bind() to 0.0.0.0:8080 failed (98: Address already in use)`.\n- `web/server.conf:2` setzt `listen 8080;`.\n- `metrics/agent.conf` (Kommentar: \"installed 2026-10-13\") setzt `listen_address = 0.0.0.0:8080`.\n- `logs/metrics.log` zeigt den Agenten ohne Fehler im Dauerbetrieb. Er hält den Port also belegt.\n\nDer Agent wurde am 13.10. neu installiert. Wahrscheinlich hat web danach beim nächsten Neustart den Port nicht mehr bekommen. Ich habe das nicht am laufenden System geprüft, etwa mit `ss -ltnp`, weil Sie nichts ausgeführt haben wollten.\n\n**Korrektur:** Verschieben Sie den neuen Dienst, also den Metrics-Agenten, auf einen freien Port. Dann bleibt der Port für web unverändert.\n1. In `metrics/agent.conf` die Zeile ändern auf `listen_address = 0.0.0.0:9090`. Der Port 9090 ist nur ein Beispiel. Er muss auf dem Server frei sein und zu Ihrer Prometheus-/Scrape-Konfiguration passen.\n2. Den Metrics-Agenten neu starten. Er gibt 8080 frei.\n3. Dann den Dienst \"web\" starten.\n\nFalls Sie stattdessen web verschieben wollen: `listen 8080;` in `web/server.conf` ändern. Dann müssen aber alle Clients und Proxys auf den neuen Port umgestellt werden.\n\nZur Kontrolle sollte `ss -ltnp | grep 8080` danach nur noch web zeigen. Die Fehlerzeilen im web.log sollten aufhören.",
+   "cost_usd": 0.14740709999999999,
+   "turns": 10,
+   "duration_ms": 17649,
+   "wall_s": 19.2,
+   "is_error": false,
+   "input": 8,
+   "output": 1833,
+   "cache_read": 58737,
+   "cache_write": 30726,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "variant": "A",
+   "run": 2,
+   "prompt_chars": 135,
+   "packet_chars": 0,
+   "workspace_unchanged": true,
+   "grade": {
+    "port_8080": true,
+    "occupant_metrics": true,
+    "concrete_fix": true,
+    "pass": true
+   }
+  },
+  {
+   "answer": "**Wahrscheinlichste Ursache:** Der Dienst `web` kann den Port 8080 nicht binden. Ein anderer Prozess belegt ihn bereits, oder eine alte web-Instanz läuft noch. Daraufhin beendet sich web mit \"could not open listening socket\" und systemd meldet `failed`.\n\n**Belege** (`.brain/diagnosis-a77cd986fcf4.md`, Log-Digest aus web.log):\n- `2026-10-14T02:11:09Z error bind() to 0.0.0.0:8080 failed (98: Address already in use)`. Das Muster kam 40-mal vor.\n- `2026-10-14T02:11:30Z fatal web: could not open listening socket, exiting`\n- Der Sensorverlauf zeigt um 13:42 einen Wechsel von `active` zu `failed`.\n\nDie Zeitstempel der Logs (02:11) und des Sensors (13:42) liegen weit auseinander. Das Paket enthält keinen Hinweis darauf, welcher Prozess den Port belegt. Die `warn`-Meldungen zur Cache-Miss-Rate sind vermutlich nicht die Ursache.\n\n**Sichere Korrektur (für den Operator):**\n1. Den Port-Besitzer ermitteln: `ss -ltnp 'sport = :8080'`. Alternativ geht `lsof -i :8080`.\n2. Den Besitzer prüfen:\n   - Ist es eine verwaiste oder doppelte web-Instanz, zum Beispiel ein manuell gestarteter Prozess oder ein Rest nach einem Restart? Dann diesen Prozess sauber beenden. Zuerst `systemctl status web` und `ps` ansehen, nicht blind `kill -9`.\n   - Ist es ein anderer legitimer Dienst? Dann entweder dessen Port oder den Listen-Port von web in der web-Konfiguration ändern.\n3. Mit `systemctl status web.service` und `journalctl -u web -n 50` prüfen, dass keine zweite Unit oder Socket-Aktivierung denselben Port nutzt.\n4. Danach `systemctl restart web.service` ausführen.\n5. Mit `systemctl is-active web.service` und `ss -ltnp 'sport = :8080'` bestätigen, dass web läuft und den Port hält.\n\n**Konfidenz:** Mittel bis hoch (ca. 75 %) für \"Port 8080 belegt\". Der Verursacher ist noch unbekannt und muss mit Schritt 1 geklärt werden. Ich habe nichts ausgeführt oder geändert.",
+   "cost_usd": 0.0261692,
+   "turns": 2,
+   "duration_ms": 9360,
+   "wall_s": 11.2,
+   "is_error": false,
+   "input": 4,
+   "output": 999,
+   "cache_read": 14050,
+   "cache_write": 3652,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "variant": "B",
+   "run": 2,
+   "prompt_chars": 805,
+   "packet_chars": 608,
+   "workspace_unchanged": true,
+   "grade": {
+    "port_8080": true,
+    "occupant_metrics": false,
+    "concrete_fix": true,
+    "pass": false
+   }
+  }
+ ],
+ "port_v101_B": [
+  {
+   "answer": "**Ursache:** Port 8080 ist doppelt belegt. Der neue Metrics-Agent (installiert am 2026-10-13) lauscht auf `0.0.0.0:8080`. Das ist derselbe Port, den `web` braucht. `web` kann deshalb nicht binden und beendet sich.\n\n**Belege:**\n- `metrics/agent.conf:1` und `:3`: Der Agent wurde am 2026-10-13 installiert und hat `listen_address = 0.0.0.0:8080`.\n- `web/server.conf:2`: `listen 8080;`\n- `logs/metrics.log:1501`: Der Agent lauscht seit 02:10:58Z auf 8080.\n- `logs/web.log:6004-6043`: 40 Mal `bind() to 0.0.0.0:8080 failed (98: Address already in use)`, von 02:11:00Z bis 02:11:09Z.\n- `logs/web.log:6044`: `fatal web: could not open listening socket, exiting` um 02:11:30Z.\n\nDie Reihenfolge passt: Der Agent hat den Port 2 Sekunden vor dem ersten fehlgeschlagenen Bind von `web` belegt.\n\n**Korrektur für den Betreiber (ich habe nichts geändert oder ausgeführt):**\n1. Mit `ss -ltnp | grep :8080` prüfen, dass wirklich der Metrics-Agent auf 8080 lauscht.\n2. In `metrics/agent.conf:3` den Agenten auf einen freien Port umstellen, zum Beispiel `listen_address = 127.0.0.1:9100`. Vorher prüfen, ob der Port frei ist und ob Scraper oder Firewall-Regeln angepasst werden müssen. `web` bleibt auf 8080, weil Clients und ein eventueller Proxy darauf zeigen.\n3. Den Metrics-Agenten neu starten und mit `ss` prüfen, dass er nicht mehr auf 8080 lauscht.\n4. `web` mit `systemctl restart web.service` neu starten. Danach mit `systemctl is-active web.service` und einem `curl` auf Port 8080 prüfen.\n5. In `logs/web.log` kontrollieren, dass keine neuen `bind()`-Fehler auftreten.\n\n**Konfidenz:** hoch (ca. 90 %). Port, Zeitpunkt und Fehlercode stimmen in Konfiguration und Logs überein. Offen ist nur, ob zum Prüfzeitpunkt noch ein weiterer Prozess auf 8080 lauscht. Das lässt sich nur live mit `ss` klären.\n\nDer Sensorverlauf zeigt um 13:46 sowohl `active` als auch `failed`. Das deutet auf einen Neustart-Zyklus hin und passt zu einem wiederkehrenden Bind-Fehler.",
+   "cost_usd": 0.044866,
+   "turns": 6,
+   "duration_ms": 15068,
+   "wall_s": 16.7,
+   "is_error": false,
+   "input": 8,
+   "output": 1597,
+   "cache_read": 34764,
+   "cache_write": 6311,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "task": "port",
+   "variant": "B",
+   "run": 1,
+   "prompt_chars": 936,
+   "packet_chars": 852,
+   "workspace_unchanged": true,
+   "grade": {
+    "port_8080": true,
+    "occupant_metrics": true,
+    "concrete_fix": false,
+    "pass": false
+   }
+  },
+  {
+   "answer": "**Ursache:** Port-Konflikt auf 8080. Der Metrics-Agent, der am 2026-10-13 neu installiert wurde, belegt `0.0.0.0:8080`. Der Dienst \"web\" will denselben Port binden und scheitert.\n\n**Belege:**\n- `logs/metrics.log:1501`: Der Metrics-Agent lauscht seit 02:10:58Z auf `0.0.0.0:8080`.\n- `metrics/agent.conf:3`: `listen_address = 0.0.0.0:8080`. Die Datei hat den Kommentar \"installed 2026-10-13\".\n- `web/server.conf:2`: `listen 8080;`\n- `web.log` (laut Diagnosepaket, nicht selbst nachgelesen): Um 02:11:09Z kommt `bind() to 0.0.0.0:8080 failed (98: Address already in use)`, 40-mal. Danach folgt `fatal ... could not open listening socket, exiting`.\n- Zeitlich passt das: Der Agent war 11 Sekunden vor dem ersten Bind-Fehler am Port.\n\n**Korrektur für den Operator:**\n1. Mit `ss -ltnp 'sport = :8080'` prüfen, dass tatsächlich der Metrics-Agent den Port hält.\n2. Den Agenten umkonfigurieren, weil er der Neuzugang ist und \"web\" vermutlich 8080 erwartet. In `metrics/agent.conf:3` einen freien Port eintragen, zum Beispiel `listen_address = 127.0.0.1:9100`. Vorher prüfen, dass dieser Port frei ist und kein Scraper oder Monitoring auf 8080 des Agenten zeigt.\n3. Den Metrics-Agenten neu starten und mit `ss` prüfen, dass 8080 frei ist.\n4. `systemctl restart web.service` ausführen und danach `systemctl is-active web.service` und `curl -I localhost:8080` prüfen.\n5. Die Sensorhistorie zeigt kurz \"active\" und dann \"failed\". Deshalb nach dem Neustart `journalctl -u web` beobachten, ob der Dienst stabil bleibt.\n\n**Konfidenz:** Hoch (ca. 90 %). Die Config-Dateien und das Metrics-Log belegen den Konflikt direkt. Ich habe nicht geprüft, was aktuell auf dem Port läuft, und `web.log` nicht selbst gelesen.",
+   "cost_usd": 0.034228999999999996,
+   "turns": 5,
+   "duration_ms": 12586,
+   "wall_s": 14.4,
+   "is_error": false,
+   "input": 6,
+   "output": 1265,
+   "cache_read": 23354,
+   "cache_write": 4768,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "task": "port",
+   "variant": "B",
+   "run": 2,
+   "prompt_chars": 936,
+   "packet_chars": 852,
+   "workspace_unchanged": true,
+   "grade": {
+    "port_8080": true,
+    "occupant_metrics": true,
+    "concrete_fix": false,
+    "pass": false
+   }
+  }
+ ],
+ "backup_v101": [
+  {
+   "answer": "**Ursache:** Das Backup-Ziel `/DATA/backups` ist seit der Migration vom 12.10.2026 schreibgeschützt eingehängt.\n\n**Belege**\n- `storage/mounts.conf:3` enthält `/DATA/backups   ext4  ro,noatime   # migrated disk`. Die Optionen `ro` bedeuten read-only. Die Datei trägt den Kommentar \"managed by MA-Home (migration 2026-10-12)\". Die beiden anderen Mounts, `/DATA/media` und `/DATA/apps`, sind `rw`.\n- `backup/backup.conf` schreibt nach `target_dir = /DATA/backups`.\n- `logs/backup.log` zeigt, dass das Kopieren von `/DATA/media` lief, bis kurz nach 02:30 Uhr. Das Log enthält nur eine unkritische Warnung (Zeile 2001, \"slow source disk\"). Ab Zeile 4002 (14.10., 02:31:00Z) kommt dann fortlaufend `error writing /DATA/backups/2026-10-14.tar: Read-only file system (errno 30)`. Das passt zur `ro`-Option.\n\nDas Problem liegt also weder in der Backup-Konfiguration (Quelle, Ziel, Zeitplan und `keep` sind unauffällig) noch an der Quelle.\n\n**Korrektur**\n1. In `storage/mounts.conf` die Zeile 3 auf `rw` ändern: `/DATA/backups   ext4  rw,noatime`. Den Kommentar \"migrated disk\" kann man als Hinweis stehen lassen.\n2. Die Änderung anwenden. Die Datei wird von MA-Home verwaltet, also vorzugsweise dort ändern und nicht nur die Datei bearbeiten. Danach `/DATA/backups` mit `mount -o remount,rw /DATA/backups` neu einhängen, oder neu starten.\n3. Prüfen, ob das Dateisystem wirklich beschreibbar ist, etwa mit `touch /DATA/backups/.test && rm /DATA/backups/.test`. Sollte es trotz `rw` wieder auf read-only springen, hat der Kernel es wegen Dateisystemfehlern read-only gesetzt. Dann in `dmesg` nachsehen und mit `fsck` prüfen. Auf dieses Szenario deutet in den Dateien nichts hin.\n4. Das Backup einmal manuell starten oder bis 02:30 Uhr warten und im Log nachsehen.\n\nHinweis: Das Backup vom 14.10. fehlt. Bis zur Korrektur gibt es seit der Migration (12.10.) vermutlich keine neuen Sicherungen. Das habe ich nicht geprüft, weil in der Umgebung kein Zugriff auf `/DATA/backups` besteht.\n\nIch habe nichts geändert und nichts ausgeführt.",
+   "cost_usd": 0.1429966,
+   "turns": 8,
+   "duration_ms": 16922,
+   "wall_s": 18.4,
+   "is_error": false,
+   "input": 8,
+   "output": 1866,
+   "cache_read": 56459,
+   "cache_write": 29596,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "task": "backup",
+   "variant": "A",
+   "run": 1,
+   "prompt_chars": 153,
+   "packet_chars": 0,
+   "workspace_unchanged": true,
+   "grade": {
+    "read_only": true,
+    "mount_located": true,
+    "concrete_fix": true,
+    "pass": true
+   }
+  },
+  {
+   "answer": "**Ursache:** `/DATA/backups` ist read-only eingehängt. Die Migration vom 2026-10-12 hat die Platte mit der Option `ro` eingetragen. Der Backup-Job (`backup.service`) kann deshalb sein Tar-Archiv nicht schreiben.\n\n**Belege:**\n- `storage/mounts.conf:3`: `/DATA/backups ext4 ro,noatime # migrated disk`. Die anderen Mounts (Zeilen 2 und 4) sind `rw`.\n- `storage/mounts.conf:1`: Die Mount-Tabelle wurde bei der Migration am 2026-10-12 angelegt.\n- `backup/backup.conf:3`: `target_dir = /DATA/backups`, also genau dieser Mount.\n- `backup.log` (laut Diagnosepaket, nicht selbst geprüft): 25× `error writing /DATA/backups/2026-10-14.tar: Read-only file system (errno 30)`, danach `fatal backup aborted after 25 write errors` um 02:31:40Z. Der Lauf begann um 02:30 (`backup.conf:4`).\n- Die Warnung `slow source disk` (02:20) hat damit nichts zu tun.\n\n**Korrektur (für den Operator):**\n1. Prüfen, dass die Platte gesund ist und nicht wegen eines Dateisystemfehlers read-only wurde. Dazu `dmesg` auf ext4-Fehler oder \"Remounting read-only\" durchsehen und `findmnt /DATA/backups` ansehen. Bei Fehlern zuerst `fsck` im ausgehängten Zustand laufen lassen, nicht einfach auf `rw` stellen.\n2. Wenn keine Fehler vorliegen, in `storage/mounts.conf:3` `ro` durch `rw` ersetzen: `/DATA/backups ext4 rw,noatime`.\n3. Mit `mount -o remount,rw /DATA/backups` oder über den üblichen MA-Home-Mechanismus anwenden. Danach prüfen, dass `findmnt` `rw` zeigt.\n4. Mit `touch /DATA/backups/.w && rm /DATA/backups/.w` testen, dass Schreiben funktioniert. Außerdem sicherstellen, dass genug freier Platz da ist.\n5. `backup.service` einmal manuell starten und das Log prüfen. Der nächste reguläre Lauf ist um 02:30. Das heutige Backup (2026-10-14) fehlt und muss so nachgeholt werden.\n\n**Konfidenz:** hoch (~90 %). Config und Fehlermeldung (errno 30) passen exakt zusammen. Offen bleibt, ob `ro` Absicht der Migration war oder ein Versehen. Ich habe das Log und `dmesg` nicht selbst eingesehen, nur das Diagnosepaket.",
+   "cost_usd": 0.0319457,
+   "turns": 4,
+   "duration_ms": 12580,
+   "wall_s": 14.3,
+   "is_error": false,
+   "input": 6,
+   "output": 1252,
+   "cache_read": 23352,
+   "cache_write": 4229,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "task": "backup",
+   "variant": "B",
+   "run": 1,
+   "prompt_chars": 954,
+   "packet_chars": 826,
+   "workspace_unchanged": true,
+   "grade": {
+    "read_only": true,
+    "mount_located": true,
+    "concrete_fix": true,
+    "pass": true
+   }
+  },
+  {
+   "answer": "**Ursache:** Das Zielverzeichnis der Sicherung ist schreibgeschützt eingehängt.\n\n**Belege**\n- `storage/mounts.conf:3`: `/DATA/backups ext4 ro,noatime # migrated disk`. Die Platte steht auf `ro`, während `/DATA/media` und `/DATA/apps` auf `rw` stehen. Der Kopfkommentar der Datei nennt eine Migration am 2026-10-12.\n- `backup/backup.conf`: `target_dir = /DATA/backups`. Das ist genau dieser Mount.\n- `logs/backup.log:4002` bis 4028: ab 02:31:00Z steht immer wieder `error writing /DATA/backups/2026-10-14.tar: Read-only file system (errno 30)`. Ich habe nur die ersten 20 Fehlerzeilen gesehen (bis Zeile 4020). Dass die Zeilen bis 4028 alle gleich lauten, ist eine Annahme.\n- Das Lesen der Quelle klappt. Die Zeilen davor sind `info copied file …`, dazu kommt eine harmlose Warnung `slow source disk` (Zeile 2001). Ich habe nur die ersten 736 Zeilen gelesen. Der Rest ist per Suche nach `warn` und `error` abgedeckt, nicht Zeile für Zeile.\n\nDie Sicherung liest also alles ohne Probleme und scheitert erst beim Schreiben der Zieldatei. Das passt zur Migration vom 12.10., bei der die Platte offenbar versehentlich mit `ro` übernommen wurde. Ich konnte den Server nicht prüfen. Dass die Platte jetzt wirklich `ro` gemountet ist und nicht wegen eines Dateisystemfehlers in den Nur-Lese-Modus gewechselt ist, ist deshalb nicht bestätigt.\n\n**Korrektur**\n1. In `storage/mounts.conf:3` `ro` durch `rw` ersetzen: `/DATA/backups ext4 rw,noatime`. Wenn MA-Home die Datei verwaltet, die Änderung dort bzw. in der Mount-Konfiguration der Oberfläche vornehmen. Sonst wird sie womöglich überschrieben.\n2. Neu einhängen: `mount -o remount,rw /DATA/backups` (oder MA-Home neu laden bzw. neu starten).\n3. Prüfen, dass die Platte nicht wegen eines Fehlers auf `ro` gefallen ist: `dmesg | grep -i -E 'ext4|remount|error'` und `findmnt /DATA/backups`. Falls dort Dateisystemfehler stehen, zuerst `fsck` im ausgehängten Zustand, dann erst `rw`.\n4. Test: `touch /DATA/backups/.w && rm /DATA/backups/.w`, danach die Sicherung einmal manuell starten statt bis 02:30 zu warten.\n\nDie Sicherungen vom 12.10. bis 14.10. fehlen vermutlich, falls `ro` seit der Migration gilt. Das habe ich nicht geprüft. Ich habe nichts geändert und nichts ausgeführt.",
+   "cost_usd": 0.1408903,
+   "turns": 8,
+   "duration_ms": 18871,
+   "wall_s": 20.3,
+   "is_error": false,
+   "input": 8,
+   "output": 1917,
+   "cache_read": 56876,
+   "cache_write": 28920,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "task": "backup",
+   "variant": "A",
+   "run": 2,
+   "prompt_chars": 153,
+   "packet_chars": 0,
+   "workspace_unchanged": true,
+   "grade": {
+    "read_only": true,
+    "mount_located": true,
+    "concrete_fix": true,
+    "pass": true
+   }
+  },
+  {
+   "answer": "**Ursache:** `/DATA/backups` ist seit der Migration vom 12.10.2026 schreibgeschützt (`ro`) eingebunden. Das Backup kann dort kein Archiv anlegen und bricht ab.\n\n**Belege:**\n- `storage/mounts.conf:3` enthält `/DATA/backups ext4 ro,noatime # migrated disk`. Die beiden anderen Mounts (media, apps) stehen auf `rw`.\n- `storage/mounts.conf:1` nennt die Migration vom 2026-10-12 als Zeitpunkt der Änderung.\n- `backup/backup.conf:3` setzt `target_dir = /DATA/backups`, also genau diesen Mount.\n- `backup.log`: 25-mal `error writing /DATA/backups/2026-10-14.tar: Read-only file system (errno 30)`, um 02:31:24Z. Danach `fatal backup aborted after 25 write errors` um 02:31:40Z.\n- Die Warnung `slow source disk` um 02:20 ist nicht die Ursache.\n\n**Korrektur (für den Operator):**\n1. Prüfen, ob der Mount aktuell wirklich schreibgeschützt ist: `findmnt /DATA/backups` bzw. `grep backups /proc/mounts`. Ein Dateisystemfehler kann ihn auch von selbst auf `ro` gesetzt haben. Dann `dmesg` auf I/O- oder ext4-Fehler prüfen und die Platte vor dem Umschalten gegebenenfalls mit `fsck` kontrollieren.\n2. Die Option in `storage/mounts.conf:3` von `ro` auf `rw` ändern. Falls die Datei nur eine Vorlage ist und die eigentliche Einhängung in `/etc/fstab` steht, dort ebenfalls ändern.\n3. Mit `mount -o remount,rw /DATA/backups` neu einhängen. Das geht ohne Neustart.\n4. Schreibtest durchführen: `touch /DATA/backups/.w && rm /DATA/backups/.w`.\n5. `backup.service` manuell starten und prüfen, dass `/DATA/backups/<Datum>.tar` entsteht. Danach den Status von `backup.service` kontrollieren.\n6. Prüfen, ob die Migration die Platte absichtlich auf `ro` gestellt hat, etwa für eine Datenprüfung. Dann zuerst klären, ob die Migration abgeschlossen ist.\n\n**Konfidenz:** hoch (ca. 90 %). Konfiguration und Logfehler passen genau zusammen. Ich habe nichts ausgeführt oder geändert. Ob der Mount im laufenden System tatsächlich `ro` ist, konnte ich nicht prüfen.",
+   "cost_usd": 0.031847,
+   "turns": 3,
+   "duration_ms": 11963,
+   "wall_s": 13.6,
+   "is_error": false,
+   "input": 6,
+   "output": 1226,
+   "cache_read": 23350,
+   "cache_write": 4269,
+   "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+   ],
+   "task": "backup",
+   "variant": "B",
+   "run": 2,
+   "prompt_chars": 954,
+   "packet_chars": 826,
+   "workspace_unchanged": true,
+   "grade": {
+    "read_only": true,
+    "mount_located": true,
+    "concrete_fix": true,
+    "pass": true
+   }
+  }
+ ],
+ "e2e": {
+  "decision": [
+   {
+    "subject": "sensor:backup",
+    "decision": "diagnosis",
+    "goal_id": "23080787c6de4271b09885d2f7ed30d8"
+   }
+  ],
+  "worker": {
+   "started": true,
+   "job_id": "46047437953540a596b74351096749ea",
+   "success": true,
+   "elapsed_ms": 14262,
+   "usage_reported": true
+  },
+  "job_status": "done",
+  "exit": 0,
+  "cost_usd": 0.03170680000000001,
+  "usage": {
+   "input_tokens": 6,
+   "cache_creation_input_tokens": 4249,
+   "cache_read_input_tokens": 23205,
+   "output_tokens": 1222,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "server_tool_use": {
+    "web_search_requests": 0,
+    "web_fetch_requests": 0
+   },
+   "service_tier": "standard",
+   "cache_creation": {
+    "ephemeral_1h_input_tokens": 4249,
+    "ephemeral_5m_input_tokens": 0
+   },
+   "inference_geo": "global",
+   "iterations": [
+    {
+     "input_tokens": 2,
+     "output_tokens": 884,
+     "cache_read_input_tokens": 9181,
+     "cache_creation_input_tokens": 507,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 507
+     },
+     "type": "message"
+    }
+   ],
+   "speed": "standard",
+   "fallback_credit": null
+  },
+  "steps": [
+   {
+    "status": "verified",
+    "outcome": "check packet-ok passed"
+   }
+  ],
+  "memory": [
+   {
+    "status": "proposed",
+    "kind": "hypothesis",
+    "title": "diagnosis: .brain/diagnosis-3c3ebd60dd0c.md"
+   }
+  ],
+  "order": [
+   {
+    "idem_key": "diagnosis:3c3ebd60dd0c48ce9ce026ffbecbde63",
+    "risk": "read",
+    "claude_budget": 1,
+    "claude_used": 1
+   }
+  ],
+  "grade": {
+   "read_only": true,
+   "mount_located": true,
+   "concrete_fix": true,
+   "pass": true
+  },
+  "answer_head": "**Root cause:** `/DATA/backups` is mounted read-only. The backup job writes there, so every write fails and the job aborts.\n\n**Evidence**\n- `storage/mounts.conf:3` has `/DATA/backups ext4 ro,noatime # migrated disk`. The other data mounts, `/DATA/media` and `/DATA/apps`, are `rw` (lines 2 and 4). The file header says the table was last changed in the 2026-10-12 migration.\n- `backup/backup.conf:3` ",
+  "notices": [
+   "Ergebnis von diagnosis: .brain/diagnosis-3c3ebd60dd0c.md liegt als unbestätigter Vorschlag vor",
+   "Neuer Ablauf #1 für sensor:backup=failed gelernt - bitte prüfen und mit 'procedures.py confirm 1' bestätigen",
+   "Unbekannte Abweichung sensor:backup=failed (Schwere 5): Diagnose eingeplant"
+  ]
+ }
+}

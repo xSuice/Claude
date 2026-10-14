@@ -1,0 +1,7 @@
+{
+  "identity": "person-a",
+  "allowed_projects": ["ma-home"],
+  "source": "fixtures/knowledge.jsonl",
+  "state_db": ".private/v5-demo.sqlite3",
+  "research_tools": false
+}

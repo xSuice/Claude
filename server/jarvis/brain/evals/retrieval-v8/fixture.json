@@ -1,0 +1,115 @@
+{
+ "_hinweis": "Vor dem ersten Lauf fixiert (14.10.2026). Nicht nachträglich anpassen. Synthetisch, ersetzt keinen Test mit dem echten Vault.",
+ "notes": {
+  "Server/Backup-Strategie.md": "# Backup-Strategie\nDie Datensicherung läuft nachts um 02:30 per restic auf die externe USB-Platte.\n## Wiederherstellung\nRestore-Test monatlich: `restic restore latest --target /tmp/restore-test`.",
+  "Server/Immich.md": "# Immich\nFotoverwaltung im Docker-Container immich_server, Port 2283.\n## Probleme\nNach Updates muss die Datenbankmigration abgewartet werden, sonst bleibt der Container unhealthy.",
+  "Server/Netzwerk.md": "# Netzwerk\nDer Server hat die feste IP 192.168.178.40. Fritzbox als Router, DNS über Pi-hole.",
+  "Server/ZimaOS-Hinweise.md": "# ZimaOS\nDas Betriebssystem ist read-only; Anwendungen laufen als Docker-Apps. Eigene Dienste nur über Container oder /DATA.",
+  "Server/Speicherplatz.md": "# Speicherplatz\nDie Festplatte /DATA ist 4 TB groß. Warnung ab weniger als 10 Prozent freiem Platz.",
+  "Claude/Modellrouter.md": "# MA Auto Router\nDer Modell-Router wählt Haiku für Übersetzungen und einfache Fragen, Sonnet für Coding, Opus für Architektur.\n## Effort\nEffort high nur bei schwierigem Debugging.",
+  "Claude/Routerkonfiguration-Alt.md": "---\nstatus: superseded\n---\n# Alte Routerkonfiguration\nFrüher wurde Opus für alles verwendet.",
+  "Claude/Hooks.md": "# Hooks\nFixMyPrompt läuft als UserPromptSubmit-Hook. Ein doppelter PostToolUse-Hook wurde im Oktober entfernt.",
+  "Claude/Skills.md": "# Skills\nDer Humanizer-Skill wird nur für E-Mails und Texte genutzt, nicht für Code.",
+  "Projekte/Gartenbewässerung.md": "# Gartenbewässerung\nESP32 mit Feuchtigkeitssensor steuert die Pumpe. Firmware in Arduino IDE.",
+  "Projekte/Minecraft-Server.md": "# Minecraft-Server\nFTB-Modpack, läuft lokal auf dem PC, nicht auf dem Server. Port 25565.",
+  "Persönlich/Zahnarzt.md": "---\nprivate: true\n---\n# Zahnarzt\nTermin am Dienstag.",
+  "Wissen/Python-Tipps.md": "# Python\nVirtuelle Umgebungen mit `python -m venv .venv`. pip mit --break-system-packages nur im Container.",
+  "Wissen/SQLite.md": "# SQLite\nWAL-Modus verbessert gleichzeitige Lesezugriffe. FTS5 bietet Volltextsuche mit bm25-Ranking.",
+  "Wissen/SSH.md": "# SSH-Zugang\nSchlüssel ed25519, Passwort-Login deaktiviert. Zwangsbefehle über authorized_keys mit restrict.",
+  "Wissen/Docker-Grundlagen.md": "# Docker\n`docker compose up -d` startet Dienste im Hintergrund. Healthchecks zeigen den Zustand healthy oder unhealthy.",
+  "Notizen/Einkaufsliste.md": "# Einkauf\nMilch, Brot, Kabelbinder, USB-Stick 64 GB.",
+  "Notizen/Stromverbrauch.md": "# Stromverbrauch\nDer Heimserver braucht im Leerlauf etwa 18 Watt, unter Last 45 Watt.",
+  "Notizen/Zertifikate.md": "# Zertifikate\nLet's Encrypt über Nginx Proxy Manager, Erneuerung automatisch alle 60 Tage.",
+  "Notizen/Datensicherung-Fotos.md": "# Fotos sichern\nHandyfotos werden über die Immich-App automatisch hochgeladen und landen danach im nächtlichen Backup."
+ },
+ "queries": [
+  {
+   "q": "Wann läuft das nächtliche Backup?",
+   "expect": [
+    "Server/Backup-Strategie.md"
+   ]
+  },
+  {
+   "q": "Wie stelle ich Daten aus der Sicherung wieder her",
+   "expect": [
+    "Server/Backup-Strategie.md"
+   ]
+  },
+  {
+   "q": "Immich Container unhealthy nach Update",
+   "expect": [
+    "Server/Immich.md"
+   ]
+  },
+  {
+   "q": "IP-Adresse vom Server",
+   "expect": [
+    "Server/Netzwerk.md"
+   ]
+  },
+  {
+   "q": "Welches Modell nimmt der Router für Übersetzungen",
+   "expect": [
+    "Claude/Modellrouter.md"
+   ]
+  },
+  {
+   "q": "Router Effort Debugging",
+   "expect": [
+    "Claude/Modellrouter.md"
+   ]
+  },
+  {
+   "q": "Ist das Betriebssystem schreibgeschützt",
+   "expect": [
+    "Server/ZimaOS-Hinweise.md"
+   ]
+  },
+  {
+   "q": "Speicherplatz Warnung Festplatte",
+   "expect": [
+    "Server/Speicherplatz.md"
+   ]
+  },
+  {
+   "q": "doppelter Hook entfernt",
+   "expect": [
+    "Claude/Hooks.md"
+   ]
+  },
+  {
+   "q": "Humanizer für Code?",
+   "expect": [
+    "Claude/Skills.md"
+   ]
+  },
+  {
+   "q": "Wie viel Watt braucht der Heimserver",
+   "expect": [
+    "Notizen/Stromverbrauch.md"
+   ]
+  },
+  {
+   "q": "Zertifikatserneuerung",
+   "expect": [
+    "Notizen/Zertifikate.md"
+   ]
+  },
+  {
+   "q": "Fotos automatisch sichern",
+   "expect": [
+    "Notizen/Datensicherung-Fotos.md"
+   ]
+  },
+  {
+   "q": "SSH Zwangsbefehl restrict",
+   "expect": [
+    "Wissen/SSH.md"
+   ]
+  }
+ ],
+ "forbidden_everywhere": [
+  "Claude/Routerkonfiguration-Alt.md",
+  "Persönlich/Zahnarzt.md"
+ ]
+}

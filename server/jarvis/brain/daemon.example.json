@@ -1,0 +1,54 @@
+{
+ "brain_config": "/home/ma-brain/.config/ma-home-brain/person-a.json",
+ "actions": "/home/ma-brain/.config/ma-home-brain/actions.json",
+ "workspace": "/PFAD/ZUM/MA-HOME-REPO",
+ "sensors": "/home/ma-brain/.config/ma-home-brain/sensors.json",
+ "autonomy_config": "/home/ma-brain/.config/ma-home-brain/autonomy.json",
+ "project": "ma-home",
+ "vault": true,
+ "tick_seconds": 60,
+ "sensor_interval_seconds": 300,
+ "sleep_hour": 3,
+ "timezone": "Europe/Berlin",
+ "diagnosis": {
+  "action": "diagnose",
+  "check": "packet-ok",
+  "min_severity": 4,
+  "helper_budget": 1
+ },
+ "research": {
+  "enabled": false,
+  "min_failures": 3
+ },
+ "homeostasis": {
+  "max_load_per_cpu": 1.5,
+  "min_mem_mb": 256,
+  "min_disk_percent": 5
+ },
+ "retention_days": 90,
+ "performance": {
+  "enabled": true,
+  "disk_paths": [
+   "/"
+  ],
+  "min_interval": 60,
+  "max_interval": 300
+ },
+ "providers": "/home/ma-brain/.config/ma-home-brain/providers.json",
+ "router": {
+  "cmd": null,
+  "mode": "shadow",
+  "min_success": 0.8,
+  "min_samples": 10,
+  "provider_order": [
+   "groq",
+   "openrouter",
+   "gemini"
+  ]
+ },
+ "autopilot": {
+  "allowlist": "/home/ma-brain/.config/ma-home-brain/autopilot.allowlist.json",
+  "sha256": "SHA256-DER-ALLOWLIST (sha256sum)",
+  "autorun": false
+ }
+}
