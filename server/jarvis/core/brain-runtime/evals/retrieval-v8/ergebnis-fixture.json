@@ -1,0 +1,33 @@
+{
+ "fixture_sha256": "1ef1fef16f2087f59d1b5dbc112b5e439c3e3597d7fc626f95f1d63bc5c7cd64",
+ "queries": 14,
+ "variants": {
+  "V7 Stichwort": {
+   "hit@1": 0.857,
+   "hit@3": 0.857,
+   "mrr": 0.857,
+   "kontext_zeichen_gesamt": 3904,
+   "leere_antworten": 2,
+   "verbotene_treffer": 0,
+   "ms_gesamt": 13.6
+  },
+  "V7.1 Stichwort+Komposita": {
+   "hit@1": 0.857,
+   "hit@3": 0.929,
+   "mrr": 0.893,
+   "kontext_zeichen_gesamt": 5473,
+   "leere_antworten": 1,
+   "verbotene_treffer": 0,
+   "ms_gesamt": 14.9
+  },
+  "V8 Vault-FTS5": {
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "mrr": 1.0,
+   "kontext_zeichen_gesamt": 5010,
+   "leere_antworten": 0,
+   "verbotene_treffer": 0,
+   "ms_gesamt": 16.4
+  }
+ }
+}

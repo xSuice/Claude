@@ -1,0 +1,21 @@
+{
+ "enabled": false,
+ "allowed_templates": [
+  "diagnosis",
+  "knowledge_audit",
+  "quality_review",
+  "repo_audit"
+ ],
+ "allowed_workspaces": [
+  "/ABSOLUTE/PATH/TO/MA-HOME-REPOSITORY"
+ ],
+ "db_path": "",
+ "claude_binary": "claude",
+ "max_jobs_per_day": 2,
+ "minimum_gap_seconds": 3600,
+ "max_turns": 8,
+ "max_run_seconds": 240,
+ "max_output_chars": 5000,
+ "max_estimated_api_usd_per_run": null,
+ "bare_mode": false
+}

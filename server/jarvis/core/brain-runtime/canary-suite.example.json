@@ -1,0 +1,148 @@
+{
+ "note": "Öffentliche, synthetische Standard-Störungen ohne private Daten. Jeder Fall: Antwort muss eine Zeile wörtlich zitieren UND die bekannte Ursache nennen.",
+ "cases": [
+  {
+   "id": "port",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall port)\n- Beobachtet: nginx.service failed\n- Log: nginx: [emerg] bind() to 0.0.0.0:80 failed (98: Address already in use)",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "port",
+     "address already in use",
+     "belegt",
+     "in use"
+    ]
+   }
+  },
+  {
+   "id": "disk",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall disk)\n- Beobachtet: backup.service failed\n- Log: tar: /srv/backup/home.tar: Wrote only 4096 of 10240 bytes: No space left on device",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "space",
+     "platz",
+     "voll",
+     "full"
+    ]
+   }
+  },
+  {
+   "id": "perm",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall perm)\n- Beobachtet: app.service failed\n- Log: PermissionError: [Errno 13] Permission denied: '/var/lib/app/cache.db'",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "permission",
+     "berechtigung",
+     "rechte",
+     "zugriff"
+    ]
+   }
+  },
+  {
+   "id": "oom",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall oom)\n- Beobachtet: java-app.service failed\n- Log: kernel: Out of memory: Killed process 4242 (java) total-vm:6123456kB",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "memory",
+     "speicher",
+     "oom",
+     "ram"
+    ]
+   }
+  },
+  {
+   "id": "dns",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall dns)\n- Beobachtet: updater.service failed\n- Log: curl: (6) Could not resolve host: updates.example.org; Temporary failure in name resolution",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "dns",
+     "resolve",
+     "namensauflösung",
+     "name resolution",
+     "auflösen"
+    ]
+   }
+  },
+  {
+   "id": "tls",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall tls)\n- Beobachtet: webhook.service failed\n- Log: SSL: CERTIFICATE_VERIFY_FAILED certificate verify failed: certificate has expired",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "certificate",
+     "zertifikat",
+     "expired",
+     "abgelaufen"
+    ]
+   }
+  },
+  {
+   "id": "rofs",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall rofs)\n- Beobachtet: logger.service failed\n- Log: OSError: [Errno 30] Read-only file system: '/data/logs/app.log'",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "read-only",
+     "schreibgeschützt",
+     "nur lesbar",
+     "readonly"
+    ]
+   }
+  },
+  {
+   "id": "db",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall db)\n- Beobachtet: api.service failed\n- Log: Error: connect ECONNREFUSED 127.0.0.1:5432 at TCPConnectWrap.afterConnect",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "5432",
+     "postgres",
+     "datenbank",
+     "database",
+     "refused"
+    ]
+   }
+  },
+  {
+   "id": "pull",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall pull)\n- Beobachtet: compose-update.service failed\n- Log: Error response from daemon: toomanyrequests: You have reached your pull rate limit.",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "rate limit",
+     "pull",
+     "limit"
+    ]
+   }
+  },
+  {
+   "id": "exec",
+   "task_type": "diagnose_hint",
+   "prompt": "Diagnosepaket (öffentlicher Testfall exec)\n- Beobachtet: worker.service failed\n- Log: worker.service: Failed at step EXEC spawning /opt/worker/run.sh: No such file or directory",
+   "verify": {
+    "type": "grounded",
+    "cause_any": [
+     "no such file",
+     "fehlt",
+     "missing",
+     "nicht gefunden",
+     "existiert nicht",
+     "run.sh"
+    ]
+   }
+  }
+ ]
+}

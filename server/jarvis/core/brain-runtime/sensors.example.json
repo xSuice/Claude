@@ -1,0 +1,51 @@
+{
+ "project": "ma-home",
+ "sensors": [
+  {
+   "id": "nginx",
+   "type": "systemd",
+   "unit": "nginx.service",
+   "severity": 4,
+   "logs": [
+    "/var/log/nginx/error.log"
+   ]
+  },
+  {
+   "id": "brain",
+   "type": "systemd",
+   "unit": "ma-home-brain@person-a.service",
+   "user": true,
+   "severity": 3
+  },
+  {
+   "id": "immich",
+   "type": "docker",
+   "container": "immich_server",
+   "expect": "healthy",
+   "severity": 4
+  },
+  {
+   "id": "data",
+   "type": "disk",
+   "path": "/DATA",
+   "min_free_percent": 10,
+   "severity": 5
+  },
+  {
+   "id": "backup",
+   "type": "file_age",
+   "path": "/DATA/backups/last-success",
+   "max_age_hours": 26,
+   "severity": 4,
+   "logs": [
+    "/DATA/backups/backup.log"
+   ]
+  },
+  {
+   "id": "web",
+   "type": "http",
+   "url": "http://127.0.0.1:8080/health",
+   "severity": 3
+  }
+ ]
+}

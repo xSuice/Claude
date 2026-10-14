@@ -1,0 +1,8 @@
+{
+ "measures": {
+  "slow_sensors": {"targets": ["self_load", "cpu"], "metric": "self_cpu_pct", "min_gain": 0.2, "auto": true},
+  "slow_perf_sampling": {"targets": ["self_load"], "metric": "self_cpu_pct", "min_gain": 0.1, "auto": true},
+  "fewer_steps": {"targets": ["cpu", "memory"], "metric": "self_cpu_pct", "min_gain": 0.1, "auto": false},
+  "pause_remote": {"targets": ["io", "battery"], "metric": "self_cpu_pct", "min_gain": 0.1, "auto": false}
+ }
+}

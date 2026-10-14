@@ -1,0 +1,119 @@
+{
+ "actions": {
+  "tests": {
+   "argv": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "tests",
+    "-q"
+   ],
+   "cwd": ".",
+   "timeout": 900,
+   "mem_mb": 2048,
+   "idempotent": true,
+   "auto": true
+  },
+  "compile": {
+   "argv": [
+    "python3",
+    "-m",
+    "compileall",
+    "-q",
+    "."
+   ],
+   "cwd": ".",
+   "timeout": 300,
+   "idempotent": true,
+   "auto": true
+  },
+  "sensor-scan": {
+   "argv": [
+    "python3",
+    "/home/ma-brain/.local/share/ma-home-brain/brain-runtime/sensors.py",
+    "--config",
+    "/home/ma-brain/.config/ma-home-brain/person-a.json",
+    "--sensors",
+    "/home/ma-brain/.config/ma-home-brain/sensors.json"
+   ],
+   "timeout": 120,
+   "idempotent": true
+  },
+  "repo-audit": {
+   "claude_template": "repo_audit"
+  },
+  "restart-web": {
+   "argv": [
+    "systemctl",
+    "--user",
+    "restart",
+    "web.service"
+   ],
+   "timeout": 60,
+   "idempotent": true,
+   "risk": "reversible"
+  },
+  "web-active": {
+   "argv": [
+    "systemctl",
+    "--user",
+    "is-active",
+    "--quiet",
+    "web.service"
+   ],
+   "timeout": 20,
+   "auto": true,
+   "risk": "read"
+  },
+  "tests-sandboxed": {
+   "argv": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "tests",
+    "-q"
+   ],
+   "cwd": ".",
+   "timeout": 900,
+   "sandbox": true,
+   "auto": true
+  },
+  "diagnose": {
+   "claude_template": "diagnosis"
+  },
+  "packet-ok": {
+   "argv": [
+    "python3",
+    "-c",
+    "import glob,sys;sys.exit(0 if glob.glob('.brain/diagnosis-*.md') else 1)"
+   ],
+   "cwd": ".",
+   "auto": true,
+   "risk": "read"
+  },
+  "reboot-server": {
+   "argv": [
+    "systemctl",
+    "reboot"
+   ],
+   "risk": "privileged",
+   "timeout": 60
+  },
+  "diagnose-hint": {
+   "helper_task": "diagnose_hint",
+   "fallback_template": "diagnosis",
+   "verify": {
+    "type": "grounded"
+   }
+  }
+ },
+ "limits": {
+  "max_steps_per_run": 3,
+  "max_local_runs_per_day": 60,
+  "max_attempts": 2
+ }
+}

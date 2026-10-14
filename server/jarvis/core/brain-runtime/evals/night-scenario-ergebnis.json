@@ -1,0 +1,32 @@
+{
+ "V9": {
+  "incidents": 3,
+  "recovered": 3,
+  "operator_actions": 3,
+  "time_to_recovery_min": [
+   360,
+   360,
+   360
+  ],
+  "median_ttr_min": 360,
+  "model_calls_started": 0,
+  "local_process_runs": 6,
+  "child_cpu_ms": 145,
+  "wall_ms": 3734
+ },
+ "V10": {
+  "incidents": 3,
+  "recovered": 3,
+  "operator_actions": 2,
+  "time_to_recovery_min": [
+   360,
+   0,
+   0
+  ],
+  "median_ttr_min": 0,
+  "model_calls_started": 0,
+  "local_process_runs": 6,
+  "child_cpu_ms": 105,
+  "wall_ms": 14075
+ }
+}

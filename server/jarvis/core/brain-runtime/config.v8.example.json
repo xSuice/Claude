@@ -1,0 +1,12 @@
+{
+  "identity": "person-a",
+  "allowed_projects": ["ma-home"],
+  "default_project": "ma-home",
+  "state_db": "/home/ma-brain/.local/state/ma-home-brain/person-a.sqlite3",
+  "vault": "/PFAD/ZUM/OBSIDIAN-VAULT",
+  "vault_index": "/home/ma-brain/.cache/ma-home-brain/person-a-vault.sqlite3",
+  "vault_roots": [""],
+  "vault_exclude": ["Persönlich", "Privat"],
+  "projects_by_path": {"/PFAD/ZUM/MA-HOME-REPO": "ma-home"},
+  "tools": ["brain_lookup", "brain_focus", "brain_health", "brain_propose_memory"]
+}
