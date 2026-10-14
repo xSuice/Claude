@@ -15,7 +15,9 @@ import sandbox  # noqa: E402
 from capabilities import BUILTIN, CapError, Registry, render  # noqa: E402
 
 LINUX = sys.platform == 'linux' and sandbox.available()
-EXAMPLE = Path(__file__).resolve().parents[3] / 'dropin-beispiele' / 'wortstatistik'
+# Repo: server/jarvis/dropin-beispiele; installed release: <release>/dropin-beispiele (see install-v16.sh)
+EXAMPLE = next((b / 'dropin-beispiele' / 'wortstatistik' for b in (Path(__file__).resolve().parents[3], Path(__file__).resolve().parents[2])
+                if (b / 'dropin-beispiele' / 'wortstatistik').is_dir()), Path(__file__).resolve().parents[3] / 'dropin-beispiele' / 'wortstatistik')
 
 
 def dropin(base: Path, name='wortstatistik', manifest=None, code=None):
@@ -132,6 +134,10 @@ class Builtins(unittest.TestCase):
         reg = Registry(t / 'system.db', 'server')
         names = {'python.run', 'python.unittest', 'python.compile', 'doc.pandoc', 'image.convert', 'data.jq', 'archive.zip', 'media.ffmpeg'}
         found = reg.discover(only=names)['builtin']
+        # the 3 GB server can be short of memory for a moment (pandoc: "Cannot allocate memory"): retry what failed once
+        again = [n for n in names if found[n] == 'failed']
+        if again:
+            found.update(reg.discover(only=set(again))['builtin'])
         for n in names:
             exe = shutil.which(BUILTIN[n]['argv'][0])
             with self.subTest(cap=n):

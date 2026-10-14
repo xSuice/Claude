@@ -12,7 +12,7 @@ case "${1:-}" in
     date '+%F %T Not-Aus durch rollback-v16.sh --stop' > "$DATA/KILL"
     echo "JARVIS angehalten (Cron entfernt, $DATA/KILL gesetzt). Laufende Schritte enden spätestens nach ihrem Zeitlimit."; exit 0;;
   --start)
-    rm -f "$DATA/KILL"; exec bash "$HOME/MA-Server/server/jarvis/install-v16.sh" --skip-tests;;
+    rm -f "$DATA/KILL"; D="$(cd "$(dirname "$0")" && pwd)"; exec bash "$D/install-v16.sh" --src "$(cd "$D/../.." && pwd)" --skip-tests;;
   --to)
     TARGET="$BASE/releases/${2:?Release-Name fehlt}";;
   "")

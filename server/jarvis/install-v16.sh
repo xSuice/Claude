@@ -39,6 +39,7 @@ echo "   gesichert und geprüft: $B"
 echo "== 2 Release $REL"
 mkdir -p "$REL"
 cp -r "$SRC/server/jarvis/core/." "$REL/"
+mkdir -p "$REL/dropin-beispiele" && cp -r "$SRC/server/jarvis/dropin-beispiele/." "$REL/dropin-beispiele/"
 mkdir -p "$REL/router" && cp "$SRC/scripts/router/router_core.py" "$REL/router/"
 find "$REL" -name __pycache__ -type d -prune -exec rm -r {} +
 chmod -R go-w "$REL"; chmod 700 "$REL"
