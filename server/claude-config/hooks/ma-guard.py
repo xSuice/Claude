@@ -13,8 +13,9 @@ SAFE = re.compile(r'(^|__)(get|list|search|read|fetch|query|describe|count|aggre
 
 try:
     data = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
+except Exception:  # Schutzhook: bei nicht lesbarer Eingabe sperren statt stillschweigend freigeben
+    print('Gesperrt: ma-guard konnte die Hook-Eingabe nicht lesen.', file=sys.stderr)
+    sys.exit(2)
 name = str(data.get('tool_name', ''))
 if not name.startswith('mcp__') or os.environ.get('MA_ALLOW_SEND') == '1':
     sys.exit(0)

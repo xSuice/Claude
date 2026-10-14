@@ -8,7 +8,7 @@ Der gesamte Vault darf als Wissensquelle genutzt werden. Informationen aus dem V
 
 Suchen und Lesen:
 
-- Bei jeder neuen Aufgabe zuerst prüfen, ob relevantes Wissen im Vault existiert.
+- Bei Aufgaben mit Bezug zu Projekten, Personen, Entscheidungen oder früherem Stand zuerst mit `vault-q search` prüfen, ob relevantes Wissen im Vault existiert. Reine Wissens-, Alltags- oder Einmal-Fragen brauchen keine Vault-Suche.
 - Gezielt nach passenden Dateien, Begriffen, Projekten, Entscheidungen und früheren Notizen suchen.
 - Niemals den kompletten Vault pauschal laden.
 - Erst suchen, dann nur relevante Dateien bzw. Abschnitte lesen. Aufhören, sobald genug Evidenz vorliegt.
