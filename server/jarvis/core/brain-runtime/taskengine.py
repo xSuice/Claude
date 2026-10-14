@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS job_steps(
 CREATE TABLE IF NOT EXISTS job_events(
     id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, ts INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS job_events_job ON job_events(job_id, id);
+CREATE TABLE IF NOT EXISTS job_calls(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, sid TEXT NOT NULL, model TEXT NOT NULL, ts INTEGER NOT NULL,
+    ms INTEGER, ok INTEGER, turns INTEGER, known INTEGER NOT NULL, tokens_in INTEGER NOT NULL DEFAULT 0,
+    cache_write INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, tokens_out INTEGER NOT NULL DEFAULT 0,
+    list_usd REAL NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS job_calls_job ON job_calls(job_id, id);
 '''
 ACTIVE = ('queued', 'planning', 'running')
 FINAL = ('done', 'partial', 'failed', 'cancelled')
@@ -389,6 +395,12 @@ class Engine:
                 'fix_rounds', 'claude_calls', 'tokens_new', 'tokens_cache', 'list_usd', 'helper_calls', 'local_runs', 'cpu_ms',
                 'deferrals', 'results')
         out = {k: j[k] for k in keep}
+        with self._conn() as c:
+            calls = [dict(r) for r in c.execute('SELECT sid,model,ms,ok,turns,known,tokens_in,cache_write,cache_read,tokens_out,'
+                                                'list_usd FROM job_calls WHERE job_id=? ORDER BY id', (job_id,))]
+        out['calls'] = calls
+        out['tokens'] = {k: sum(x[k] or 0 for x in calls) for k in ('tokens_in', 'cache_write', 'cache_read', 'tokens_out')}
+        out['tokens']['all_known'] = all(x['known'] for x in calls)
         out.update(request=j['request'][:500], data_class=j['spec']['data_class'], effects=j['spec']['effects'],
                    budget=j['spec']['budget'], steps=steps, goal=(j['plan'] or {}).get('goal'),
                    deliverables=[d['path'] for d in (j['plan'] or {}).get('deliverables', [])])
@@ -619,6 +631,12 @@ class Engine:
         self.ledger.settle(rid, u['new'] if u['known'] else None, r.get('list_usd'), note=r.get('subtype') or '')
         self._add_usage(j['id'], claude_calls=1, tokens_new=u['new'] if u['known'] else est, tokens_cache=u['cache_read'],
                         list_usd=float(r.get('list_usd') or 0))
+        with self._conn(True) as c:  # one row per model call: the benchmark needs every token kind separately
+            c.execute('INSERT INTO job_calls(job_id,sid,model,ts,ms,ok,turns,known,tokens_in,cache_write,cache_read,tokens_out,'
+                      'list_usd) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                      (j['id'], sid, model, now_s(self.clock), r.get('ms'), int(bool(r.get('ok'))), r.get('turns'),
+                       int(bool(u.get('known'))), u.get('in', 0), u.get('cache_write', 0), u.get('cache_read', 0),
+                       u.get('out', 0), float(r.get('list_usd') or 0)))
         self.event(j['id'], 'claude_done', f'Schritt {sid}: {model}, {r["ms"] // 1000} s, neu {u["new"]} / Cache {u["cache_read"]} Token, '
                                            f'Ergebnis {"ok" if r["ok"] else "Fehler: " + str(r["error"])[:200]}')
         return r
@@ -721,6 +739,8 @@ class Engine:
             return {'progress': False, 'why': 'kill switch'}
         if s['attempts'] >= self.jd['step_attempts'] + j['fix_rounds']:
             self._step_set(s['id'], state='failed', result={'detail': 'zu viele Versuche'})
+            self.event(j['id'], 'step_failed', f'Schritt {s["sid"]} ({s["title"]}) gescheitert: zu viele Versuche '
+                                               f'({s["attempts"]})')
             return {'progress': True}
         kind = s['kind']
         if kind == 'human':
@@ -742,15 +762,16 @@ class Engine:
             return {'progress': True, 'state': 'waiting_pc'}
         self._step_set(s['id'], state='running', attempts=s['attempts'] + 1, started=now_s(self.clock))
         try:
+            # a deferral (budget, plan quota, RAM/CPU pressure) is not an attempt: give the attempt back
             if kind == 'claude':
                 r = self._run_claude_step(j, s)
                 if r is None:
-                    self._step_set(s['id'], state='ready')
+                    self._step_set(s['id'], state='ready', attempts=s['attempts'])
                     return {'progress': False, 'why': 'deferred'}
             else:
                 r = self._run_local_step(j, s)
                 if r is None:
-                    self._step_set(s['id'], state='ready')
+                    self._step_set(s['id'], state='ready', attempts=s['attempts'])
                     return {'progress': False, 'why': 'deferred'}
         except BudgetExceeded as e:
             self._step_set(s['id'], state='failed', result={'detail': str(e)})

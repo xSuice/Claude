@@ -43,3 +43,7 @@ Nur gelesen, nichts geändert. Geheimnisse nur als vorhanden/fehlt.
 2. Auto-Rechte: Bestätigen-Knopf vor "Voll" (Empfehlung)?
 3. Alte PC-Verläufe auf den Server importieren oder bei null anfangen?
 4. Welche Geräte im Netz darf Claude steuern?
+
+## JARVIS V16 (Stand 2026-10-14)
+
+Bewusst nur auf einer Seite: Der Server-Teil (`server/jarvis/`, Cron-Takt, bwrap-Sandbox, bwrap/Linux-Tests) läuft nur am Server; der PC hat den Client `scripts/jarvis/jarvis.py` und den Skill `/jarvis` sowie den PC-Worker (java.build, blender, ollama; ohne Sandbox, nur mit `jarvis-pc.json`). Grund: Aufträge sollen am Server laufen, am PC fehlen WSL und Docker. Der Router (`scripts/router/router_core.py`) liegt auf beiden Seiten. Server-Installation hat noch keine Kopie in `~/MA-Server` (nur Staging `~/jarvis-stage/v16`); Abgleich über `ClaudeAbgleich`/`server-live`.

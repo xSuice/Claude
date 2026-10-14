@@ -1,15 +1,17 @@
 #!/bin/bash
 # JARVIS V16 installieren oder aktualisieren - OHNE sudo, als andrew, am MA-Server.
 #   bash ~/MA-Server/server/jarvis/install-v16.sh [--src DIR] [--identity NAME] [--no-cron] [--skip-tests]
+#   bash install-v16.sh --cron-only     nur den Cron-Takt (wieder) eintragen, kein neuer Release (rollback --start)
+# Jeder Release bekommt .release-status: tests-ok | tests-failed | tests-skipped. rollback-v16.sh aktiviert nur tests-ok.
 # Ablauf: 1 Sicherung (Crontab, Konfiguration, aktiver Release) -> 2 neuer Release-Ordner -> 3 Tests des NEUEN Releases
 # (bei Fehler bleibt der alte aktiv) -> 4 Ordner/Konfiguration (nur anlegen, nie überschreiben) -> 5 Fähigkeiten-Selbsttest
 # -> 6 Umschalten (Symlink current, atomar) -> 7 Cron-Takt (jede Minute, flock, nice/ionice) -> 8 doctor.
 # Rückweg: bash ~/MA-Server/server/jarvis/rollback-v16.sh   (Daten bleiben immer erhalten)
 set -Eeuo pipefail
-SRC="$HOME/MA-Server"; ID="philipp"; CRON=1; TESTS=1
+SRC="$HOME/MA-Server"; ID="philipp"; CRON=1; TESTS=1; CRON_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --src) SRC="$2"; shift 2;; --identity) ID="$2"; shift 2;; --no-cron) CRON=0; shift;; --skip-tests) TESTS=0; shift;;
+    --src) SRC="$2"; shift 2;; --identity) ID="$2"; shift 2;; --no-cron) CRON=0; shift;; --skip-tests) TESTS=0; shift;; --cron-only) CRON_ONLY=1; shift;;
     *) echo "Unbekannte Option $1"; exit 2;;
   esac
 done
@@ -21,6 +23,20 @@ DATA="/srv/ma-home/library/.jarvis/v16"; RESULTS="/srv/ma-home/library/JARVIS"; 
 REV="$(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo local)"
 TS="$(date +%Y%m%d-%H%M%S)"; REL="$BASE/releases/$TS-$REV"
 mkdir -p "$BASE/releases" "$BASE/backups" "$CFGDIR" "$LOGDIR"
+LINE="* * * * * /usr/bin/flock -n $LOGDIR/tick.lock /usr/bin/nice -n 10 /usr/bin/ionice -c2 -n7 /usr/bin/python3 $BASE/current/brain-runtime/jarvis_cli.py --config $CFG tick --max-seconds 50 --log $LOGDIR/tick.log >/dev/null 2>>$LOGDIR/tick.err"
+set_cron() {
+  ( crontab -l 2>/dev/null | grep -v 'ma-jarvis/current/brain-runtime/jarvis_cli.py' || true; echo "$LINE" ) | crontab -
+  crontab -l | grep -c jarvis_cli.py | sed 's/^/   Cron-Einträge JARVIS: /'
+}
+doctor() {
+  python3 "$BASE/current/brain-runtime/jarvis_cli.py" --config "$CFG" doctor | python3 -c "import json,sys; d=json.load(sys.stdin); print('   ok:', d['ok'], '| sandbox:', d['sandbox_backend'], '| claude:', d['claude_cli'], '| cron:', d['cron_tick'], '| Fähigkeiten:', d['capabilities'])"
+}
+if [ "$CRON_ONLY" = 1 ]; then
+  [ -L "$BASE/current" ] || { echo "Kein aktiver Release - erst installieren."; exit 1; }
+  crontab -l > "$BASE/backups/crontab-$(date +%Y%m%d-%H%M%S).txt" 2>/dev/null || true
+  echo "== Cron-Takt für $(readlink "$BASE/current")"; set_cron
+  echo "== doctor"; doctor; exit 0
+fi
 
 echo "== 1 Sicherung"
 B="$BASE/backups/$TS"; mkdir -p "$B"
@@ -43,12 +59,17 @@ mkdir -p "$REL/dropin-beispiele" && cp -r "$SRC/server/jarvis/dropin-beispiele/.
 mkdir -p "$REL/router" && cp "$SRC/scripts/router/router_core.py" "$REL/router/"
 find "$REL" -name __pycache__ -type d -prune -exec rm -r {} +
 chmod -R go-w "$REL"; chmod 700 "$REL"
+echo "untested $(date -Is)" > "$REL/.release-status"
 
 if [ "$TESTS" = 1 ]; then
   echo "== 3 Tests des neuen Releases (gedrosselt)"
   ( cd "$REL/brain-runtime" && nice -n 15 ionice -c2 -n7 python3 -m unittest discover -s tests > "$B/tests.log" 2>&1 ) \
-    || { tail -25 "$B/tests.log"; echo "TESTS ROT - der bisherige Release bleibt aktiv. Log: $B/tests.log"; exit 1; }
+    || { tail -25 "$B/tests.log"; echo "tests-failed $(date -Is) $B/tests.log" > "$REL/.release-status"
+         echo "TESTS ROT - der bisherige Release bleibt aktiv. Log: $B/tests.log"; exit 1; }
   tail -3 "$B/tests.log"
+  echo "tests-ok $(date -Is) $(tail -1 "$B/tests.log")" > "$REL/.release-status"
+else
+  echo "tests-skipped $(date -Is)" > "$REL/.release-status"
 fi
 
 echo "== 4 Ordner und Konfiguration"
@@ -94,13 +115,11 @@ echo "   aktiv: $(readlink "$BASE/current")"
 
 if [ "$CRON" = 1 ]; then
   echo "== 7 Cron-Takt"
-  LINE="* * * * * /usr/bin/flock -n $LOGDIR/tick.lock /usr/bin/nice -n 10 /usr/bin/ionice -c2 -n7 /usr/bin/python3 $BASE/current/brain-runtime/jarvis_cli.py --config $CFG tick --max-seconds 50 --log $LOGDIR/tick.log >/dev/null 2>>$LOGDIR/tick.err"
-  ( crontab -l 2>/dev/null | grep -v 'ma-jarvis/current/brain-runtime/jarvis_cli.py' || true; echo "$LINE" ) | crontab -
-  crontab -l | grep -c jarvis_cli.py | sed 's/^/   Cron-Einträge JARVIS: /'
+  set_cron
 fi
 
 echo "== 8 doctor"
-python3 "$BASE/current/brain-runtime/jarvis_cli.py" --config "$CFG" doctor | python3 -c "import json,sys; d=json.load(sys.stdin); print('   ok:', d['ok'], '| sandbox:', d['sandbox_backend'], '| claude:', d['claude_cli'], '| cron:', d['cron_tick'], '| Fähigkeiten:', d['capabilities'])"
+doctor
 # alte Releases aufräumen (die letzten 5 bleiben)
 ls -1d "$BASE/releases/"*/ 2>/dev/null | head -n -5 | while read -r old; do [ "$(readlink -f "$BASE/current")/" != "$old" ] && rm -r "$old"; done
 echo "Fertig. Rückweg: bash $SRC/server/jarvis/rollback-v16.sh"

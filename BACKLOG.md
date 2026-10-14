@@ -42,3 +42,4 @@ Stand: 2026-10-09, Europe/Berlin. Priorisiert nach aktuellen Live-Befunden. Ausf
 | B36 | Niedrig | `vault-pg.py` (Mehrwort-Suche: UND-Treffer vorn) am PC nachziehen | PC-Kopie von `scripts/vault-pg.py` sortiert je Durchlauf (CHANGELOG 2026-10-14, Nachtrag 3); Probe „Startprompt Hooks Connector“ zeigt Übergabe und Wirkungsregister vorn | offen. Server geprüft 2026-10-14; PC-Stand nicht bekannt |
 
 Neue Aufgabe: ID, Ziel, Priorität, Belege, Abnahmekriterium, Status. Keine Aufgabe ohne Nachweis als erledigt markieren.
+| B37 | Mittel | JARVIS V16: offene Punkte nach Installation | Last während eines Jobs messen, Benchmark (`docs/jarvis/BENCHMARK-V16.md`), `jarvis-pc.json` für PC-Builds, Helfer/Canary (Schlüssel/Budget), `doc.office_pdf` in der Sandbox reparieren, optional `loginctl enable-linger` | Stand `docs/jarvis/STAND-V16.md` |
