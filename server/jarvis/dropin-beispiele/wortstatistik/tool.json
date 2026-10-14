@@ -1,0 +1,22 @@
+{
+  "name": "tool.wortstatistik",
+  "title": "Wortstatistik einer Textdatei als JSON (Anzahl, verschiedene, häufigste Wörter)",
+  "version": "1.0",
+  "entry": "wortstatistik.py",
+  "interpreter": "python3",
+  "params": {
+    "input": {"type": "relpath", "ext": [".txt", ".md"]},
+    "output": {"type": "relpath_out", "ext": [".json"]},
+    "top": {"type": "str", "regex": "^[0-9]{1,3}$", "default": "10"}
+  },
+  "argv": ["{input}", "{output}", "{top}"],
+  "risk": "read",
+  "network": false,
+  "timeout": 60,
+  "mem_mb": 256,
+  "selftest": {
+    "files": {"a.txt": "eins zwei zwei drei drei drei"},
+    "args": {"input": "a.txt", "output": "o.json", "top": "2"},
+    "expect": {"exit": 0, "file": "o.json", "contains": "\"drei\", 3"}
+  }
+}

@@ -76,8 +76,9 @@ BUILTIN: dict[str, dict] = {
         'risk': 'read', 'timeout': 120, 'mem_mb': 512,
         'selftest': {'files': {'a.py': 'x = 1\n'}, 'args': {'files': ['a.py']}, 'expect': {'exit': 0}}},
     'doc.pandoc': {
-        'title': 'Dokumente umwandeln (Markdown/HTML/DOCX/ODT -> DOCX/ODT/HTML/EPUB/Markdown), pandoc --sandbox',
-        'host': 'server', 'argv': ['pandoc', '--sandbox', '{input}', '-o', '{output}'],
+        # pandoc's own --sandbox cannot read its docx reference data on Ubuntu (self-test found it); the outer jail isolates
+        'title': 'Dokumente umwandeln (Markdown/HTML/DOCX/ODT -> DOCX/ODT/HTML/EPUB/Markdown) mit pandoc',
+        'host': 'server', 'argv': ['pandoc', '{input}', '-o', '{output}'],
         'params': {'input': {'type': 'relpath', 'ext': ['.md', '.markdown', '.html', '.txt', '.rst', '.docx', '.odt']},
                    'output': {'type': 'relpath_out', 'ext': ['.docx', '.odt', '.html', '.epub', '.md', '.txt']}},
         'risk': 'reversible', 'timeout': 180, 'mem_mb': 1024,

@@ -15,8 +15,8 @@ from pathlib import Path
 
 from capabilities import CapError, check_rel, MAGIC
 
-PLACEHOLDER = re.compile(r'(?i)\b(lorem ipsum|todo:|fixme|platzhalter|placeholder|xxx+|insert (?:here|text)|hier einfügen)\b'
-                         r'|\.\.\.\s*$|\bpass\s*#\s*todo')
+PLACEHOLDER = re.compile(r'(?i)\b(?:lorem ipsum|platzhalter|placeholder|insert (?:here|text)|hier einfügen)\b'
+                         r'|\b(?:todo|fixme|tbd)\s*:|#\s*(?:todo|fixme)\b|\bxxx+\b|\bNotImplementedError\b|^\s*\.\.\.\s*$', re.M)
 CHECK_TYPES = {
     'exists': (), 'min_bytes': ('value',), 'max_bytes': ('value',), 'contains': ('value',), 'not_contains': ('value',),
     'regex': ('value',), 'json_valid': (), 'json_keys': ('value',), 'python_compiles': (), 'magic': ('value',),
