@@ -1686,7 +1686,7 @@ async function einstellungen() {
   const row = (t, s, extra = '') => '<div class="row"><div><b>' + t + '</b><div class="sub">' + s + '</div></div>' + extra + '</div>';
   view.innerHTML = head('Einstellungen', 'Anmeldung, Claude-Chat und Portal') +
     '<div class="list">' +
-    row('Anmeldung', 'Passwort und Code (TOTP) sind eingerichtet, Passkey ist eingeschaltet. Passkeys und Codes legst du in den Sicherheitseinstellungen an.', '<a class="btn small ghost" href="/auth/settings" target="_blank" rel="noopener">Öffnen</a>') +
+    row('Anmeldung', 'Passkey ist serverseitig eingeschaltet. Ob du schon einen angelegt hast, zeigt die Seite dort. Im Menü oben links „Sicherheit“ wählen, dann Passkey oder Code (TOTP) hinzufügen.', '<a class="btn small ghost" href="/auth/settings" target="_blank" rel="noopener">Öffnen</a>') +
     row('Claude-Chat', 'Neuer Chat wird ab ' + fmtTok(CTX_MAX) + ' Kontext vorgeschlagen (fest eingestellt). Auto-Einspielung und Sudo-Schalter (nur Admin) stehen im Reiter Claude.') +
     row('Portal', 'Version ' + esc(VERSION) + (me.admin ? ' · Administrator' : ' · Benutzer')) +
     '</div>';
@@ -1704,7 +1704,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-14-2';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-14-3';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

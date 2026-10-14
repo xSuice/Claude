@@ -446,3 +446,12 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Nicht geprüft: Syntax und Darstellung (`node` und Browser fehlen auf dem Server). Die Aussage "Passwort und Code (TOTP) sind eingerichtet" stammt aus der Konfiguration, nicht aus einem Test der Anmeldung.
 - Einspielen: `deploy-ui.sh` (Sudo). Danach im Browser Reiter "Einstellungen" und "Claude" öffnen.
 - Rückweg: `git diff` zeigt die Änderungen; Version zurücksetzen.
+
+## 2026-10-14 – Portal: Limit-Ereignis im Chat, Text im Reiter Einstellungen korrigiert (Version 2026-10-14-3)
+
+- Auftrag: Sitzungs-/Wochenlimit im Claude-Reiter anzeigen; Screenshot der Einstellungen geklärt.
+- Betroffene Dateien: `portal-ui/web/app.js`, `portal-ui/web/sw.js`.
+- Änderung: `rate_limit_event` aus dem Datenstrom wird gelesen und unter dem Kontextbalken angezeigt (`rlRender`); Text im Reiter Einstellungen korrigiert (TOTP-Behauptung war ungeprüft, Hinweis auf Menü Sicherheit ergänzt).
+- Prüfung: Syntax mit esprima geprüft (Kopie mit ES2020-Operatoren ersetzt). Verhalten im Browser nicht geprüft. Die Limit-Anzeige liefert laut Philipp keine Werte; belegt sind in den Protokollen nur rejected-Ereignisse mit status, resetsAt, rateLimitType.
+- Rückweg: `/opt/ma-home/web.bak-*` (letzte Sicherung vor diesem Stand: 20261014-043154).
+- Offen: Quelle für Prozentwerte (wie die Claude-App) unbekannt; Weg über Anmelde-Token nur mit Freigabe von Philipp.
