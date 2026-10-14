@@ -153,11 +153,12 @@ def cmd_search(con, a):
         found = con.execute("""SELECT path, title, ts_rank_cd(tsv, to_tsquery('german', unaccent(%%s))) * CASE WHEN lower(status) IN ('veraltet','ungueltig','zurueckgezogen') OR lower(regexp_replace(path, '^.*/|\\.md$', '', 'g')) IN (SELECT name FROM replaces) THEN 0.3 ELSE 1.0 END AS r,
                               ts_headline('german', body, to_tsquery('german', unaccent(%%s)), 'MaxFragments=1,MaxWords=22,MinWords=8') AS snip
                               FROM notes WHERE %s%s ORDER BY r DESC LIMIT %%s""" % (where, extra), [q, q, q] + eargs + [a.n * 3]).fetchall()
-        rows += [r for r in found if r[0] not in seen]
+        new = [r for r in found if r[0] not in seen]
+        rows += sorted(new, key=lambda r: -r[2] * weight(r[0]))   # je Durchlauf sortieren: Raenge von UND und ODER sind nicht vergleichbar, UND-Treffer bleiben vorn
         seen.update(r[0] for r in found)
         if len(rows) >= 3 or len(words) == 1:
             break
-    rows = sorted(rows, key=lambda r: -r[2] * weight(r[0]))[:a.n]
+    rows = rows[:a.n]
     log_query(con, a, zone, rows, t0)
     if not rows:
         print('Keine Treffer.')
