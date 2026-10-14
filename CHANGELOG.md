@@ -480,3 +480,12 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Pruefung: Testlauf mit künstlichen Transcripts (100k: keine Ausgabe, 260k: Warnung, 310k: Übergabe, „ohne waechter“ und fehlende Datei: still); settings.json ist gültiges JSON. Nicht in einer echten Sitzung getestet.
 - Offen: Einspielen nach `~/.claude/hooks/` und `~/.claude/settings.json` (Abgleich oder Installer); ob die Brücke `transcript_path` an Hooks liefert, ist ungeprüft.
 - Rueckweg: Eintrag in settings.json entfernen, Datei löschen. Paritaet: PC hat eigenen Wächter.
+
+- Nachtrag 2026-10-14: Hook und settings.json nach ~/.claude eingespielt (settings.json gleich der Projektkopie, Testlauf mit 310k-Transcript ok). Wirkt ab dem nächsten neuen Chat.
+
+## 2026-10-14 – KI-Effizienz V5: Bestandsaufnahme, Wirkungsregister, zwei kleine Änderungen (Server-Kopie, live)
+
+- Auftrag: V5-Recherche auf das bestehende Setup anwenden, nur belegte Wirkung eintragen. Register: Vault `30 Technik/MA-Server/Wirkungsregister-KI-Setup.md`.
+- `scripts/vault-q.py`: Notizen mit `status` veraltet/ungueltig/zurueckgezogen werden im Rang auf 0,3 abgewertet (Eintrag 275). Geprüft an einem Testpaar (Plan Port 8080 veraltet, Beobachtung Port 3000): vorher stand die veraltete Notiz vorn, nachher die Beobachtung; `--status gueltig` unverändert. Goldstandard `vault-q-gold.py`: 18/20 Treffer@5 wie vorher. Testnotizen gelöscht. Rückweg: `vault-snapshots/wissen-vor-umbau-20261013-0921/vault-q.py.vor-veraltet`. PC-Kopie über ClaudeAbgleich.
+- `kontext-waechter.py` (`~/.claude/hooks` und `server/claude-config/hooks`, gleich): schreibt `~/.claude/waechter.log` (Zeit, Tokenzahl oder „kein transcript_path“, nie Text), damit B34 belegbar wird. Geprüft mit echtem Transcript (130k, keine Warnung) und ohne Pfad. Nicht geprüft: Lieferung durch die Brücke (erst im nächsten Portal-Chat sichtbar).
+- Nicht umgesetzt (kein Beleg für Nutzen oder keine Freigabe): Router, Embeddings, neue Regeldatei (Doppelung zu TASK-POLICY), die 12 Vergleichsaufgaben.

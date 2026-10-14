@@ -33,6 +33,7 @@ FILES = [
     ('Server-settings.json', 'server/claude-config/settings.json', '/home/andrew/.claude/settings.json'),
     ('Hook ma-guard', 'server/claude-config/hooks/ma-guard.py', '/home/andrew/.claude/hooks/ma-guard.py'),
     ('Hook council-auto', 'server/claude-config/hooks/council-auto.py', '/home/andrew/.claude/hooks/council-auto.py'),
+    ('Hook kontext-waechter', 'server/claude-config/hooks/kontext-waechter.py', '/home/andrew/.claude/hooks/kontext-waechter.py'),
     ('Verbrauchs-Datenbank (usage-db)', 'server/tools/usage-db.py', '/home/andrew/MA-Server/server/tools/usage-db.py'),
     ('Terminal-Brücke', 'server/term-bridge/ma-term-bridge.py', '/usr/local/lib/ma-term-bridge.py'),
     ('Auto-Einspielung (Root-Skript)', 'server/auto-deploy/ma-deploy.sh', '/usr/local/lib/ma-deploy.sh'),

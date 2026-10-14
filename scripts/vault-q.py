@@ -199,7 +199,8 @@ def fts_query(q, mode='AND'):
 RANK = ("bm25(fts, 0, 6.0, 1.0) * CASE WHEN n.path LIKE '90 Archiv/%' THEN 0.35 WHEN n.path LIKE '_Claude-Memory/Import/%' THEN 0.5 "
         "WHEN n.path LIKE '20 Projekte/Projekt Schmejd/%' OR n.path LIKE '20 Projekte/Crimson Zone/%' OR n.path LIKE '30 Technik/Arduino/%' THEN 0.4 "
         "WHEN n.path LIKE '_Claude-Memory/Archiv/%' THEN 0.5 "
-        "WHEN n.path LIKE '_Claude-Memory/%' OR n.path LIKE '30 Technik/%' THEN 1.3 ELSE 1.0 END")
+        "WHEN n.path LIKE '_Claude-Memory/%' OR n.path LIKE '30 Technik/%' THEN 1.3 ELSE 1.0 END "
+        "* CASE WHEN lower(n.status) IN ('veraltet','ungueltig','zurueckgezogen') THEN 0.3 ELSE 1.0 END")
 
 
 def log_query(con, a, zone, out, t0):
