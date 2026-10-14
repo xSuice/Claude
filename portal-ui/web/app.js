@@ -15,6 +15,7 @@ const ICONS = {
   term: '<path d="M4 6l6 6-6 6M13 18h7"/>',
   vault: '<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3zM5 17a3 3 0 013-3h11M9 8h6"/>',
   verbindungen: '<path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 01-10 0zM12 16v5"/>',
+  einstellungen: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
   system: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
@@ -61,7 +62,7 @@ async function api(path, opts = {}) {
 }
 const items = k => api('/api/items/' + k).then(d => d.items);
 
-const TABS = [['home', 'Lage'], ['neu', 'Neu'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['musik', 'Musik'], ['claude', 'Claude'], ['term', 'Terminal'], ['vault', 'Vault'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['verbindungen', 'Verbindungen'], ['system', 'System']];
+const TABS = [['home', 'Lage'], ['neu', 'Neu'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['musik', 'Musik'], ['claude', 'Claude'], ['term', 'Terminal'], ['vault', 'Vault'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['verbindungen', 'Verbindungen'], ['einstellungen', 'Einstellungen'], ['system', 'System']];
 function buildNav() {
   $('#nav').innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${ico(id)}<span>${name}</span></button>`).join('');
   $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) location.hash = '#/' + b.dataset.t; });
@@ -1660,7 +1661,18 @@ async function musik() {
   musRefresh(); browse('');
 }
 
-const ROUTES = { home, neu, musik, tasks, notes, money, training, claude, term, vault, wissen, files, verbindungen, system };
+// Reiter "Einstellungen": Anmeldung (Passkey/Code legt Authelia selbst an), Chat-Grenze, Version. Die Admin-Schalter bleiben im Reiter Claude (Code greift per ID zu).
+async function einstellungen() {
+  const row = (t, s, extra = '') => '<div class="row"><div><b>' + t + '</b><div class="sub">' + s + '</div></div>' + extra + '</div>';
+  view.innerHTML = head('Einstellungen', 'Anmeldung, Claude-Chat und Portal') +
+    '<div class="list">' +
+    row('Anmeldung', 'Passwort und Code (TOTP) sind eingerichtet, Passkey ist eingeschaltet. Passkeys und Codes legst du in den Sicherheitseinstellungen an.', '<a class="btn small ghost" href="/auth/settings" target="_blank" rel="noopener">Öffnen</a>') +
+    row('Claude-Chat', 'Neuer Chat wird ab ' + fmtTok(CTX_MAX) + ' Kontext vorgeschlagen (fest eingestellt). Auto-Einspielung und Sudo-Schalter (nur Admin) stehen im Reiter Claude.') +
+    row('Portal', 'Version ' + esc(VERSION) + (me.admin ? ' · Administrator' : ' · Benutzer')) +
+    '</div>';
+}
+
+const ROUTES = { home, neu, musik, tasks, notes, money, training, claude, term, vault, wissen, files, verbindungen, einstellungen, system };
 async function route() {
   const id = (location.hash.slice(2).split('?')[0]) || 'home';
   const fn = ROUTES[id] || home;
@@ -1672,7 +1684,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-13-5';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-14-1';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

@@ -436,3 +436,13 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Erledigt: `/home/andrew/ma-authelia-diag2.txt` (enthielt Geheimnisse im Klartext) gelöscht, Löschung belegt (`ls` meldet "No such file"). Die Werte stehen weiter im Chatprotokoll; daher `rotate` empfohlen.
 - Rückweg: Sicherungen `configuration.yml.bak-<Zeit>` und `users.yml.bak-<Zeit>` zurückkopieren, `docker restart ma-home-authelia-1`.
 - Gelaufen 2026-10-13 16:07 und 16:08 über die Sudo-Brücke: `passkey` (Prüfung "parsed and loaded successfully", Neustart, `/auth/api/health` = OK) und `rotate ohne-passwort` (Session- und Reset-Schlüssel neu, Sicherungen `*.bak-20261013-160808`, Health OK). Passwörter wurden nicht geändert (Modus ohne Passwort), Passkey noch nicht angelegt, Anmeldung mit Passkey nicht getestet.
+
+## 2026-10-14 – Portal: Reiter "Einstellungen", Stufe 1 (Server-Kopie, noch nicht eingespielt)
+
+- Auftrag: Philipp will Passkey und weitere Einstellungen in einem eigenen Reiter im Portal.
+- Dateien: `portal-ui/web/app.js` (TABS, ICONS, Funktion `einstellungen()`, ROUTES), Version in `app.js` und `sw.js` auf 2026-10-14-1.
+- Inhalt: Anmeldung (Hinweis auf Passwort, Code, Passkey, Knopf zu `/auth/settings`, dort legt Authelia Passkeys und Codes selbst an), Claude-Chat (Grenze für "neuer Chat", fest 200 000), Portalversion und Rolle. Keine neue API-Route, kein neuer Root-Weg.
+- Bewusst nicht gemacht: Admin-Schalter verschieben (der Code im Reiter Claude greift per ID `#cdep`/`#csudo` zu, ein Verschieben ohne Umbau würde ihn zum Absturz bringen); Knöpfe mit Root-Wirkung (Stufe 2, braucht eine Prüfung durch Philipp).
+- Nicht geprüft: Syntax und Darstellung (`node` und Browser fehlen auf dem Server). Die Aussage "Passwort und Code (TOTP) sind eingerichtet" stammt aus der Konfiguration, nicht aus einem Test der Anmeldung.
+- Einspielen: `deploy-ui.sh` (Sudo). Danach im Browser Reiter "Einstellungen" und "Claude" öffnen.
+- Rückweg: `git diff` zeigt die Änderungen; Version zurücksetzen.
