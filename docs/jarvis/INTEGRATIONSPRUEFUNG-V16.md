@@ -16,7 +16,7 @@ Abschnitt zum Einfügen vor den Mobile-Test. Alle Aussagen sind am laufenden Ser
 | Komponente | vorhanden | konfiguriert | tatsächlich getestet | Nachweis | Einschränkung |
 |---|---|---|---|---|---|
 | Portal-Reiter und `POST /api/jarvis` | ja (`/opt/ma-home/portal.py`, `web/app.js`) | ja | **teilweise**: Brücken-Socket mit identischer Nachricht, nicht der HTTP-Weg | Auftrag `j20261015-6a27fc` | Flask und Authelia nicht durchlaufen (keine Sitzung vom Server aus). Browser-Rauchtest mit Platzhaltern ist älter (82/82). |
-| Claude-Brücke → `jarvis_cli` | ja | ja, Dienst aktiv | ja | submit, status, events über Socket | Eingespielte Brücke (02:03) ist älter als der Repo-Stand (04:01); `Claude:`-Kennzeichnung im Chat fehlt, Update braucht sudo. |
+| Claude-Brücke → `jarvis_cli` | ja | ja, Dienst aktiv | ja | submit, status, events über Socket; nach dem Update (08:18) `diff` zum Repo gleich, Dienst aktiv, `status` antwortet | Update von Philipp eingespielt, Dateivergleich belegt es. `Claude:`-Kennzeichnung im Chat nach dem Update nicht gesondert getestet. |
 | JARVIS-Auftragsverwaltung und Ausführung | ja | ja | ja | 15+ Aufträge heute, Cron-Takt arbeitet ab | `doctor` meldet `cron_tick: false`, weil `crontab -l` in dieser Umgebung gesperrt ist; der Takt läuft nachweislich. |
 | Claude als Modellaufruf (Text) | ja | ja | ja | Plan-Schritt je Auftrag (`claude_done`, sonnet) | Plan-Guard 70/85 %, aktuell `plan_block: null`. |
 | Claude Code (`claude -p` mit Dateiwerkzeugen) | ja | ja | ja | Inhaltsschritt `s1` schreibt Dateien; 9 Runden in T04 | **Nur Read/Write/Edit/Glob/Grep, ohne Bash** (`workers.py`). Kein Build, kein Testlauf durch Claude selbst. |
@@ -42,5 +42,17 @@ Abschnitt zum Einfügen vor den Mobile-Test. Alle Aussagen sind am laufenden Ser
 
 - Belegt: Auftrag annehmen, über die Brücke ausführen, Claude als Plan- und Inhaltsschritt aufrufen, Ergebnis mit Test prüfen, Status, Ereignisse und Kennzeichnung unter einer Auftrags-ID, Ergebnisdateien am erwarteten Ort.
 - Nicht belegt: der HTTP-Weg Browser → Authelia → Portal, die Anzeige und der Download im Browser, die Router-Wirkung, externe Helfer (nicht freigegeben).
-- Kleinste Ergänzung: Philipp spielt die Brücke ein (`sudo bash ~/MA-Server/server/claude-bridge/update-bridge.sh`) und macht einen Browser-Durchlauf (Auftrag senden, Verlauf sehen, Datei herunterladen). Damit entfallen die drei offenen „teilweise".
+- Brücken-Update ist erledigt (Dateivergleich gleich, 08:18). Kleinste verbleibende Ergänzung: ein Browser-Durchlauf (Auftrag senden, Verlauf sehen, Datei herunterladen). Philipp meldete „Ja, habe ich"; ein konkretes Ergebnis des Durchlaufs liegt nicht vor und ist hier nicht eingetragen. Er schließt die „teilweise"-Zeilen zu Portal, Rückgabe und Download.
 - Nicht behauptet: Claude führt keine Entwicklungswerkzeuge (Bash, Build) aus. Das tut JARVIS in der Sandbox.
+
+## Benchmark A2 (neue Daten, Seed 7), Nebenbefund
+
+| Aufgabe | `check.py` | JARVIS-Abnahme | Aufrufe | neue Token |
+|---|---|---|---|---|
+| T04 | 16/16 | 5/5 | 1 | 26 607 |
+| T06 | 15/15 | 6/6 | 1 | 16 737 |
+| T07 | 19/19 | 5/5 | 1 | 17 901 |
+| T09 | 14/15 | 5/5 | 2 | 32 167 |
+| T11 | 21/21 | 6/7, Status `partial` | 3 | 39 929 |
+
+Alle n=1. Bei T09 meldet JARVIS 5/5, `check.py` aber nur 14/15; bei T11 ist es umgekehrt (`check.py` 21/21, JARVIS `partial` 6/7). JARVIS-Abnahme und unabhängiges Prüfskript weichen ab, Ursache nicht untersucht.
