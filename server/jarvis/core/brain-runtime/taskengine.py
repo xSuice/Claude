@@ -731,6 +731,8 @@ class Engine:
             web='erlaubt (nur öffentliche Recherche)' if spec['data_class'] == 'public' and not spec.get('no_web') else 'NICHT erlaubt',
             effects=eff or 'keine', caps=json.dumps(caps, ensure_ascii=False), max_steps=self.jd['max_steps'],
             quality=spec.get('quality') or '(keine besonderen Vorgaben)', lessons=lessons or '(noch keine)')
+        if spec.get('improve'):
+            prompt += IMPROVE_PLAN_HINT
         if example:
             prompt += ('\n\nBEWÄHRTER PLAN eines früheren, unabhängig geprüften Auftrags gleichen Typs (als Vorlage: Struktur, '
                        'Schrittarten und Prüfungen übernehmen, aber Inhalte, Pfade und inhaltliche Prüfungen an DIESEN Auftrag anpassen):\n'
@@ -1247,6 +1249,13 @@ Antwortformat (nur JSON):
 {{"goal": "...", "task_type": "...", "match_keywords": ["..."], "assumptions": ["..."],
   "deliverables": [{{"path": "...", "description": "...", "checks": [{{"type": "..."}}]}}],
   "steps": [{{"id": "s1", "title": "...", "kind": "claude", "instructions": "...", "outputs": ["..."], "deps": []}}]}}
+'''
+IMPROVE_PLAN_HINT = '''
+
+VERBESSERUNGSAUFTRAG (zusätzliche Schrittart, nur hier erlaubt):
+- "improve": Probelauf eines Patches gegen die unveränderten Tests. Felder: patch (relativer Pfad einer .diff-Datei, die ein früherer Schritt erzeugt), description (3-300 Zeichen). Die Prüfungen legt Philipp fest, du wählst sie nicht.
+- Plane genau zwei Schritte: s1 "claude" schreibt patch.diff (git-Unified-Diff mit Pfaden a/<Repo-Pfad> und b/<Repo-Pfad>, nur gegen die Dateikopien unter inputs/, kleinstmögliche Änderung, keine Tests, Konfigurationen oder Sicherheitsdateien ändern), s2 "improve" mit patch "patch.diff", deps ["s1"].
+- Einziges deliverable: "improve-trial.json" mit check {"type": "contains", "value": "verdict"}.
 '''
 WORKER_SYSTEM = (
     'Du bist ein Ausführungs-Worker von JARVIS (MA-Home, Philipp). Regeln, die immer gelten: '

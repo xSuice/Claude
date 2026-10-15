@@ -74,6 +74,13 @@ class ImproveJobs(Base):
             row = c.execute('SELECT verdict, status FROM improvement_trials').fetchone()
         self.assertEqual((row['verdict'], row['status']), ('improved', 'recorded'))
         self.assertEqual(sh(self.repo, 'worktree', 'list').count('\n'), 1)
+        self.assertIn('VERBESSERUNGSAUFTRAG', next(c['prompt'] for c in fake.calls if c['planning']))
+
+    def test_planner_hint_only_in_improvement_jobs(self):
+        eng, fake = self.app('x')
+        eng.submit('Schreibe einen kurzen Text über Katzen', client_id='improve-client-07')
+        run_until(eng, rounds=3)
+        self.assertNotIn('VERBESSERUNGSAUFTRAG', next(c['prompt'] for c in fake.calls if c['planning']))
 
     def test_patch_on_protected_path_never_passes(self):
         cheat = self.patch('tests/test_calc.py', 'import unittest\n')
