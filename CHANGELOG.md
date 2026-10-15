@@ -2,6 +2,15 @@
 
 Alle Zeiten: Europe/Berlin. Diese Historie beginnt am 2026-10-05. Sie ist keine vollständige Rekonstruktion früherer Servereingriffe.
 
+## 2026-10-15 – JARVIS Phase E: Verbesserungsauftrag mit Probelauf-Gate (Server)
+
+- Auftrag: B39 Phase E, Kette JARVIS -> Claude Code ohne Rechteausweitung.
+- Betroffene Dateien: `server/jarvis/core/brain-runtime/taskengine.py` (neue Schritt-Art `improve`, `_run_improve_step`, `_improver`), `tests/test_v16_improve.py` (neu), `tests/v16_fakes.py` (`cfg_extra`), `server/jarvis/PHASE-E-ENTWURF.md`, `BACKLOG.md` (B39).
+- Änderung: Claude schreibt nur einen Patch (`patch.diff`) in den Arbeitsordner; `improve.py trial` prüft ihn gegen die unveränderten Tests. Erlaubt nur in Aufträgen mit Option `improve=true` und nur wenn `improve.enabled` in der Konfiguration steht (Standard: aus). Prüfungen kommen aus der Konfiguration (`improve.checks`), nie aus dem Plan. `allow_promote` bleibt aus; das Repo wird nicht verändert. Tagesgrenze und fehlende Konfiguration beenden den Schritt ohne Korrekturrunde.
+- Prüfung: neue Tests (10) und gesamte Suite im Quellbaum: 320 Tests grün, 4 übersprungen.
+- Rückweg: `rollback-v16.sh`; die Funktion ist ohne `improve.enabled` wirkungslos.
+- Offen: Freigabe-Schritt für Philipp (`human`) als Planvorlage, Einspielen in den aktiven Release, echter Lauf mit kleiner Änderung, `Claude:`-Kennzeichnung im Claude-Chat.
+
 ## 2026-10-05 – Projektdokumentation eingerichtet
 
 - Auftrag: Änderungen und Erkenntnisse dauerhaft festhalten und bekannte Fehler künftig berücksichtigen.
