@@ -504,3 +504,12 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Gedächtnis: neue Sitzung nannte die Entscheidung Variante 2 aus dem Index (M1).
 - **Befund 06:43:** `claude-abgleich.py` (PC) hat `CLAUDE.md`, `settings.json`, `ma-guard.py`, `council-auto.py` und `docs-lookup.md` auf dem Server mit dem alten PC-Stand überschrieben (push_config nimmt PC-Repo-Stand). Am Server aus dem Repo wieder eingespielt, alle fünf Dateien gleich Repo. Solange der PC `server-live` nicht geholt hat, droht erneutes Überschreiben (BACKLOG B35).
 - Rückweg: Backups in `~/.claude/backups/2026-10-14-ki-setup/`; deny-Zeilen löschen; Symlink entfernen und Ordner anlegen; `docs-lookup.md.disabled` zurückbenennen.
+
+## 2026-10-15 – JARVIS V16 im Portal (Reiter JARVIS, im Repo, noch nicht eingespielt)
+
+- Auftrag: JARVIS als Hauptoberfläche ins vorhandene Portal einbauen, kein zweites Dashboard, gleiche Steuerung wie CLI und PC-Client.
+- Dateien: `server/claude-bridge/ma-claude-bridge.py` (Op `jarvis`, Zulassungsliste, Benutzerzuordnung), `portal-ui/patch-portal-jarvis.py` (neu, Route `/api/jarvis`, nur Admin), `portal-ui/deploy-ui.sh` (ruft den Patch auf), `portal-ui/web/app.js` und `sw.js` (Reiter JARVIS, Version 2026-10-14-5), `tests/portal_smoke.py` (vier neue Prüfungen), `docs/jarvis/PORTAL.md` (neu). Server: `~/.config/ma-jarvis/portal-users.json` (andrew -> jarvis.json).
+- Änderung: Aufträge starten, Fortschritt, Freigabe, Abbrechen, Ergebnisdateien im vorhandenen Betrachter, Not-Aus, Fähigkeiten und Gelerntes. Abfrage nur bei offenem Reiter und laufendem Auftrag. V16-Kern unverändert.
+- Prüfung: `jarvis_api` gegen den echten Kern am Server (list, status, usage, fremder Benutzer, ungültige ID, unbekannter Befehl); Portal-Patch an einer Kopie von `portal.py` (idempotent, kompiliert); Browser-Rauchtest 82/82 mit Platzhalter-Antworten. Nicht geprüft: echter Lauf durch Portal und Brücke, Freigabe eines echten Auftrags, Bridge-Sandbox gegen `submit`.
+- Ergebnis: Code fertig im Repo. Einspielen braucht sudo (Schritte in `docs/jarvis/PORTAL.md`).
+- Rückweg: `portal.py.bak-<Zeit>`, `web.bak-<Zeit>` und `/usr/local/lib/ma-claude-bridge.py.bak` zurückkopieren; `portal-users.json` löschen.

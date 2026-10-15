@@ -43,3 +43,4 @@ Stand: 2026-10-09, Europe/Berlin. Priorisiert nach aktuellen Live-Befunden. Ausf
 
 Neue Aufgabe: ID, Ziel, Priorität, Belege, Abnahmekriterium, Status. Keine Aufgabe ohne Nachweis als erledigt markieren.
 | B37 | Mittel | JARVIS V16: offene Punkte nach Installation | Last während eines Jobs messen, Benchmark (`docs/jarvis/BENCHMARK-V16.md`), `jarvis-pc.json` für PC-Builds, Helfer/Canary (Schlüssel/Budget), `doc.office_pdf` in der Sandbox reparieren, optional `loginctl enable-linger` | Stand `docs/jarvis/STAND-V16.md` |
+| B38 | Hoch | JARVIS-Reiter im Portal einspielen und live prüfen | `sudo bash ~/MA-Server/portal-ui/deploy-ui.sh`, Brücke neu eingespielt, echter Auftrag mit Freigabe durchs Portal; offen: Datei-Upload im Portal, Anbindung von Auto-Memory und Agenten (Entscheidung), Zwei-Personen-Trennung | Code fertig, Test 82/82 (Platzhalter), **nicht eingespielt** (`docs/jarvis/PORTAL.md`) |
