@@ -368,7 +368,7 @@ function claudeRender(toBottom) {
     if (m.r === 'u') return '<div class="cm u">' + esc(m.t) + '</div>' + (idle ? act(i, [['edit', 'Bearbeiten']]) : '');
     if (m.r === 't') return '<div class="ctool">' + esc(m.t) + '</div>';
     if (m.r === 'e') return '<div class="cerr">' + esc(m.t) + '</div>';
-    return '<div class="cm' + (m.live ? ' typing' : '') + '">' + mdLite(m.t || '…') + '</div>' + (m.u ? '<div class="cuse">' + esc(m.u.m) + ' · ' + fmtTok(m.u.i) + ' rein · ' + fmtTok(m.u.o) + ' raus' + (m.u.s ? ' · ' + m.u.s + ' s' : '') + (m.u.c ? ' · ca. $' + m.u.c.toFixed(3) : '') + '</div>' : '') + (idle && m.t ? act(i, [['copy', 'Kopieren']].concat('speechSynthesis' in window ? [['speak', 'Vorlesen']] : [], i === lastA ? [['regen', 'Neu erzeugen']] : [])) : '');
+    return '<div class="cm' + (m.live ? ' typing' : '') + '">' + mdLite(m.t || '…') + '</div>' + (m.u ? '<div class="cuse">' + esc(m.u.m) + ' · ' + fmtTok(m.u.i) + ' rein · ' + fmtTok(m.u.o) + ' raus' + (m.u.s ? ' · ' + m.u.s + ' s' : '') + (m.u.c ? ' · ca. $' + m.u.c.toFixed(3) : '') + '</div>' : '') + (m.attr ? '<div class="cuse" title="Herkunft laut Nachweis im Datenstrom">' + esc(m.attr) + '</div>' : '') + (idle && m.t ? act(i, [['copy', 'Kopieren']].concat('speechSynthesis' in window ? [['speak', 'Vorlesen']] : [], i === lastA ? [['regen', 'Neu erzeugen']] : [])) : '');
   }).join('') + (S.busy ? '<div class="cact">⏳ ' + esc(S.act || 'Claude arbeitet …') + (S.reconn ? ' · Verbindung wird wiederhergestellt …' : '') + '</div>' : '') : '<div class="empty">Frag Claude auf deinem Server.<br>Zum Beispiel: „Wie voll ist die Backup-Platte?“ oder „Was ist neu in meinen Notizen?“<br>Mit „Nur lesen“ kann nichts verändert werden. „/hilfe“ zeigt alle Befehle.</div>';
   box.scrollTop = stick ? box.scrollHeight : prev;
   const jb = $('#cjump'); if (jb) jb.hidden = stick;
@@ -509,6 +509,8 @@ async function claudePump(body) {
           if (d.is_error) {
             S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Das geht nur einmal und nur mit deinem Konto. Auf deinem PC in PowerShell eingeben: ssh -t ma-server "~/.local/bin/claude". Danach funktioniert dieser Chat dauerhaft.' : String(d.result) });
           } else if (a && !a.t && d.result) a.t = d.result;
+        } else if (d.type === 'ma_attribution' && d.attribution && d.attribution.line) {
+          const a = asst(); if (a) a.attr = d.attribution.line;      // Herkunft laut Bridge-Nachweis (Modell + Verbrauch)
         } else if (d.type === 'bridge_model') {
           S.model = d.model;
           if (!opts.model || opts.model === 'auto') S.msgs.splice(Math.max(0, S.msgs.findIndex(m => m.live)), 0, { r: 't', t: 'Modell automatisch gewählt: ' + d.model });

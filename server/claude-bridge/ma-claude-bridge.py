@@ -343,6 +343,34 @@ def tokens_of(job):
     return t_in, t_out
 
 
+def attribution_event(job, jid):
+    """Herkunft einer direkten Claude-Antwort (ohne JARVIS-Auftrag) aus dem Nachweis im Datenstrom: Modell + Verbrauch des result-Ereignisses.
+    Fehlt der Nachweis, wird nichts gemeldet (kein geratenes Label). Die Funktion kommt aus JARVIS (attribution.py), eine Quelle."""
+    try:
+        sys.path.insert(0, os.environ.get('MA_JARVIS_RT', '/home/andrew/.local/share/ma-jarvis/current/brain-runtime'))
+        from attribution import attribute_direct_claude
+    except Exception:
+        return None
+    model, res = None, None
+    for ln in job['events']:
+        try:
+            d = json.loads(ln)
+        except ValueError:
+            continue
+        if d.get('type') == 'bridge_model':
+            model = d.get('model') or model
+        elif d.get('type') == 'system' and d.get('subtype') == 'init':
+            model = model or d.get('model')
+        elif d.get('type') == 'result':
+            res = d
+    if not res or not isinstance(res.get('usage'), dict):
+        return None
+    u = res['usage']
+    new = (u.get('input_tokens') or 0) + (u.get('cache_creation_input_tokens') or 0) + (u.get('output_tokens') or 0)
+    a = attribute_direct_claude({'id': jid, 'model': model, 'ok': not res.get('is_error'), 'tokens_new': new, 'jarvis_job': None})
+    return {'type': 'ma_attribution', 'attribution': a} if a.get('label') else None
+
+
 def lern_feedback(raw):
     """Rueckmeldung zum Lern-Impuls ('known' oder 'again' je Notiz); wird vom Skript lern-impuls.py bei der Auswahl beachtet."""
     try:
@@ -882,6 +910,12 @@ def pump_job(jid, job):
         timer.cancel()
         if proc.poll() is None:
             kill_group(proc)
+        try:
+            ev = attribution_event(job, jid)
+            if ev:
+                job_push(job, ev, force=True)
+        except Exception:
+            pass
         with job['cond']:
             job['done'] = True
             job['cond'].notify_all()

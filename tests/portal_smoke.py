@@ -19,6 +19,7 @@ NDJSON = '\n'.join(json.dumps(x) for x in [
     {'type': 'assistant', 'message': {'usage': {'input_tokens': 1200, 'cache_read_input_tokens': 3000}, 'content': [{'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'df -h'}}]}},
     {'type': 'stream_event', 'event': {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'Welt\n\n```\ndf -h\n```\n\n```html\n<b>Vorschau-Test</b>\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |'}}},
     {'type': 'result', 'result': 'Hallo Welt', 'usage': {'input_tokens': 1200, 'cache_read_input_tokens': 3000, 'output_tokens': 40}, 'total_cost_usd': 0.01, 'duration_ms': 8200},
+    {'type': 'ma_attribution', 'attribution': {'label': 'Claude', 'line': 'Claude: Antwort erzeugt (haiku, 1240 neue Token) · Status: abgeschlossen · Nachweis: job123'}},
     {'type': 'bridge_end', 'code': 0}]) + '\n'
 DENY = '\n'.join(json.dumps(x) for x in [
     {'type': 'bridge_model', 'model': 'haiku'}, {'type': 'bridge_job', 'id': 'job123'},
@@ -237,6 +238,8 @@ def main():
         check('Tabelle gerendert', page.locator('.tblwrap table').count() == 1)
         cu = page.inner_text('#cmsgs .cuse')
         check('Verbrauch pro Nachricht (Modell, Tokens, Dauer)', 'haiku' in cu.lower() and 'rein' in cu and '40 raus' in cu and '8 s' in cu, cu)
+        at = page.inner_text('#cmsgs .cuse >> nth=1')
+        check('Herkunft Claude unter der Antwort', at.startswith('Claude: Antwort erzeugt') and 'job123' in at, at)
         check('Token-Anzeige', 'Kontext' in page.inner_text('#ctok'), page.inner_text('#ctok'))
         check('Senden-Knopf nach Ende wieder „Senden“', 'senden' in page.inner_text('#csend').lower(), page.inner_text('#csend'))
         check('Vorlesen-Knopf vorhanden', page.locator('.cacts button[data-a=speak]').count() >= 1)
