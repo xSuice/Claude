@@ -163,6 +163,21 @@ def cmd_doctor(app, cfg, a):
     return out({'ok': bool(ok), **checks})
 
 
+
+def approver(claimed: str | None) -> str:
+    """Origin of an approval, from process metadata only. Claude workers (JARVIS_WORKER=1) can never approve. `--by portal:<user>`
+    is honoured only when the portal bridge started this process (MA_JARVIS_VIA=bridge); otherwise the origin is the unix user.
+    Same-uid processes can fake the environment: a separate OS account (needs sudo) is the real boundary, see the audit."""
+    import getpass
+    import os
+    import re as _re
+    if os.environ.get('JARVIS_WORKER') == '1':
+        raise PermissionError('Claude-Worker dürfen nichts freigeben')
+    if claimed and claimed.startswith('portal:') and os.environ.get('MA_JARVIS_VIA') == 'bridge':
+        return claimed
+    return 'cli:' + (_re.sub(r'[^A-Za-z0-9._-]', '', getpass.getuser())[:40] or 'unknown')
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='jarvis_cli.py')
     ap.add_argument('--config', required=True)
@@ -172,7 +187,7 @@ def main(argv=None):
         sp.add_parser(name).add_argument('job')
     s = sp.add_parser('events'); s.add_argument('job'); s.add_argument('--since', type=int, default=0)
     s = sp.add_parser('list'); s.add_argument('--limit', type=int, default=20)
-    s = sp.add_parser('approve'); s.add_argument('job'); s.add_argument('--step'); s.add_argument('--answer', default='')
+    s = sp.add_parser('approve'); s.add_argument('job'); s.add_argument('--step'); s.add_argument('--answer', default=''); s.add_argument('--by')
     s = sp.add_parser('tick'); s.add_argument('--max-seconds', type=int, default=50); s.add_argument('--log')
     sp.add_parser('usage'); sp.add_parser('learned'); sp.add_parser('meta'); sp.add_parser('doctor')
     s = sp.add_parser('caps'); s.add_argument('--discover', action='store_true'); s.add_argument('--no-selftest', action='store_true')
@@ -224,7 +239,7 @@ def main(argv=None):
         if a.cmd == 'cancel':
             return out(eng.cancel(a.job))
         if a.cmd == 'approve':
-            return out(eng.approve(a.job, a.step, a.answer))
+            return out(eng.approve(a.job, a.step, a.answer, by=approver(a.by)))
         if a.cmd == 'tick':
             return cmd_tick(app, cfg, a)
         if a.cmd == 'usage':

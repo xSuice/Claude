@@ -46,8 +46,41 @@ def norm_request(text: str) -> str:
     return re.sub(r'\s+', ' ', text.casefold()).strip()
 
 
+_FOLD = str.maketrans({'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss'})
+FILLER = {'bau', 'baue', 'schreib', 'schreibe', 'dazu', 'kurz', 'kurze', 'ganze', 'fuer', 'gib', 'mach', 'machen', 'brauche', 'moechte'}
+_SUFFIX = ('en', 'er', 'es', 'e', 'n', 's')
+
+
+def _stem(w: str) -> str:
+    """Symmetric light stemmer (umlauts folded, one inflection suffix cut) so that 'römische'/'roemisch', 'Zahlen'/'Zahl',
+    'Tests'/'Test' meet. It is applied to both sides at match time; stored templates stay untouched."""
+    w = w.casefold().translate(_FOLD)
+    for suf in _SUFFIX:
+        if w.endswith(suf) and len(w) - len(suf) >= 4:
+            return w[: -len(suf)]
+    return w
+
+
 def kw(text: str) -> set[str]:
+    """Raw keywords as stored in templates (unchanged format)."""
     return {w for w in keywords(text) if w not in STOP and len(w) > 2}
+
+
+def norm_kw(words) -> set[str]:
+    """Normalised comparison set from raw keywords/phrases."""
+    out = set()
+    for phrase in words:
+        for w in keywords(phrase):
+            w = w.casefold().translate(_FOLD)
+            if len(w) > 2 and w not in STOP and w not in FILLER:
+                st = _stem(w)
+                if st not in FILLER:
+                    out.add(st)
+    return out
+
+
+def numbers(text: str) -> set[str]:
+    return set(re.findall(r'\d+', text))
 
 
 class Learning:
@@ -64,7 +97,7 @@ class Learning:
         """Best active template usable for this job, or None. Data-class rule: a template learned from
         more sensitive data is never reused for a less sensitive job."""
         h = hashlib.sha256(norm_request(request).encode()).hexdigest()
-        words = kw(request)
+        words = norm_kw(kw(request))
         rank = RANK.get(spec.get('data_class'), 1)
         with self._c() as c:
             rows = [dict(r) for r in c.execute("SELECT * FROM plan_templates WHERE owner=? AND project=? AND status='active'",
@@ -76,7 +109,7 @@ class Learning:
             if r['request_hash'] == h:
                 best = {**r, 'match': 'exact', 'score': 1.0}
                 break
-            tk = set(json.loads(r['keywords']))
+            tk = norm_kw(json.loads(r['keywords']))
             if not words or not tk:
                 continue
             score = len(words & tk) / len(words | tk)
@@ -104,6 +137,12 @@ class Learning:
     def record(self, job: dict, plan: dict, verdict: str, acceptance: dict) -> dict:
         now = int(self.clock())
         src = job.get('plan_source') or ''
+        if src.startswith('local:'):
+            return {}  # a locally computed answer (e.g. costs) goes stale; it is never a reusable template
+        with self._c() as c:  # an unanswered question is no confirmed success (A14): never learn from it
+            if any(not ((json.loads(r[0] or '{}')).get('answer') or '').strip() for r in c.execute(
+                    "SELECT result FROM job_steps WHERE job_id=? AND kind='human' AND state='done'", (job.get('id'),))):
+                return {}
         tid = int(src.split(':')[1]) if src.startswith('template:') else None
         ex = int(src.split(':')[2]) if src.startswith('claude:adapted:') else None
         out = {}

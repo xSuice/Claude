@@ -38,6 +38,7 @@ def attribute_job(st: dict, events: list[dict] | None = None) -> dict:
     claude_steps = [c for c in ok_calls if c.get('sid') in done]
     local = [s for s in steps if s.get('kind') in ('local', 'pc') and s.get('state') == 'done']
     template = str(st.get('plan_source') or '').startswith('template:')
+    local_answer = str(st.get('plan_source') or '').startswith('local:')
     helper = int(st.get('helper_calls') or 0)
     accepted = 'Ergebnisdateien bestanden die unabhängige Abnahme' in str(st.get('summary') or '') and verdict in ('done', 'partial', 'failed')
 
@@ -48,7 +49,7 @@ def attribute_job(st: dict, events: list[dict] | None = None) -> dict:
             return _out(None, 'nicht verifiziert', '', '', ref, f'{len(calls)} Modellaufrufe, aber {n_ev} Ereignisse')
     if int(st.get('claude_calls') or 0) != len(calls):
         return _out(None, 'nicht verifiziert', '', '', ref, f'Zähler claude_calls={st.get("claude_calls")} ≠ {len(calls)} Aufrufe')
-    if verdict == 'done' and not (claude_steps or local or template):
+    if verdict == 'done' and not (claude_steps or local or template or local_answer):
         return _out(None, 'nicht verifiziert', '', '', ref, 'abgeschlossen ohne belegten ausgeführten Schritt')
 
     claude_bits = []
@@ -62,11 +63,13 @@ def attribute_job(st: dict, events: list[dict] | None = None) -> dict:
         jarvis_bits.append(f'{len(local)} lokale(r) Werkzeugschritt(e) ausgeführt')
     if template:
         jarvis_bits.append('Plan aus bewährter Vorlage')
+    if local_answer:
+        jarvis_bits.append('Antwort lokal aus den Nutzungsdaten erzeugt (0 Claude-Aufrufe)')
     if helper:
         jarvis_bits.append(f'{helper} Helferaufruf(e)')
     if accepted:
         jarvis_bits.append('unabhängige Abnahme der Ergebnisdateien')
-    jarvis_content = bool(local or template or helper)
+    jarvis_content = bool(local or template or helper or local_answer)
     claude_contrib = bool(claude_steps or plan_ok)
     unproven = status if verdict != 'done' else 'nicht verifiziert'   # ein Misserfolg bleibt als solcher sichtbar, "abgeschlossen" nur mit Beleg
     if not claude_contrib and not jarvis_content:

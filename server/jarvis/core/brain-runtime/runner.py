@@ -21,19 +21,19 @@ import subprocess
 import time
 from pathlib import Path
 
+import secretscan
+
 NAME = re.compile(r'^[a-z][a-z0-9_-]{0,39}$')
 ACTION_KEYS = {'argv', 'cwd', 'timeout', 'mem_mb', 'idempotent', 'claude_template', 'env', 'auto', 'sandbox', 'risk',
                'helper_task', 'fallback_template', 'verify'}
 LIMIT_KEYS = {'max_steps_per_run': (1, 20, 3), 'max_local_runs_per_day': (1, 1000, 60),
               'max_attempts': (1, 5, 2)}
-SECRET = re.compile(r'(?i)((?:api[_-]?key|token|secret|passw(?:or)?d|authorization)\s*[:=]\s*)\S+'
-                    r'|sk-ant-[A-Za-z0-9_-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}'
-                    r'|-----BEGIN [A-Z ]*PRIVATE KEY-----')
 TAIL = 800
 
 
 def redact(text: str) -> str:
-    return SECRET.sub(lambda m: (m.group(1) or '') + '[REDACTED]', text)
+    """One rule set for input gate, logs, events and prompts: see secretscan.py."""
+    return secretscan.redact(text)
 
 
 def load_actions(path: Path) -> dict:

@@ -1189,6 +1189,10 @@ def jarvis_api(req):
                     return {'ok': False, 'error': 'Ungueltiger Schritt'}
                 args += ['--step', str(req['step'])]
             args += ['--answer', str(req.get('answer') or '')[:2000]]
+            who = re.sub(r'[^A-Za-z0-9._-]', '', user)[:40]
+            if not who:
+                return {'ok': False, 'error': 'Freigabe ohne bekannten Portal-Benutzer'}
+            args += ['--by', 'portal:' + who]
     elif cmd == 'list':
         args = ['list', '--limit', str(min(50, max(1, int(req.get('limit') or 20))))]
     elif cmd == 'submit':
@@ -1211,7 +1215,8 @@ def jarvis_api(req):
     else:
         return {'ok': False, 'error': 'Unbekannter JARVIS-Befehl'}
     try:
-        p = subprocess.run(['/usr/bin/python3', JARVIS_PY, '--config', cfg] + args, input=stdin, capture_output=True, timeout=40, cwd='/')
+        p = subprocess.run(['/usr/bin/python3', JARVIS_PY, '--config', cfg] + args, input=stdin, capture_output=True, timeout=40, cwd='/',
+                           env={**os.environ, 'MA_JARVIS_VIA': 'bridge'})
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {'ok': False, 'error': 'JARVIS nicht erreichbar (%s)' % type(exc).__name__}
     try:

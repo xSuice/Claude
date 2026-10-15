@@ -116,7 +116,7 @@ class ImproveJobs(Base):
         self.assertIn('improved', q)
         self.assertIn('calc.py', q)
         self.assertIn('+1/-1', q)
-        eng.approve(j['job_id'], 's3', 'ja')
+        eng.approve(j['job_id'], 's3', 'ja', by='cli:test')
         self.assertEqual(run_until(eng, job=j['job_id'])['state'], 'done')
         self.assertIn('a - b', (self.repo / 'calc.py').read_text())  # approval alone never promotes
 

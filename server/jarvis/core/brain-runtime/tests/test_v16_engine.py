@@ -318,7 +318,7 @@ class HumanAndPc(unittest.TestCase):
         j = eng.submit('Frag mich nach der Farbe')
         st = run_until(eng, job=j['job_id'])
         self.assertEqual(st['state'], 'waiting_approval')
-        eng.approve(j['job_id'], 's1', 'blau')
+        eng.approve(j['job_id'], 's1', 'blau', by='cli:test')
         st = run_until(eng, job=j['job_id'], states=('done', 'failed', 'partial'))
         self.assertEqual(st['state'], 'done', st)
 

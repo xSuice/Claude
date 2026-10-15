@@ -37,6 +37,7 @@ from attribution import attribute_job
 from capabilities import BUILTIN, CapError, check_rel
 from orders import Orders, killed
 import runner
+from secretscan import has_secret
 
 IMPROVE_RESULT = 'improve-trial.json'
 IMPROVE_CAP = 'improve.trial'  # stored as a 'local' step (the job_steps CHECK on kind cannot be altered in place)
@@ -74,9 +75,6 @@ ACTIVE = ('queued', 'planning', 'running')
 FINAL = ('done', 'partial', 'failed', 'cancelled')
 WORKER_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep']
 WEB_TOOLS = ['WebSearch', 'WebFetch']
-SECRET_PAT = re.compile(r'(?i)(?:passw(?:or)?t|password|api[_ -]?key|token|secret|private key)\s*[:=]\s*\S{6,}'
-                        r'|sk-ant-[A-Za-z0-9_-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
-                        r'|\b(?=[A-Za-z0-9_\-+/]*\d)(?=[A-Za-z0-9_\-+/]*[A-Za-z])[A-Za-z0-9_\-+/]{40,}\b')
 PRIVATE_PAT = re.compile(r'(?i)[\w.+-]+@[\w-]+\.[\w.]+|\b[A-Z]{2}\d{2}(?:\s?[0-9A-Z]{4}){3,7}\b'
                          r'|(?<!\d)(?:\+49|0049|0)\s?\d{2,5}[\s/-]?\d{5,10}(?!\d)'
                          r'|\b(privat|persönlich|meine?n? (?:notizen|mails?|e-mails?|termine|kalender|daten|tagebuch|vault)|gesundheit|diagnose meiner)\b')
@@ -93,6 +91,7 @@ EFFECTS = {  # conservative on purpose: a false hit only adds a note (or a plan 
 }
 EFFECT_TEXT = {'send': 'Senden', 'publish': 'Veröffentlichen', 'money': 'Geld/Handel', 'calendar': 'Kalender ändern',
                'delete': 'Löschen', 'privileged': 'privilegierte Serveränderung'}
+APPROVER = re.compile(r'^(?:cli|portal):[A-Za-z0-9._-]{1,40}$')
 REL = re.compile(r'^(?!/)(?!.*\.\.)(?!\.jarvis-tools)[A-Za-z0-9_./ -]{1,160}$')
 
 
@@ -102,7 +101,7 @@ def now_s(clock=time.time) -> int:
 
 def classify_request(text: str, declared: str | None = None) -> dict:
     """Deterministic, before any model sees the text: secrets -> refuse; personal data -> private."""
-    if SECRET_PAT.search(text):
+    if has_secret(text):
         return {'data_class': 'secret'}
     dc = 'private' if PRIVATE_PAT.search(text) else 'internal'
     order = ['public', 'internal', 'private']
@@ -111,6 +110,48 @@ def classify_request(text: str, declared: str | None = None) -> dict:
     effects = sorted(k for k, pat in EFFECTS.items() if re.search(pat, text, re.I))
     risk = 'privileged' if 'privileged' in effects else ('reversible' if effects else 'read')
     return {'data_class': dc, 'effects': effects, 'risk': risk}
+
+
+USAGE_COST = re.compile(r'(?i)\b(kost\w*|verbrauch\w*|ausgegeben|ausgaben|aufwand|abgerechnet)\b')
+USAGE_SCOPE = re.compile(r'(?i)\b(alles|bisher|bis jetzt|bis heute|insgesamt|gesamt\w*|jarvis|claude|token\w*|aufträge|auftraege|heute|gestern'
+                         r'|(?:diese|letzte|vergangene) woche|(?:diesen|letzten) monat|24 ?h|24 stunden)\b')
+USAGE_NOT = re.compile(r'(?i)\b(abo|abonnement|preis|preise|pro monat|im monat|pro 1000|gpu|hardware|kaufen|kostenlos|kostenfrei)\b')
+
+
+def is_usage_question(text: str) -> bool:
+    """A question about JARVIS' own consumption that the local job data can answer (no model call needed).
+    Conservative: needs a cost word AND a JARVIS/period scope word, and no price-shopping word."""
+    t = text.strip()
+    return (len(t) <= 300 and '\n' not in t and bool(USAGE_COST.search(t)) and bool(USAGE_SCOPE.search(t))
+            and not USAGE_NOT.search(t))
+
+
+def usage_period(text: str, now: int) -> tuple[int | None, str]:
+    """(since-timestamp or None for all recorded time, human label). The assumption is always stated in the answer."""
+    t = text.casefold()
+    lt = time.localtime(now)
+    midnight = int(time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)))
+    if 'gestern' in t:
+        return midnight - 86400, 'gestern und heute (seit gestern 00:00)'
+    if 'heute' in t:
+        return midnight, 'heute (seit 00:00)'
+    if re.search(r'woche', t):
+        return now - 7 * 86400, 'letzte 7 Tage'
+    if 'monat' in t:
+        return now - 30 * 86400, 'letzte 30 Tage'
+    if re.search(r'24 ?h|24 stunden', t):
+        return now - 86400, 'letzte 24 Stunden'
+    if re.search(r'bis jetzt|bis heute|bisher|insgesamt|gesamt|alles', t):
+        return None, 'gesamte erfasste Zeit (bis jetzt)'
+    return None, 'gesamte erfasste Zeit (kein Zeitraum genannt, so angenommen)'
+
+
+def _eur(v: float) -> str:
+    return f'{v:.2f}'.replace('.', ',')
+
+
+def _n(v: int) -> str:
+    return f'{int(v):,}'.replace(',', '.')
 
 
 def _rel_ok(p) -> bool:
@@ -363,8 +404,10 @@ class Engine:
                 'deadline': deadline, 'model': manual, 'no_web': bool(opts.get('no_web')), 'origin': str(opts.get('origin') or 'cli')[:20],
                 'quality': str(opts.get('quality') or '')[:600], 'client_id': idem,
                 'improve': bool(opts.get('improve')) and bool((self.cfg.get('improve') or {}).get('enabled')),
-                'plan_approval': bool(opts.get('plan_approval')) or cls['risk'] == 'privileged' or 'money' in cls['effects']}
-        goal = self.orders.open(self.project, ('JARVIS: ' + request.splitlines()[0])[:160], request[:800],
+                'plan_approval': bool(opts.get('plan_approval')) or cls['risk'] == 'privileged' or 'money' in cls['effects'],
+                'local_answer': 'usage' if (not cls['effects'] and not opts.get('improve') and is_usage_question(request)) else None}
+        safe = runner.redact(request)
+        goal = self.orders.open(self.project, ('JARVIS: ' + safe.splitlines()[0])[:160], safe[:800],
                                 ['Auftrag planen, ausführen, unabhängig abnehmen und Ergebnis übergeben'],
                                 idem_key=idem[:200], risk=cls['risk'], deadline=deadline, quality=spec['quality'] or None,
                                 topic='jarvis-v16', data_class=cls['data_class'])
@@ -387,7 +430,7 @@ class Engine:
             with self._conn(True) as c:
                 c.execute('INSERT INTO jobs(id,goal_id,owner,project,request,spec,state,workspace,results,created,updated) '
                           "VALUES(?,?,?,?,?,?,'queued',?,?,?,?)",
-                          (job_id, goal['goal_id'], self.brain.identity, self.project, runner.redact(request),
+                          (job_id, goal['goal_id'], self.brain.identity, self.project, safe,
                            json.dumps(spec, ensure_ascii=False), str(work), str(res), ts, ts))
         except Exception:
             shutil.rmtree(work, ignore_errors=True)
@@ -456,19 +499,31 @@ class Engine:
         self.event(job_id, 'cancelled', reason)
         return {'job_id': job_id, 'state': 'cancelled', 'changed': True}
 
-    def approve(self, job_id: str, sid: str | None = None, answer: str = '') -> dict:
+    def approve(self, job_id: str, sid: str | None = None, answer: str = '', by: str | None = None) -> dict:
+        """Approve a plan or answer a question. A question is NOT an approval: a human step needs a non-empty answer.
+        The origin (`cli:<unix user>` or `portal:<portal user>`) is mandatory and written into the event; an approval
+        without a known origin is refused, never guessed."""
+        if not isinstance(by, str) or not APPROVER.match(by):
+            raise PermissionError('Freigabe ohne bekannten Urheber (cli:<name> oder portal:<name>) wird nicht angenommen')
         j = self._job(job_id)
         if not j or j['state'] != 'waiting_approval':
             raise ValueError('job is not waiting for an approval')
+        answer = runner.redact((answer or '').strip())
+        waiting_human = [s for s in self._steps(job_id) if s['kind'] == 'human' and s['state'] == 'waiting']
+        if waiting_human and not sid:
+            raise ValueError('Rückfrage offen: Schritt ' + ', '.join(s['sid'] for s in waiting_human) + ' braucht eine Antwort')
         if sid:
+            if not answer:
+                raise ValueError('Eine Rückfrage ist keine Freigabe: bitte antworten (Antwort darf nicht leer sein)')
             with self._conn(True) as c:
                 cur = c.execute("UPDATE job_steps SET state='done',result=?,updated=? WHERE job_id=? AND sid=? AND state='waiting' "
-                                "AND kind='human'", (json.dumps({'detail': 'freigegeben', 'answer': answer[:2000]}), now_s(self.clock), job_id, sid))
+                                "AND kind='human'", (json.dumps({'detail': 'beantwortet', 'answer': answer[:2000], 'by': by}), now_s(self.clock), job_id, sid))
                 if cur.rowcount != 1:
                     raise ValueError('no waiting human step with this id')
         self._set(job_id, state='running')
-        self.event(job_id, 'approved', f'Freigabe {"für Schritt " + sid if sid else "des Plans"}' + (f': {answer[:200]}' if answer else ''))
-        return {'job_id': job_id, 'state': 'running'}
+        self.event(job_id, 'approved', f'{"Antwort auf Rückfrage " + sid if sid else "Freigabe des Plans"} durch {by}'
+                                       + (f': {answer[:200]}' if answer else ''))
+        return {'job_id': job_id, 'state': 'running', 'by': by}
 
     # ------------------------------------------------------------------ leases / recovery
     def _lease(self, job_id: str) -> bool:
@@ -664,6 +719,8 @@ class Engine:
     # ------------------------------------------------------------------ planning
     def _plan(self, j: dict) -> dict:
         self._set(j['id'], state='planning', started=j['started'] or now_s(self.clock))
+        if j['spec'].get('local_answer') == 'usage':
+            return self._answer_usage(j)
         plan, source, example = None, None, None
         tpl = self.learning.match(j['request'], j['spec']) if self.learning else None
         if tpl and tpl['match'] == 'exact':
@@ -708,6 +765,59 @@ class Engine:
         self.event(j['id'], 'planned', f'{len(plan["steps"])} Schritte, {len(plan["deliverables"])} Ergebnisdateien, Typ {plan["task_type"]}'
                                        + ('; wartet auf Freigabe des Plans' if state == 'waiting_approval' else ''))
         return {'progress': True, 'state': state}
+
+    def _answer_usage(self, j: dict) -> dict:
+        """Usage/cost question answered from the local job data: no model call. Per-call rows are the primary source and
+        are cross-checked against the job totals; missing data stays 'unbekannt'/'keine', never 0,00."""
+        now = now_s(self.clock)
+        since, label = usage_period(j['request'], now)
+        lo = since or 0
+        me = self.brain.identity
+        with self._conn() as c:
+            agg = dict(c.execute("SELECT COUNT(*) n, SUM(verdict='done') done, SUM(claude_calls) calls, SUM(tokens_new) tok, "
+                                 'SUM(tokens_cache) cache, SUM(list_usd) usd, MIN(created) first FROM jobs WHERE owner=? AND created>=? AND id<>?',
+                                 (me, lo, j['id'])).fetchone())
+            cr = dict(c.execute('SELECT COUNT(*) n, SUM(known=0) unknown, SUM(tokens_in+cache_write+tokens_out) new, SUM(cache_read) cache, '
+                                'SUM(list_usd) usd FROM job_calls WHERE job_id IN (SELECT id FROM jobs WHERE owner=? AND created>=? AND id<>?)',
+                                (me, lo, j['id'])).fetchone())
+            by_model = c.execute('SELECT model, COUNT(*) n, SUM(list_usd) usd FROM job_calls WHERE job_id IN '
+                                 '(SELECT id FROM jobs WHERE owner=? AND created>=? AND id<>?) GROUP BY model ORDER BY n DESC',
+                                 (me, lo, j['id'])).fetchall()
+        calls = int(cr['n'] or 0)
+        lines = ['# Kostenübersicht (lokal aus den JARVIS-Nutzungsdaten)', '',
+                 f'**Zeitraum:** {label}' + (f', erster erfasster Auftrag {time.strftime("%Y-%m-%d %H:%M", time.localtime(agg["first"]))}' if agg['first'] else ''),
+                 f'**Stand:** {time.strftime("%Y-%m-%d %H:%M", time.localtime(now))}', '', '## Ergebnis', '']
+        if not calls:
+            lines += [f'Im Zeitraum sind keine Claude-Aufrufe erfasst (Aufträge insgesamt: {int(agg["n"] or 0)}). Es liegen keine Kostendaten vor; '
+                      'das ist "keine Daten", nicht "0 Kosten".']
+        else:
+            lines += [f'- Aufträge: {int(agg["n"])} (davon abgeschlossen: {int(agg["done"] or 0)})',
+                      f'- Claude-Aufrufe: {calls}',
+                      f'- Neue Token (Eingabe + Cache-Aufbau + Ausgabe): {_n(cr["new"] or 0)}; Cache-Lesetoken: {_n(cr["cache"] or 0)}',
+                      f'- Listenpreis-Äquivalent: {_eur(float(cr["usd"] or 0))} USD (keine Rechnung)']
+            for r in by_model:
+                lines.append(f'  - {r["model"]}: {r["n"]} Aufrufe, {_eur(float(r["usd"] or 0))} USD')
+            if cr['unknown']:
+                lines.append(f'- Achtung: {int(cr["unknown"])} Aufruf(e) ohne gemessenen Verbrauch; die Token-Summe der Aufträge enthält dafür Schätzwerte.')
+            same = abs(float(cr['usd'] or 0) - float(agg['usd'] or 0)) < 0.005 and int(cr['n'] or 0) == int(agg['calls'] or 0)
+            lines += ['', 'Abgleich Aufrufe gegen Auftragssummen: ' + ('übereinstimmend.' if same else
+                      f'ABWEICHUNG (Aufrufe {calls} vs. {int(agg["calls"] or 0)}, USD {_eur(float(cr["usd"] or 0))} vs. {_eur(float(agg["usd"] or 0))}).')]
+        lines += ['', '## Grenzen', '',
+                  '- Gezählt sind nur JARVIS-Aufträge dieser Identität. Claude-Chat im Portal und Aufrufe anderer Benutzer sind nicht enthalten.',
+                  '- Der Betrag ist das API-Listenpreis-Äquivalent laut Claude CLI, keine Rechnung. Das Plan-Kontingent (Pro/Abo) ist etwas anderes als API-Kosten.',
+                  '- Zeitraum nicht passend? Frage z. B. "was kostet das heute / diese Woche / letzten Monat".', '']
+        w = Path(j['workspace'])
+        (w / 'ergebnis').mkdir(parents=True, exist_ok=True)
+        (w / 'ergebnis' / 'kostenuebersicht.md').write_text('\n'.join(lines), encoding='utf-8')
+        plan = {'goal': 'Kostenauskunft aus lokalen Nutzungsdaten', 'task_type': 'jarvis.usage_local', 'match_keywords': [],
+                'deliverables': [{'path': 'ergebnis/kostenuebersicht.md', 'description': 'lokale Kostenauskunft',
+                                  'checks': [{'type': 'min_bytes', 'value': 200}, {'type': 'contains', 'value': 'Zeitraum'},
+                                             {'type': 'regex', 'value': 'Listenpreis|keine Kostendaten|keine Daten'},
+                                             {'type': 'no_placeholders'}]}],
+                'steps': []}
+        self._set(j['id'], state='running', plan=plan, plan_source='local:usage', task_type=plan['task_type'])
+        self.event(j['id'], 'planned', 'Kostenfrage: lokal aus den Nutzungsdaten beantwortet, kein Claude-Aufruf')
+        return self._finalize(self._job(j['id']))
 
     def _workspace_listing(self, j: dict, limit: int = 60) -> str:
         w = Path(j['workspace'])
@@ -1025,6 +1135,9 @@ class Engine:
         acc = self.accept.run(w, plan['deliverables']) if plan['deliverables'] else {'ok': False, 'deliverables': []}
         failing = [d for d in acc['deliverables'] if not d['ok']]
         steps = self._steps(j['id'])
+        unanswered = [x['sid'] for x in steps if x['kind'] == 'human' and x['state'] == 'done' and not ((x['result'] or {}).get('answer') or '').strip()]
+        if unanswered and not forced:
+            forced = f'Rückfrage ohne Antwort ({", ".join(unanswered)}): nicht als erledigt gewertet'
         if not forced and failing and j['fix_rounds'] < j['spec']['budget']['fix_rounds'] and j['state'] != 'cancelled':
             prods = [s for s in steps if s['kind'] == 'claude' and set(s['spec'].get('outputs', [])) & {d['path'] for d in failing}]
             cur = self._job(j['id'])
