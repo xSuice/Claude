@@ -11,6 +11,16 @@ Alle Zeiten: Europe/Berlin. Diese Historie beginnt am 2026-10-05. Sie ist keine 
 - Rückweg: `rollback-v16.sh`; die Funktion ist ohne `improve.enabled` wirkungslos.
 - Offen: Freigabe-Schritt für Philipp (`human`) als Planvorlage, Einspielen in den aktiven Release, echter Lauf mit kleiner Änderung, `Claude:`-Kennzeichnung im Claude-Chat.
 
+## 2026-10-15 – JARVIS Phase E: Nachtrag, echter Lauf und zwei Korrekturen (Server)
+
+- Eingespielt: Release `20261015-032153-25df9d6` (322 Tests grün, 4 übersprungen, `doctor` ok). Commits `a9407b2` (Planer-Hinweis für Verbesserungsaufträge) und `25df9d6` (Korrektur).
+- Fehler 1 (behoben): Ein abgelehnter Probelauf hinterließ `improve-trial.json`; die Abnahme (`contains verdict`) wertete den Auftrag als Erfolg. Auftrag `j20261015-075335` meldete deshalb fälschlich `done` (alle drei Probeläufe waren `rejected`). Jetzt: Datei nur bei `improved`/`neutral`, Abnahme per `regex` auf dieses Urteil, Regressionstest ergänzt. Der Ergebnisordner `/srv/ma-home/library/JARVIS/j20261015-075335` ist noch vorhanden und irreführend (Löschen wartet auf Freigabe).
+- Fehler 2 (behoben): Die Prüf-Aktion `unit-attribution` hatte ein falsches `cwd`; die Basis schlug schon vor dem Patch fehl. Neu: `cwd` = `server/jarvis/core/brain-runtime`. Beleg: derselbe Patch ergibt jetzt `neutral` mit bestandenen Prüfungen auf Basis und Kandidat.
+- Folgefehler (bereinigt): Aus dem fälschlichen `done` wurde die gelernte Vorlage #6; sie wurde mit `jarvis_cli forget template 6` zurückgenommen.
+- Echter Lauf: `j20261015-465d49` (Haiku, ein Claude-Schritt): Patch erzeugt, Probelauf #4 `neutral`, Repo unverändert, kein `promote`. Hinweis: Dieser Lauf nutzte noch die Vorlage #6 mit der schwachen Abnahme (`contains verdict`); das Urteil `neutral` stammt aus `improve-trial.json` selbst. Ein Lauf mit der neuen regex-Abnahme steht noch aus.
+- Konfiguration: `improve.enabled` ist AN (`max_trials_per_day` 3, `allow_neutral` aus). Prüfungen: `unit-attribution`, `compile` (`~/.config/ma-jarvis/improve-actions.json`). Sicherung der Konfiguration davor: `~/.local/share/ma-jarvis/backups/jarvis.json.vor-improve-20261015`.
+- Offen: Freigabe-Schritt (`human`) als Planvorlage, Brücke reicht `options` nicht durch (`improve` nur über die CLI), `Claude:`-Kennzeichnung im Claude-Chat, Rollback-Test mit aktiver Phase E, Phase F bis I.
+
 ## 2026-10-05 – Projektdokumentation eingerichtet
 
 - Auftrag: Änderungen und Erkenntnisse dauerhaft festhalten und bekannte Fehler künftig berücksichtigen.
