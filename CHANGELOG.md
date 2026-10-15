@@ -513,3 +513,19 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Prüfung: `jarvis_api` gegen den echten Kern am Server (list, status, usage, fremder Benutzer, ungültige ID, unbekannter Befehl); Portal-Patch an einer Kopie von `portal.py` (idempotent, kompiliert); Browser-Rauchtest 82/82 mit Platzhalter-Antworten. Nicht geprüft: echter Lauf durch Portal und Brücke, Freigabe eines echten Auftrags, Bridge-Sandbox gegen `submit`.
 - Ergebnis: Code fertig im Repo. Einspielen braucht sudo (Schritte in `docs/jarvis/PORTAL.md`).
 - Rückweg: `portal.py.bak-<Zeit>`, `web.bak-<Zeit>` und `/usr/local/lib/ma-claude-bridge.py.bak` zurückkopieren; `portal-users.json` löschen.
+
+## 2026-10-15 – JARVIS V16: eingespielt, Herkunftskennzeichnung (Nachtrag)
+
+- Auftrag: Gesamtauftrag `MA-Home-JARVIS-V16-Gesamtauftrag-2026-10-15.md` (Phasen A bis D umgesetzt, E bis I offen).
+- Eingespielt (belegt): Brücke mit Op `jarvis` und Portal-Oberfläche per Sudo-Freigabe (`/srv/ma-home/deploy-sudo/ergebnis.txt`: OK, Sicherungen `ma-claude-bridge.py.bak`, `/opt/ma-home/web.bak-20261015-020401` und `-024119`). Kern-Release `20261015-023846-c6e404c` über `install-v16.sh --no-cron` (Status `tests-ok`).
+- Neu: `server/jarvis/core/brain-runtime/attribution.py` (reine Funktion: `Jarvis:`, `Claude:`, `Jarvis + Claude:` nur aus Schritten, Modellaufrufen und Ereignissen; sonst `Ausführung nicht verifiziert`), Einbindung in `taskengine.py` (Statusfeld `attribution`, Ereignis `attribution`, Zeile am Ende von `BERICHT.md`), Anzeige in `portal-ui/web/app.js` (Version 2026-10-15-1, kein neuer Tab), `tests/test_v16_attribution.py` (14 Tests), `tests/portal_smoke.py` (1 Prüfung mehr).
+- Prüfung: 310 Tests am Server grün (4 übersprungen, brauchen root); Browser-Rauchtest 83/83; echter Auftrag `j20261015-864ffc` (Bridge-Sandbox `submit` ok) und `j20261015-25b832` (Kennzeichnung im Status, Ereignisprotokoll und Bericht).
+- Nicht geprüft: Kennzeichnung `Jarvis:` ohne Claude nur mit konstruierten Statusdaten, nicht mit der echten Engine; `Claude:` nur als Funktion, noch nicht im Claude-Chat; neuer Wortlaut und Anzeige im Reiter nicht an einem frischen echten Auftrag im Browser; `approve` live; Cron-Zeile nicht lesbar (Auftrag lief trotzdem im Takt).
+- Falle: Staging für die Tests braucht das volle Release-Layout (`brain-runtime` neben `dropin-beispiele`), sonst 30 falsche Fehler. Hintergrundläufe abgekoppelt starten (`setsid nohup`), sonst stirbt der Lauf mit der Sitzung.
+- Rückweg: `bash server/jarvis/rollback-v16.sh --to <früherer Release>`; Oberfläche `web.bak-<Zeit>` zurückkopieren.
+
+## 2026-10-15 – JARVIS V16: Rollback auf früheren Release getestet (Nachtrag 2)
+
+- Test am echten Betrieb: `rollback-v16.sh --to 20261014-172944-local` (tests-ok) -> `doctor ok` -> Auftrag `j20261015-325110` auf dem alten Release bis `done`, Statusfeld `attribution` dort nicht vorhanden (belegt den alten Code) -> `--to 20261015-023846-c6e404c` -> `doctor ok`, alle 7 Aufträge erhalten. Protokoll: `~/tmp/rollback-test.log`.
+- Befund: Aufträge, die ein Release ohne `job_calls`-Protokoll ausgeführt hat, bekommen nach dem Wiederherstellen `Ausführung nicht verifiziert · Grund: 0 Modellaufrufe, aber 2 Ereignisse`. Das ist gewollt (keine Kennzeichnung ohne Nachweis), gilt aber auch für alle Aufträge vom 14.10. und früher.
+- Offen: Rollback bei laufendem Auftrag mitten im Schritt und Rückkehr bei defekter Datenbank nicht getestet.

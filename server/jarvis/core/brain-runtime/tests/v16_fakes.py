@@ -64,11 +64,11 @@ class FakeClaude:
 
 def make_app(tmp: Path, fake: FakeClaude, *, identity='person-a', system_db=None, limits=None, job_defaults=None,
              plan_probe=None, pressure=lambda: {}, caps=('python.run', 'python.unittest', 'python.compile'), registry=None,
-             tools_dir=None, clock=None):
+             tools_dir=None, clock=None, cfg_extra=None):
     state = tmp / f'state-{identity}'
     cfg = {'identity': identity, 'project': 'jarvis', 'state_dir': str(state), 'results_dir': str(tmp / f'results-{identity}'),
            'system_db': str(system_db or tmp / 'system.db'), 'job_defaults': job_defaults or {}, 'lease_s': 30,
-           'resources': {'max_bridge_jobs': 5}}
+           'resources': {'max_bridge_jobs': 5}, **(cfg_extra or {})}
     state.mkdir(parents=True, exist_ok=True)
     brain = Brain(state / 'brain.db', identity, {'jarvis'})
     ledger = Ledger(Path(cfg['system_db']), limits or {'plan_guard': {'five_hour_max_pct': 70, 'week_max_pct': 85}}, plan_probe=plan_probe)

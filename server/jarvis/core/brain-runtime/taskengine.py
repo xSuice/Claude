@@ -38,6 +38,8 @@ from capabilities import BUILTIN, CapError, check_rel
 from orders import Orders, killed
 import runner
 
+IMPROVE_RESULT = 'improve-trial.json'
+IMPROVE_CAP = 'improve.trial'  # stored as a 'local' step (the job_steps CHECK on kind cannot be altered in place)
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS jobs(
     id TEXT PRIMARY KEY, goal_id TEXT NOT NULL UNIQUE, owner TEXT NOT NULL, project TEXT NOT NULL,
@@ -212,8 +214,23 @@ def validate_plan(plan: dict, registry, spec: dict, max_steps: int = 12) -> dict
                 errs.append(f'{where}: unknown keys')
             if not isinstance(s.get('question'), str) or not 5 <= len(s['question']) <= 600:
                 errs.append(f'{where}: question 5..600 chars')
+        elif kind == 'improve':
+            # Phase E gate: only for jobs the operator opened with improve=true; the checks come from the
+            # operator config, never from the plan. The step reads a patch file and records a trial verdict.
+            if not spec.get('improve'):
+                errs.append(f'{where}: improve steps are only allowed in improvement jobs')
+            if set(s) - common - {'patch', 'description'}:
+                errs.append(f'{where}: unknown keys')
+            if not _rel_ok(s.get('patch')) or PurePosixPath(s['patch']).suffix.lower() not in ('.diff', '.patch'):
+                errs.append(f'{where}: patch must be a relative .diff/.patch path')
+            else:
+                if s['patch'] not in produced:
+                    errs.append(f'{where}: patch {s["patch"]} is not produced by an earlier step')
+                produced.add(IMPROVE_RESULT)
+            if not isinstance(s.get('description'), str) or not 3 <= len(s['description']) <= 300:
+                errs.append(f'{where}: description 3..300 chars')
         else:
-            errs.append(f'{where}: kind must be claude, local, pc or human')
+            errs.append(f'{where}: kind must be claude, local, pc, human or improve')
         seen.append(sid)
     for d in dels:
         if isinstance(d, dict) and _rel_ok(d.get('path')) and d['path'] not in produced and not d['path'].startswith('inputs/'):
@@ -345,6 +362,7 @@ class Engine:
         spec = {'data_class': cls['data_class'], 'effects': cls['effects'], 'risk': cls['risk'], 'budget': budget,
                 'deadline': deadline, 'model': manual, 'no_web': bool(opts.get('no_web')), 'origin': str(opts.get('origin') or 'cli')[:20],
                 'quality': str(opts.get('quality') or '')[:600], 'client_id': idem,
+                'improve': bool(opts.get('improve')) and bool((self.cfg.get('improve') or {}).get('enabled')),
                 'plan_approval': bool(opts.get('plan_approval')) or cls['risk'] == 'privileged' or 'money' in cls['effects']}
         goal = self.orders.open(self.project, ('JARVIS: ' + request.splitlines()[0])[:160], request[:800],
                                 ['Auftrag planen, ausführen, unabhängig abnehmen und Ergebnis übergeben'],
@@ -679,8 +697,11 @@ class Engine:
             c.execute('DELETE FROM job_steps WHERE job_id=?', (j['id'],))
             for i, s in enumerate(plan['steps']):
                 spec = {k: v for k, v in s.items() if k not in ('id', 'title', 'kind', 'deps')}
+                kind = s['kind']
+                if kind == 'improve':
+                    kind, spec = 'local', {**spec, 'capability': IMPROVE_CAP}
                 c.execute('INSERT INTO job_steps(id,job_id,idx,sid,title,kind,spec,deps,state,updated) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                          (uuid.uuid4().hex, j['id'], i, s['id'], s['title'], s['kind'], json.dumps(spec, ensure_ascii=False),
+                          (uuid.uuid4().hex, j['id'], i, s['id'], s['title'], kind, json.dumps(spec, ensure_ascii=False),
                            json.dumps(s.get('deps', [])), 'pending', now_s(self.clock)))
         state = 'waiting_approval' if j['spec'].get('plan_approval') else 'running'
         self._set(j['id'], state=state, plan=plan, plan_source=source, task_type=plan['task_type'])
@@ -771,7 +792,7 @@ class Engine:
                     self._step_set(s['id'], state='ready', attempts=s['attempts'])
                     return {'progress': False, 'why': 'deferred'}
             else:
-                r = self._run_local_step(j, s)
+                r = self._run_improve_step(j, s) if s['spec'].get('capability') == IMPROVE_CAP else self._run_local_step(j, s)
                 if r is None:
                     self._step_set(s['id'], state='ready', attempts=s['attempts'])
                     return {'progress': False, 'why': 'deferred'}
@@ -780,6 +801,10 @@ class Engine:
             return self._finalize(self._job(j['id']), forced=str(e))
         except CapError as e:
             r = {'ok': False, 'detail': f'Ungültiger Aufruf: {e}'}
+        if r.get('final'):  # no correction round can help (e.g. daily trial limit)
+            self._step_set(s['id'], state='failed', result=r)
+            self.event(j['id'], 'step_failed', f'Schritt {s["sid"]} ({s["title"]}) gescheitert: {r.get("detail", "")[:600]}')
+            return {'progress': True}
         if r['ok']:
             self._step_set(s['id'], state='done', result=r, feedback=None)
             self.event(j['id'], 'step_done', f'Schritt {s["sid"]} ({s["title"]}) erledigt')
@@ -831,6 +856,44 @@ class Engine:
         self._add_usage(j['id'], local_runs=1, cpu_ms=r.get('cpu_ms') or 0)
         return {'ok': r['ok'], 'detail': f'{cap} exit {r["exit"]} in {r["ms"]} ms: {r["tail"][-900:]}', 'exit': r['exit'],
                 'ms': r['ms'], 'cpu_ms': r.get('cpu_ms')}
+
+    def _improver(self):
+        """Phase E gate, built lazily from the operator config `improve` (never from a plan)."""
+        ic = self.cfg.get('improve') or {}
+        if not ic.get('enabled'):
+            return None, ic
+        if getattr(self, '_imp', None) is None:
+            import improve
+            self._imp = improve.Improver(self.brain, runner.load_actions(Path(ic['actions'])), Path(ic['repo']),
+                                         allow_promote=False, allow_neutral=bool(ic.get('allow_neutral')),
+                                         max_trials_per_day=int(ic.get('max_trials_per_day', 3)))
+        return self._imp, ic
+
+    def _run_improve_step(self, j: dict, s: dict) -> dict | None:
+        imp, ic = self._improver()
+        if imp is None or not ic.get('checks'):
+            return {'ok': False, 'final': True, 'detail': 'Selbstverbesserung ist nicht eingerichtet (Konfiguration improve.enabled/checks)'}
+        why = self._gate('local', heavy=True)
+        if why:
+            self._add_usage(j['id'], deferrals=1)
+            self.event(j['id'], 'deferred', f'Schritt {s["sid"]} (Probelauf) wartet: {why}')
+            return None
+        work = Path(j['workspace'])
+        try:
+            patch = Path(check_rel(work, s['spec']['patch'], ext=['.diff', '.patch'])).read_text(encoding='utf-8')
+            out = imp.trial(self.project, patch, list(ic['checks']), s['spec']['description'])
+        except (CapError, UnicodeDecodeError, ValueError) as e:
+            return {'ok': False, 'detail': f'Patch nicht verwendbar: {e}'}
+        except (PermissionError, RuntimeError, OSError) as e:
+            return {'ok': False, 'final': True, 'detail': f'Probelauf nicht möglich: {runner.redact(str(e))[:300]}'}
+        (work / IMPROVE_RESULT).write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding='utf-8')
+        self._add_usage(j['id'], local_runs=1)
+        v = out['verdict']
+        ok = v == 'improved' or (v == 'neutral' and bool(ic.get('allow_neutral')))
+        detail = f'Probelauf #{out["trial"]}: {v}; Dateien: {", ".join(out["files"][:10])}'
+        if not ok:
+            detail += f'; {json.dumps(out["results"], ensure_ascii=False)[:1500]}'
+        return {'ok': ok, 'detail': detail, 'trial': out['trial'], 'verdict': v}
 
     # ------------------------------------------------------------------ correction
     def _producer(self, steps: list[dict], start: dict) -> dict | None:
