@@ -2,6 +2,13 @@
 
 Alle Zeiten: Europe/Berlin. Diese Historie beginnt am 2026-10-05. Sie ist keine vollständige Rekonstruktion früherer Servereingriffe.
 
+## 2026-10-15 – JARVIS Integrationsprüfung vor dem Mobile-Test (Server)
+
+- Auftrag: Integrationsübersicht mit echten Abläufen, Teil des Prüfpakets.
+- Betroffene Dateien: `docs/jarvis/INTEGRATIONSPRUEFUNG-V16.md` (neu). Keine Änderung an Code oder Konfiguration.
+- Prüfung: Testauftrag `j20261015-6a27fc` über den Brücken-Socket, 3/3 abgenommen, eigener Testlauf 7/7 grün.
+- Offen: Brücken-Update, Browser-Durchlauf (Portal, Verlauf, Download), Router-Wirkung.
+
 ## 2026-10-15 – JARVIS Phase E: Verbesserungsauftrag mit Probelauf-Gate (Server)
 
 - Auftrag: B39 Phase E, Kette JARVIS -> Claude Code ohne Rechteausweitung.
