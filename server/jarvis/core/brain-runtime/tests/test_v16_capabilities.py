@@ -132,7 +132,8 @@ class Builtins(unittest.TestCase):
     def test_server_builtins_self_test(self):
         t = tmpdir(self)
         reg = Registry(t / 'system.db', 'server')
-        names = {'python.run', 'python.unittest', 'python.compile', 'doc.pandoc', 'image.convert', 'data.jq', 'archive.zip', 'media.ffmpeg'}
+        names = {'python.run', 'python.unittest', 'python.compile', 'doc.pandoc', 'image.convert', 'data.jq', 'archive.zip', 'media.ffmpeg',
+                 'pdf.to_png', 'doc.office_pdf'}  # office_pdf needs a private /tmp in the jail (soffice pipe path)
         found = reg.discover(only=names)['builtin']
         # the 3 GB server can be short of memory for a moment (pandoc: "Cannot allocate memory"): retry what failed once
         again = [n for n in names if found[n] == 'failed']
