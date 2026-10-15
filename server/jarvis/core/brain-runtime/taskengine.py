@@ -33,6 +33,7 @@ import uuid
 from pathlib import Path, PurePosixPath
 
 from acceptance import Acceptance, validate_checks
+from attribution import attribute_job
 from capabilities import BUILTIN, CapError, check_rel
 from orders import Orders, killed
 import runner
@@ -404,6 +405,7 @@ class Engine:
         out.update(request=j['request'][:500], data_class=j['spec']['data_class'], effects=j['spec']['effects'],
                    budget=j['spec']['budget'], steps=steps, goal=(j['plan'] or {}).get('goal'),
                    deliverables=[d['path'] for d in (j['plan'] or {}).get('deliverables', [])])
+        out['attribution'] = attribute_job(out, self.events(job_id, 0, 1000))  # Herkunft nur aus Schritten, Aufrufen, Ereignissen
         return out
 
     def events(self, job_id: str, since: int = 0, limit: int = 200) -> list[dict]:
@@ -986,6 +988,13 @@ class Engine:
         self._set(j['id'], state=verdict if verdict != 'cancelled' else 'cancelled', verdict=verdict, finished=now_s(self.clock),
                   summary=summary)
         self.event(j['id'], 'finished', f'{verdict}: {summary}. Ergebnis: {res}')
+        try:  # Kennzeichnung als Ereignis und im Bericht festhalten (nachprüfbar, aus denselben Daten wie status)
+            line = attribute_job(self.status(j['id']), self.events(j['id'], 0, 1000))['line']
+            self.event(j['id'], 'attribution', line)
+            with (res / 'BERICHT.md').open('a', encoding='utf-8') as f:
+                f.write('\n' + line + '\n')
+        except Exception as e:  # noqa: BLE001 - Kennzeichnung darf die Lieferung nie verhindern
+            self.event(j['id'], 'attribution_error', f'{type(e).__name__}: {e}')
         outcome = {'done': 'success', 'partial': 'uncertain'}.get(verdict, 'failure')
         self._close_goal(cur, outcome, summary, verified=verdict == 'done')
         if self.learning:
