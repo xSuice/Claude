@@ -37,7 +37,11 @@ def main() -> int:
             good = run_check(task_dir, ref)
             empty = tmp / 'leer'; empty.mkdir()
             nothing = run_check(task_dir, empty)
-            ok = good.get('complete') is True and nothing.get('complete') is False
+            allowed = set()
+            if (HERE / 'refs' / tid / '_erwartet_unvollstaendig').is_file():   # z. B. T12: Build-Nachweis kommt nur vom PC-Worker
+                allowed = set((HERE / 'refs' / tid / '_erwartet_unvollstaendig').read_text(encoding='utf-8').split())
+            failed = {c['id'] for c in good.get('criteria', []) if not c['ok']}
+            ok = (good.get('complete') is True or (bool(allowed) and failed == allowed)) and nothing.get('complete') is False
             bad += not ok
             fails = [c['id'] + ': ' + c['detail'][:120] for c in good.get('criteria', []) if not c['ok']]
             print(f'{tid}: Referenz {good.get("passed")}/{good.get("total")}, leer {nothing.get("passed")}/{nothing.get("total")} -> {"OK" if ok else "FEHLER"}', *fails, sep='\n  ' if fails else '')
