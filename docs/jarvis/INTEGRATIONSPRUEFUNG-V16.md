@@ -34,7 +34,7 @@ Abschnitt zum Einfügen vor den Mobile-Test. Alle Aussagen sind am laufenden Ser
 - Kein Integrationsfehler im getesteten Weg gefunden. Keine produktive Datei geändert.
 - Hilfsmittel nur unter `~/tmp/bench/`: `bridge_call.py` (Socket-Aufruf), `submit_task_rep.py` (Wiederholung mit neuer `client_id`), `submit_a2b.py` (A2 ohne Saison-Parameter, nötig bei T04, T06, T07, T09, T11).
 - Aufwand des Integrationstests: 2 Claude-Aufrufe, 21 048 neue Token. Getrennt von den Benchmarkläufen.
-- Beobachteter Mangel im Benchmark (kein Integrationsfehler): Bei T09 A übergab der Plan `text.txt` relativ an `tool.wortstatistik`; das Werkzeug meldete `file not found`.
+- **Korrektur (2026-10-15, später am Tag):** Frühere Aussage „T09 A: Plan übergab `text.txt` relativ, Werkzeug meldete `file not found`" war falsch. Ursache war mein Testaufbau: `submit_task.py` ruft `gen.py` als Skript auf, aber nur T01 und T02 haben dafür einen `__main__`-Block. Bei T04, T06, T07, T09 und T11 blieb der Eingabeordner leer, Claude erfand Beispieldaten. Die A-Läufe mit Standarddaten dieser fünf Aufgaben sind daher nicht verwertbar (ersetzt durch Wiederholung mit `gen.make(…, 1)`). A2-Läufe (`submit_a2b.py`) nutzen `gen.make` und sind gültig.
 
 ## Einschätzung
 
