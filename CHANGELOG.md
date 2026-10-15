@@ -2,6 +2,13 @@
 
 Alle Zeiten: Europe/Berlin. Diese Historie beginnt am 2026-10-05. Sie ist keine vollständige Rekonstruktion früherer Servereingriffe.
 
+## 2026-10-15 – JARVIS V16 Referenz-Audit: A9/A14/E2 behoben (Server)
+
+- Auftrag: Masterprompt Referenzanalyse. Fixes in `server/jarvis/core/brain-runtime/` (`secretscan.py` neu, `taskengine.py`, `attribution.py`, `learning.py`, CLI `--by`), Portal `app.js` (Antwortpflicht bei Rückfrage).
+- Prüfung: 340 Tests OK (4 skip, vorher 323), neue Datei `tests/test_v16_regress_a9_a14.py`. A9 11/11 erkannt, Fehlalarme 0/8. E2 offline 25/35 statt 21/35, Fehltreffer 0 (misst nicht Token-Ersparnis).
+- Deploy: Release `20261015-140650-f57d32f`, Rückweg `rollback-v16.sh`. Berichte und Prüfpaket: `docs/jarvis/JARVIS-REFERENZ-*`, Kopie in `/srv/ma-home/library/JARVIS/Referenz-Audit-2026-10-15/`.
+- Offen: Cron-Eintrag nicht prüfbar, Testjob `j20261015-86b8cb` bleibt `queued`, Brücken-Update und Portal-UI (sudo, Philipp), Vorlage 17 zurückziehen, Live-Messungen.
+
 ## 2026-10-15 – JARVIS Integrationsprüfung vor dem Mobile-Test (Server)
 
 - Auftrag: Integrationsübersicht mit echten Abläufen, Teil des Prüfpakets.
