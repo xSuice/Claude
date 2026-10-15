@@ -93,6 +93,15 @@ class ImproveJobs(Base):
         self.assertEqual(verdicts, {'invalid'})
         self.assertIn('assertEqual(add(2, 2), 4)', (self.repo / 'tests' / 'test_calc.py').read_text())
 
+    def test_rejected_patch_leaves_no_result_file_and_job_is_not_done(self):
+        eng, fake = self.app(self.patch('calc.py', 'def add(a, b):\n    return a * 3\n'))
+        j = eng.submit('Behebe den Fehler in calc.add', client_id='improve-client-08', options={'improve': True})
+        st = run_until(eng, job=j['job_id'], rounds=60)
+        self.assertNotEqual(st['state'], 'done', st)
+        self.assertFalse((Path(eng.work_root) / j['job_id'] / 'improve-trial.json').exists())
+        with eng.brain.connection() as c:
+            self.assertEqual({r['verdict'] for r in c.execute('SELECT verdict FROM improvement_trials')}, {'rejected'})
+
     def test_not_enabled_means_plan_is_refused(self):
         eng, fake = self.app(self.patch('calc.py', 'def add(a, b):\n    return a + b\n'), cfg={})
         j = eng.submit('Behebe den Fehler in calc.add', client_id='improve-client-03', options={'improve': True})

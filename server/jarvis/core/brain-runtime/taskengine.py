@@ -888,10 +888,13 @@ class Engine:
             return {'ok': False, 'detail': f'Patch nicht verwendbar: {e}'}
         except (PermissionError, RuntimeError, OSError) as e:
             return {'ok': False, 'final': True, 'detail': f'Probelauf nicht möglich: {runner.redact(str(e))[:300]}'}
-        (work / IMPROVE_RESULT).write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding='utf-8')
         self._add_usage(j['id'], local_runs=1)
         v = out['verdict']
         ok = v == 'improved' or (v == 'neutral' and bool(ic.get('allow_neutral')))
+        if ok:  # a rejected trial must never leave a result file that the acceptance could take for success
+            (work / IMPROVE_RESULT).write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding='utf-8')
+        else:
+            (work / IMPROVE_RESULT).unlink(missing_ok=True)
         detail = f'Probelauf #{out["trial"]}: {v}; Dateien: {", ".join(out["files"][:10])}'
         if not ok:
             detail += f'; {json.dumps(out["results"], ensure_ascii=False)[:1500]}'
@@ -1255,7 +1258,7 @@ IMPROVE_PLAN_HINT = '''
 VERBESSERUNGSAUFTRAG (zusätzliche Schrittart, nur hier erlaubt):
 - "improve": Probelauf eines Patches gegen die unveränderten Tests. Felder: patch (relativer Pfad einer .diff-Datei, die ein früherer Schritt erzeugt), description (3-300 Zeichen). Die Prüfungen legt Philipp fest, du wählst sie nicht.
 - Plane genau zwei Schritte: s1 "claude" schreibt patch.diff (git-Unified-Diff mit Pfaden a/<Repo-Pfad> und b/<Repo-Pfad>, nur gegen die Dateikopien unter inputs/, kleinstmögliche Änderung, keine Tests, Konfigurationen oder Sicherheitsdateien ändern), s2 "improve" mit patch "patch.diff", deps ["s1"].
-- Einziges deliverable: "improve-trial.json" mit check {"type": "contains", "value": "verdict"}.
+- Einziges deliverable: "improve-trial.json" mit check {"type": "regex", "value": "\\"verdict\\": \\"(improved|neutral)\\""}.
 '''
 WORKER_SYSTEM = (
     'Du bist ein Ausführungs-Worker von JARVIS (MA-Home, Philipp). Regeln, die immer gelten: '
