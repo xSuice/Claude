@@ -1733,6 +1733,7 @@ async function jarvis() {
     const waiting = (st.steps || []).filter(s => s.state === 'waiting');
     box.innerHTML = `<div class="card mt"><h2>${esc(st.id)} ${pill(st.state)}</h2>
       <div class="sub">${esc(st.request || '')}</div>${st.summary ? `<div class="mt"><b>${esc(st.summary)}</b></div>` : ''}
+      ${st.attribution && fin ? `<div class="mt sub" id="jvattr" title="Herkunft laut Ausführungsprotokoll (Schritte, Modellaufrufe, Ereignisse)">${esc(st.attribution.line)}</div>` : ''}
       <div class="list mt">${(st.steps || []).map(s => `<div class="row"><div class="grow"><b>${esc(s.title)}</b><span>${esc(s.kind)}${s.capability ? ' · ' + esc(s.capability) : ''}${s.detail ? ' · ' + esc(String(s.detail).split('\n')[0].slice(0, 90)) : ''}</span></div>${pill(s.state === 'waiting' ? 'waiting_approval' : s.state)}</div>`).join('')}</div>
       ${st.state === 'waiting_approval' ? `<div class="mt"><div class="sub">${(st.effects || []).length ? 'Geplante Wirkung: ' + esc(JSON.stringify(st.effects).slice(0, 300)) : 'Der Auftrag wartet auf deine Freigabe.'}</div><input id="jvans" placeholder="Antwort oder Hinweis (optional)" class="mt"><div class="mt"><button class="btn" id="jvok">Freigeben</button></div></div>` : ''}
       ${!fin ? '<div class="mt"><button class="btn small ghost" id="jvno">Abbrechen</button></div>' : ''}
@@ -1793,7 +1794,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-14-5';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-15-1';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

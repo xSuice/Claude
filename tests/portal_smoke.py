@@ -62,6 +62,9 @@ def api(route, request):
         d = json.loads(body or '{}'); c = d.get('cmd'); JV_CALLS.append(d)
         job = {'id': 'j20261014-abc123', 'state': JV['state'], 'request': 'Teste Freigabe', 'summary': '', 'effects': [], 'created': 1790000000, 'claude_calls': 1, 'tokens_new': 2000,
                'steps': [{'sid': 's1', 'title': 'Schreiben', 'kind': 'claude', 'state': 'waiting' if JV['state'] == 'waiting_approval' else 'done', 'capability': None, 'detail': ''}]}
+        if JV['state'] == 'done':
+            job['attribution'] = {'label': 'Jarvis + Claude', 'status': 'abgeschlossen', 'ref': job['id'],
+                                  'line': 'Jarvis + Claude: Jarvis – Abnahme; Claude – 1 Inhaltsschritt · Status: abgeschlossen · Nachweis: ' + job['id']}
         if c == 'usage':
             return j({'ok': True, 'data': {'ledger': {'claude': {'calls_24h': 5, 'tokens_24h': 53000, 'limits': {'calls_per_day': 40, 'tokens_per_day': 1500000}}, 'plan_block': None}}})
         if c == 'list':
@@ -417,6 +420,7 @@ def main():
         page.wait_for_function("document.querySelector('#jvdet').innerText.toLowerCase().includes('bericht.md')", timeout=6000)
         ap = [x for x in JV_CALLS if x.get('cmd') == 'approve']
         check('JARVIS: Freigabe sendet Schritt, danach erscheinen Ergebnisdateien', len(ap) == 1 and ap[0].get('step') == 's1', ap)
+        check('JARVIS: Kennzeichnung nur am Ende, mit Status und Nachweis', page.locator('#jvattr').count() == 1 and page.inner_text('#jvattr').startswith('Jarvis + Claude: ') and 'Status: abgeschlossen' in page.inner_text('#jvattr') and 'j20261014-abc123' in page.inner_text('#jvattr'), page.inner_text('#jvdet')[:300])
         check('JARVIS: kein Querscrollen', page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'))
         check('keine JavaScript-Fehler', not errors, '; '.join(errors[:3]))
         browser.close()

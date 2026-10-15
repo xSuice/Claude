@@ -14,7 +14,7 @@ OPEN = {'queued': 'wartet', 'planning': 'läuft', 'running': 'läuft', 'waiting_
 
 def _out(label, status, jarvis, claude, ref, reason=''):
     contrib = {'Jarvis': f'Jarvis: {jarvis}', 'Claude': f'Claude: {claude}',
-               'Jarvis + Claude': f'Jarvis + Claude: {jarvis}; {claude}'}.get(label)
+               'Jarvis + Claude': f'Jarvis + Claude: Jarvis – {jarvis}; Claude – {claude}'}.get(label)
     tail = f' · Status: {status}' + (f' · Nachweis: {ref}' if ref else '')
     line = f'{contrib}{tail}' if contrib else f'{NOT_VERIFIED}{tail}' + (f' · Grund: {reason}' if reason else '')
     return {'label': label, 'status': status, 'line': line, 'jarvis': jarvis, 'claude': claude, 'reason': reason, 'ref': ref}
@@ -68,10 +68,11 @@ def attribute_job(st: dict, events: list[dict] | None = None) -> dict:
         jarvis_bits.append('unabhängige Abnahme der Ergebnisdateien')
     jarvis_content = bool(local or template or helper)
     claude_contrib = bool(claude_steps or plan_ok)
+    unproven = status if verdict != 'done' else 'nicht verifiziert'   # ein Misserfolg bleibt als solcher sichtbar, "abgeschlossen" nur mit Beleg
     if not claude_contrib and not jarvis_content:
-        return _out(None, 'nicht verifiziert', '', '', ref, 'weder Claude- noch JARVIS-Inhaltsbeitrag belegt')
+        return _out(None, unproven, '', '', ref, 'weder Claude- noch JARVIS-Inhaltsbeitrag belegt')
     if claude_contrib and not jarvis_bits:
-        return _out(None, 'nicht verifiziert', '', '', ref, 'nur Weiterleitung an Claude belegt, kein eigener JARVIS-Beitrag (keine Abnahme)')
+        return _out(None, unproven, '', '', ref, 'nur Weiterleitung an Claude belegt, kein eigener JARVIS-Beitrag (keine Abnahme)')
     jarvis, claude = '; '.join(jarvis_bits), '; '.join(claude_bits)
     label = 'Jarvis + Claude' if claude_contrib else 'Jarvis'
     return _out(label, status, jarvis, claude, ref)
