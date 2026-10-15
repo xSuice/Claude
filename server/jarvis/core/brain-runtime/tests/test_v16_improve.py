@@ -102,6 +102,24 @@ class ImproveJobs(Base):
         with eng.brain.connection() as c:
             self.assertEqual({r['verdict'] for r in c.execute('SELECT verdict FROM improvement_trials')}, {'rejected'})
 
+    def test_human_approval_step_shows_trial_summary_and_waits(self):
+        plan = copy.deepcopy(PLAN)
+        plan['steps'].append({'id': 's3', 'title': 'Freigabe durch Philipp', 'kind': 'human',
+                              'question': 'Soll der geprüfte Patch eingespielt werden?', 'deps': ['s2']})
+        steps = {'Patch schreiben': lambda cwd, prompt, n: (cwd / 'patch.diff').write_text(
+            self.patch('calc.py', 'def add(a, b):\n    return a + b\n')) and None}
+        eng = make_app(self.t, FakeClaude(plan, steps), cfg_extra=self.cfg)
+        j = eng.submit('Behebe den Fehler in calc.add', client_id='improve-client-09', options={'improve': True})
+        st = run_until(eng, job=j['job_id'], rounds=40)
+        self.assertEqual(st['state'], 'waiting_approval', st)
+        q = next(e for e in eng.events(j['job_id']) if e['kind'] == 'question')['text']
+        self.assertIn('improved', q)
+        self.assertIn('calc.py', q)
+        self.assertIn('+1/-1', q)
+        eng.approve(j['job_id'], 's3', 'ja')
+        self.assertEqual(run_until(eng, job=j['job_id'])['state'], 'done')
+        self.assertIn('a - b', (self.repo / 'calc.py').read_text())  # approval alone never promotes
+
     def test_not_enabled_means_plan_is_refused(self):
         eng, fake = self.app(self.patch('calc.py', 'def add(a, b):\n    return a + b\n'), cfg={})
         j = eng.submit('Behebe den Fehler in calc.add', client_id='improve-client-03', options={'improve': True})

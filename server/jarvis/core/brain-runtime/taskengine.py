@@ -771,7 +771,8 @@ class Engine:
         if kind == 'human':
             self._step_set(s['id'], state='waiting')
             self._set(j['id'], state='waiting_approval')
-            self.event(j['id'], 'question', f'Schritt {s["sid"]} braucht Philipp: {s["spec"].get("question", "")}')
+            self.event(j['id'], 'question', f'Schritt {s["sid"]} braucht Philipp: {s["spec"].get("question", "")}'
+                                            + self._improve_summary(j))
             return {'progress': True, 'state': 'waiting_approval'}
         if kind == 'pc':
             cap = s['spec'].get('capability')
@@ -870,6 +871,24 @@ class Engine:
                                          allow_promote=False, allow_neutral=bool(ic.get('allow_neutral')),
                                          max_trials_per_day=int(ic.get('max_trials_per_day', 3)))
         return self._imp, ic
+
+    def _improve_summary(self, j: dict) -> str:
+        """For the approval step of an improvement job: verdict, files, checks and diff size, plus where the diff lies."""
+        try:
+            work = Path(j['workspace'])
+            res = json.loads((work / IMPROVE_RESULT).read_text(encoding='utf-8'))
+            patch = next((p for p in sorted(work.glob('*.diff')) + sorted(work.glob('*.patch'))), None)
+            plus = minus = 0
+            if patch:
+                for ln in patch.read_text(encoding='utf-8', errors='replace').splitlines():
+                    plus += ln.startswith('+') and not ln.startswith('+++')
+                    minus += ln.startswith('-') and not ln.startswith('---')
+            checks = ', '.join(f'{k}: {"ok" if v.get("ok") else "FEHLER"}' for k, v in (res.get('results', {}).get('candidate') or {}).items())
+            return (f' | Probelauf #{res.get("trial")}: {res.get("verdict")}; Dateien: {", ".join(res.get("files", [])[:10])}; '
+                    f'Diff +{plus}/-{minus} ({patch.name if patch else "kein Diff"} im Arbeitsordner {work}); Prüfungen am Kandidaten: {checks or "unbekannt"}. '
+                    'Einspielen nur nach deinem Ja und über install-v16.sh.')
+        except (OSError, ValueError, AttributeError):
+            return ''
 
     def _run_improve_step(self, j: dict, s: dict) -> dict | None:
         imp, ic = self._improver()
@@ -1257,7 +1276,7 @@ IMPROVE_PLAN_HINT = '''
 
 VERBESSERUNGSAUFTRAG (zusätzliche Schrittart, nur hier erlaubt):
 - "improve": Probelauf eines Patches gegen die unveränderten Tests. Felder: patch (relativer Pfad einer .diff-Datei, die ein früherer Schritt erzeugt), description (3-300 Zeichen). Die Prüfungen legt Philipp fest, du wählst sie nicht.
-- Plane genau zwei Schritte: s1 "claude" schreibt patch.diff (git-Unified-Diff mit Pfaden a/<Repo-Pfad> und b/<Repo-Pfad>, nur gegen die Dateikopien unter inputs/, kleinstmögliche Änderung, keine Tests, Konfigurationen oder Sicherheitsdateien ändern), s2 "improve" mit patch "patch.diff", deps ["s1"].
+- Plane genau drei Schritte: s1 "claude" schreibt patch.diff (git-Unified-Diff mit Pfaden a/<Repo-Pfad> und b/<Repo-Pfad>, nur gegen die Dateikopien unter inputs/, kleinstmögliche Änderung, keine Tests, Konfigurationen oder Sicherheitsdateien ändern), s2 "improve" mit patch "patch.diff", deps ["s1"], s3 "human" (deps ["s2"], question: Soll der geprüfte Patch eingespielt werden? Diff, Urteil und Prüfungen stehen im Ereignis; Einspielen nur nach Ja über install-v16.sh).
 - Einziges deliverable: "improve-trial.json" mit check {"type": "regex", "value": "\\"verdict\\": \\"(improved|neutral)\\""}.
 '''
 WORKER_SYSTEM = (
