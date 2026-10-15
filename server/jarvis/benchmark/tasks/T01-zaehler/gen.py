@@ -61,6 +61,10 @@ def expected(csv_path: Path) -> dict:
     return {'daily': daily, 'anomalies': anomalies}
 
 
+def visible(out: Path):
+    make(out, 1, 'spring')
+
+
 if __name__ == '__main__':
     import sys
-    make(Path(sys.argv[1]), 1, 'spring')
+    visible(Path(sys.argv[1]))

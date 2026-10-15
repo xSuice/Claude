@@ -60,6 +60,10 @@ def expected(path: Path) -> list[dict]:
     return out
 
 
+def visible(out: Path):
+    make(out, 1)
+
+
 if __name__ == '__main__':
     import sys
-    make(Path(sys.argv[1]), 1)
+    visible(Path(sys.argv[1]))
