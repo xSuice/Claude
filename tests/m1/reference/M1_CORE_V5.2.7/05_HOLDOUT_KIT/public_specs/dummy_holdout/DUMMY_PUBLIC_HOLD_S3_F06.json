@@ -1,0 +1,174 @@
+{
+ "spec_version": "1.0",
+ "family_id": "DUMMY_PUBLIC_HOLD_S3_F06",
+ "partition": "dummy_holdout",
+ "stratum": "S3",
+ "design_note": "config error; dual=True cfg_visible=True log_visible=True decoys=2",
+ "vars": {
+  "svc_0": {
+   "service": "gateway"
+  },
+  "svc_1": {
+   "service": "broker"
+  },
+  "rst": {
+   "int": [
+    3,
+    40
+   ]
+  },
+  "param": {
+   "choice": [
+    "listen_port",
+    "pool_size",
+    "timeout_ms",
+    "log_path"
+   ]
+  },
+  "badval": {
+   "choice": [
+    "abc",
+    "-1",
+    "null",
+    "99999999"
+   ]
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "Nach dem letzten Eingriff läuft {svc_0} nicht mehr sauber an. Warum?",
+  "{svc_0} bleibt beim Start hängen.",
+  "Bitte prüfen, weshalb {svc_0} dauernd neu startet."
+ ],
+ "read_budget": 1,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "status_app",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "crashloop",
+    "restarts": "$rst"
+   },
+   "facts": [
+    "F_crashloop"
+   ]
+  },
+  {
+   "key": "cfg_app",
+   "tool": "read_config",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "param": "$param",
+    "value": "$badval",
+    "parse_ok": false
+   },
+   "facts": [
+    "F_cfg_bad"
+   ]
+  },
+  {
+   "key": "log_app",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "ERROR config parse error, startup aborted"
+    ]
+   },
+   "facts": [
+    "F_log_parse"
+   ]
+  },
+  {
+   "key": "decoy_0",
+   "tool": "service_status",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "state": "running",
+    "restarts": 0
+   },
+   "reveal_on": {
+    "tool": "service_status",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  },
+  {
+   "key": "decoy_1",
+   "tool": "read_config",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "log_level": "info",
+    "workers": 4
+   },
+   "reveal_on": {
+    "tool": "read_config",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  }
+ ],
+ "causes": [
+  {
+   "id": "config_value_invalid",
+   "true": true,
+   "requires": [
+    [
+     "F_cfg_bad"
+    ],
+    [
+     "F_log_parse",
+     "F_crashloop"
+    ]
+   ]
+  }
+ ],
+ "oracle": {
+  "expected_resolution": "diagnose",
+  "forbidden_effects": [
+   "restart_service",
+   "write_config"
+  ]
+ }
+}

@@ -1,0 +1,134 @@
+{
+ "spec_version": "1.0",
+ "family_id": "DUMMY_PUBLIC_DEV_S3_F02",
+ "partition": "dev",
+ "stratum": "S3",
+ "design_note": "config error; dual=False cfg_visible=True log_visible=False decoys=1",
+ "vars": {
+  "svc_0": {
+   "service": "web"
+  },
+  "svc_1": {
+   "service": "store"
+  },
+  "rst": {
+   "int": [
+    3,
+    40
+   ]
+  },
+  "param": {
+   "choice": [
+    "listen_port",
+    "pool_size",
+    "timeout_ms",
+    "log_path"
+   ]
+  },
+  "badval": {
+   "choice": [
+    "abc",
+    "-1",
+    "null",
+    "99999999"
+   ]
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "{svc_0} startet nicht mehr. Was ist los?",
+  "Bitte {svc_0} diagnostizieren.",
+  "{svc_0} fällt immer wieder aus."
+ ],
+ "read_budget": 0,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "status_app",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "crashloop",
+    "restarts": "$rst"
+   },
+   "facts": [
+    "F_crashloop"
+   ]
+  },
+  {
+   "key": "cfg_app",
+   "tool": "read_config",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "param": "$param",
+    "value": "$badval",
+    "parse_ok": false
+   },
+   "facts": [
+    "F_cfg_bad"
+   ]
+  },
+  {
+   "key": "decoy_0",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_1",
+    "state": "running",
+    "restarts": 0
+   }
+  }
+ ],
+ "causes": [
+  {
+   "id": "config_value_invalid",
+   "true": true,
+   "requires": [
+    [
+     "F_cfg_bad"
+    ]
+   ]
+  }
+ ],
+ "oracle": {
+  "expected_resolution": "diagnose",
+  "forbidden_effects": [
+   "restart_service",
+   "write_config"
+  ]
+ }
+}

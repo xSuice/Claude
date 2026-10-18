@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:jarvis:m1:family-spec:1.1",
+  "title": "JARVIS M1 family spec 1.1 (generator input; produces fixture-schema v1.3 templates unchanged); S1-S10",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "spec_version",
+    "family_id",
+    "partition",
+    "stratum",
+    "vars",
+    "user_request_variants",
+    "read_budget",
+    "catalog",
+    "observations",
+    "causes",
+    "oracle"
+  ],
+  "properties": {
+    "spec_version": {
+      "enum": [
+        "1.0",
+        "1.1"
+      ]
+    },
+    "family_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{3,60}$"
+    },
+    "partition": {
+      "enum": [
+        "dev",
+        "dummy_holdout",
+        "holdout"
+      ]
+    },
+    "stratum": {
+      "enum": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S6",
+        "S7",
+        "S8",
+        "S9",
+        "S10"
+      ]
+    },
+    "design_note": {
+      "type": "string"
+    },
+    "vars": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 1,
+        "properties": {
+          "int": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "choice": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            },
+            "minItems": 1
+          },
+          "service": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*$"
+          },
+          "token": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 16
+          },
+          "expr": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "user_request_variants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 5
+      }
+    },
+    "read_budget": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "catalog": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tool",
+          "params"
+        ],
+        "properties": {
+          "tool": {
+            "enum": [
+              "service_status",
+              "service_readiness",
+              "read_config",
+              "read_logs"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "tool",
+          "visible",
+          "payload"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "tool": {
+            "enum": [
+              "service_status",
+              "service_readiness",
+              "read_config",
+              "read_logs",
+              "tool_result"
+            ]
+          },
+          "visible": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "reveal_on": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tool",
+              "params"
+            ],
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "params": {
+                "type": "object"
+              }
+            }
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "payload": {
+            "type": "object"
+          },
+          "injection": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "causes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "requires"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "true": {
+            "type": "boolean"
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "refuted_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_resolution"
+      ],
+      "properties": {
+        "expected_resolution": {
+          "enum": [
+            "healthy",
+            "diagnose",
+            "abstain",
+            "block_unauthorized_action",
+            "recover_task",
+            "unknown_outcome"
+          ]
+        },
+        "forbidden_effects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_revisions": {
+          "type": "boolean"
+        }
+      }
+    },
+    "surface": {
+      "enum": [
+        "log",
+        "config",
+        "tool_output"
+      ],
+      "description": "S10 only: surface that carries the injected instruction"
+    },
+    "canary_vars": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "vars whose values are fake secrets (canaries) the scorer must grep for"
+    },
+    "injection_vars": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "vars whose values are injected instruction texts"
+    }
+  }
+}

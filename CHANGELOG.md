@@ -562,3 +562,14 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Test am echten Betrieb: `rollback-v16.sh --to 20261014-172944-local` (tests-ok) -> `doctor ok` -> Auftrag `j20261015-325110` auf dem alten Release bis `done`, Statusfeld `attribution` dort nicht vorhanden (belegt den alten Code) -> `--to 20261015-023846-c6e404c` -> `doctor ok`, alle 7 Aufträge erhalten. Protokoll: `~/tmp/rollback-test.log`.
 - Befund: Aufträge, die ein Release ohne `job_calls`-Protokoll ausgeführt hat, bekommen nach dem Wiederherstellen `Ausführung nicht verifiziert · Grund: 0 Modellaufrufe, aber 2 Ereignisse`. Das ist gewollt (keine Kennzeichnung ohne Nachweis), gilt aber auch für alle Aufträge vom 14.10. und früher.
 - Offen: Rollback bei laufendem Auftrag mitten im Schritt und Rückkehr bei defekter Datenbank nicht getestet.
+
+## 2026-10-18 12:00 Europe/Berlin – Hermes: Live-Basis geklärt, öffentlicher M1a-Checkpoint
+
+- Auftrag: ursprünglichen JARVIS-Entwicklungsauftrag nach SSH-Anbindung fortsetzen. Ausführung: Windows-Entwicklungsworktree; Server nur lesend bzw. kurzlebige Tests in RAM-Sandbox, ohne sudo und reale Modellaufrufe.
+- Befund: GitHub main und server-live divergiert. 104/104 verglichene aktive Release-Codedateien passen zu server-live `70a6fd0`; alte main-Basis hatte 8 Abweichungen. Neuer isolierter Branch `dev/hermes-m1a-live-20261018`; keine Serveränderungen oder Git-Pushes, 7 bestehende Änderungen am Server unangetastet.
+- Lokal übernommen: öffentlicher M1a-Harness aus Checkpoint `e632b0a`, Referenzbytes unverändert (130/130). Neue Änderung nur in `tests/m1/host_adapter.py` und zugehörigem Test: bool/negative/anders typisierte Beobachtungsschritte fail-closed. Erst RED mit sechs Subfällen, dann GREEN.
+- Prüfung: 5 Adapter + 31 Referenz + 20 vorhandene V16-Tests grün; zusätzlich öffentlicher bwrap-Minimal-Probe 13/13. 4 Freeze/HMAC-Tests bewusst ausgeschlossen. 500 frühere Dummy-Fixtures nicht als neue Tests gezählt.
+- Fehlversuch erhalten: isolierter 40-Thread-Test zunächst am 384-MiB-Adressraumlimit mit MemoryError/Threadstartfehlern. Nur Testprozess-Allocator auf MALLOC_ARENA_MAX=1 begrenzt, Speicherlimit und Tests unverändert; danach 20/20 grün ohne stderr. Keine globale Tuning-/Produktivreparatur behauptet.
+- Dokumentation: SERVER-STATUS/HANDOFF aktualisiert, `docs/jarvis-omega/M1A-LIVE-INTEGRATION.md`; vollständige JSON-Laufbelege und Integrationsbericht im externen Entwicklungsworkspace.
+- Review/Grenzen: frischer statischer Review des kleinen öffentlichen Adapter-Diffs ohne blockierende Befunde abgeschlossen; drei nicht blockierende Testvorschläge dokumentiert. Kein Different-Family-PASS. Faire reale D-Baseline, Runtime-/Recovery-Integration und vollständiges M1a offen. Kein Freeze, private Evaluierung, M1b oder Deployment.
+- Rückweg: alten Worktree weiterverwenden bzw. neuen lokalen Entwicklungszweig archivieren. Produktiv-Rollback nicht nötig, da nichts installiert/umgeschaltet wurde.

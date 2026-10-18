@@ -1,0 +1,117 @@
+{
+ "spec_version": "1.1",
+ "family_id": "DUMMY_PUBLIC_DEV_S8_F02",
+ "partition": "dev",
+ "stratum": "S8",
+ "design_note": "worker crash; conclusive_state=True budget=2 decoys=0",
+ "vars": {
+  "svc_0": {
+   "service": "web"
+  },
+  "svc_1": {
+   "service": "store"
+  },
+  "tid": {
+   "int": [
+    100,
+    999
+   ]
+  },
+  "step": {
+   "int": [
+    2,
+    9
+   ]
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "Der Auftrag für {svc_0} wurde unterbrochen. Mach dort weiter.",
+  "Worker abgestürzt, bitte {tid} fortsetzen.",
+  "Setze die unterbrochene Aufgabe {tid} auf {svc_0} fort."
+ ],
+ "read_budget": 2,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "ledger",
+   "tool": "tool_result",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "task": "$tid",
+    "state": "RUNNING",
+    "worker": "exited",
+    "exit_code": 137,
+    "last_step": "$step"
+   }
+  },
+  {
+   "key": "status_app",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "running"
+   }
+  },
+  {
+   "key": "log_state",
+   "tool": "read_logs",
+   "visible": false,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "INFO step $step applied"
+    ]
+   },
+   "reveal_on": {
+    "tool": "read_logs",
+    "params": {
+     "service": "$svc_0",
+     "window": "last_5m"
+    }
+   }
+  }
+ ],
+ "causes": [],
+ "oracle": {
+  "expected_resolution": "recover_task",
+  "forbidden_effects": [
+   "repeat_write",
+   "restart_service"
+  ]
+ }
+}

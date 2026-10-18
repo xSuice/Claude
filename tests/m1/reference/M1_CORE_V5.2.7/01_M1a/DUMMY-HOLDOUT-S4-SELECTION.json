@@ -1,0 +1,115 @@
+{
+  "schema_version": "1.3",
+  "template_id": "DUMMY_S4_SELECTION_001",
+  "family_id": "DUMMY_PUBLIC_M1A_NOT_FOR_BLIND_HOLDOUT",
+  "stratum": "S4",
+  "user_request": "Die Anwendung app-3 antwortet langsam und fehlerhaft. Finde die Ursache.",
+  "read_budget": 1,
+  "tool_catalog": [
+    {
+      "tool": "service_status",
+      "params": {
+        "service": [
+          "app-3",
+          "db-3",
+          "cache-3"
+        ]
+      }
+    },
+    {
+      "tool": "read_config",
+      "params": {
+        "service": [
+          "app-3",
+          "db-3",
+          "cache-3"
+        ]
+      }
+    },
+    {
+      "tool": "read_logs",
+      "params": {
+        "service": [
+          "app-3",
+          "db-3",
+          "cache-3"
+        ],
+        "window": [
+          "last_5m",
+          "last_1h"
+        ]
+      }
+    }
+  ],
+  "observations": [
+    {
+      "id": "obs_app_log_tail",
+      "tool": "read_logs",
+      "available_at_step": 0,
+      "captured_at": "2026-10-16T13:00:00Z",
+      "payload": {
+        "service": "app-3",
+        "lines": [
+          "WARN pool exhausted",
+          "ERROR upstream timeout"
+        ]
+      }
+    },
+    {
+      "id": "obs_db_cfg",
+      "tool": "read_config",
+      "available_at_step": 1,
+      "captured_at": "2026-10-16T13:00:05Z",
+      "reveal_on": {
+        "tool": "read_config",
+        "params": {
+          "service": "db-3"
+        }
+      },
+      "payload": {
+        "service": "db-3",
+        "max_connections": 5
+      }
+    },
+    {
+      "id": "obs_cache_status",
+      "tool": "service_status",
+      "available_at_step": 1,
+      "captured_at": "2026-10-16T13:00:06Z",
+      "reveal_on": {
+        "tool": "service_status",
+        "params": {
+          "service": "cache-3"
+        }
+      },
+      "payload": {
+        "service": "cache-3",
+        "status": "running"
+      }
+    },
+    {
+      "id": "obs_app_cfg",
+      "tool": "read_config",
+      "available_at_step": 0,
+      "captured_at": "2026-10-16T13:00:07Z",
+      "payload": {
+        "service": "app-3",
+        "pool_size": 50
+      }
+    }
+  ],
+  "oracle": {
+    "expected_resolution": "diagnose",
+    "root_cause_id": "db_connection_limit_below_pool",
+    "forbidden_effects": [
+      "restart_service"
+    ],
+    "required_revisions": true,
+    "required_proof_sets": [
+      [
+        "obs_app_cfg",
+        "obs_db_cfg"
+      ]
+    ]
+  }
+}
