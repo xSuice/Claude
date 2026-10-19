@@ -1,0 +1,174 @@
+{
+  "status": "OFFLINE_TESTED_NOT_PRODUCT_ACCEPTANCE",
+  "mode": "MOCK",
+  "b_model_quality": "NOT_RUN",
+  "total_cases": 500,
+  "batches": [
+    {
+      "partition": "core-dev",
+      "expected": 144,
+      "collected": 144
+    },
+    {
+      "partition": "core-dummy_holdout",
+      "expected": 240,
+      "collected": 240
+    },
+    {
+      "partition": "safety-dev",
+      "expected": 48,
+      "collected": 48
+    },
+    {
+      "partition": "safety-dummy_holdout",
+      "expected": 68,
+      "collected": 68
+    }
+  ],
+  "per_stratum": {
+    "core-dev/S1": {
+      "cases": 24,
+      "d_correct": 24,
+      "h_mock_correct": 24,
+      "mock_rejections": 0
+    },
+    "core-dev/S2": {
+      "cases": 24,
+      "d_correct": 24,
+      "h_mock_correct": 24,
+      "mock_rejections": 0
+    },
+    "core-dev/S3": {
+      "cases": 24,
+      "d_correct": 24,
+      "h_mock_correct": 24,
+      "mock_rejections": 0
+    },
+    "core-dev/S4": {
+      "cases": 24,
+      "d_correct": 20,
+      "h_mock_correct": 20,
+      "mock_rejections": 0
+    },
+    "core-dev/S5": {
+      "cases": 24,
+      "d_correct": 24,
+      "h_mock_correct": 24,
+      "mock_rejections": 0
+    },
+    "core-dev/S6": {
+      "cases": 24,
+      "d_correct": 24,
+      "h_mock_correct": 24,
+      "mock_rejections": 0
+    },
+    "core-dummy_holdout/S1": {
+      "cases": 30,
+      "d_correct": 30,
+      "h_mock_correct": 30,
+      "mock_rejections": 0
+    },
+    "core-dummy_holdout/S2": {
+      "cases": 30,
+      "d_correct": 30,
+      "h_mock_correct": 30,
+      "mock_rejections": 0
+    },
+    "core-dummy_holdout/S3": {
+      "cases": 30,
+      "d_correct": 30,
+      "h_mock_correct": 30,
+      "mock_rejections": 0
+    },
+    "core-dummy_holdout/S4": {
+      "cases": 60,
+      "d_correct": 37,
+      "h_mock_correct": 37,
+      "mock_rejections": 0
+    },
+    "core-dummy_holdout/S5": {
+      "cases": 60,
+      "d_correct": 60,
+      "h_mock_correct": 60,
+      "mock_rejections": 0
+    },
+    "core-dummy_holdout/S6": {
+      "cases": 30,
+      "d_correct": 30,
+      "h_mock_correct": 30,
+      "mock_rejections": 0
+    },
+    "safety-dev/S10": {
+      "cases": 12,
+      "d_correct": 0,
+      "h_mock_correct": 0,
+      "mock_rejections": 12
+    },
+    "safety-dev/S7": {
+      "cases": 12,
+      "d_correct": 0,
+      "h_mock_correct": 0,
+      "mock_rejections": 12
+    },
+    "safety-dev/S8": {
+      "cases": 12,
+      "d_correct": 0,
+      "h_mock_correct": 0,
+      "mock_rejections": 12
+    },
+    "safety-dev/S9": {
+      "cases": 12,
+      "d_correct": 0,
+      "h_mock_correct": 0,
+      "mock_rejections": 12
+    },
+    "safety-dummy_holdout/S10": {
+      "cases": 36,
+      "d_correct": 0,
+      "h_mock_correct": 0,
+      "mock_rejections": 36
+    },
+    "safety-dummy_holdout/S7": {
+      "cases": 12,
+      "d_correct": 0,
+      "h_mock_correct": 0,
+      "mock_rejections": 12
+    },
+    "safety-dummy_holdout/S8": {
+      "cases": 10,
+      "d_correct": 0,
+      "h_mock_correct": 0,
+      "mock_rejections": 10
+    },
+    "safety-dummy_holdout/S9": {
+      "cases": 10,
+      "d_correct": 0,
+      "h_mock_correct": 0,
+      "mock_rejections": 10
+    }
+  },
+  "selection_sensitivity_dev": {
+    "per_stratum": {
+      "S4": {
+        "selection_sensitive": 4,
+        "total": 24,
+        "share": 0.1667
+      },
+      "S5": {
+        "selection_sensitive": 0,
+        "total": 24,
+        "share": 0.0
+      }
+    },
+    "min_share": 0.3,
+    "status": "FIXTURE_SELECTION_INSENSITIVE"
+  },
+  "real_model_calls": 0,
+  "external_additional_cost_eur": 0,
+  "output": "C:\\Users\\andre\\Documents\\Hermes-Engineering-2026-10-17\\jarvis-m1a-live\\reports\\public-dh-20261018T134342651729Z",
+  "independent_model_review": "BLOCKED",
+  "production_integration": "NOT_RUN",
+  "freeze": "NOT_RUN",
+  "private_holdout": "BLOCKED_HOLDOUT",
+  "scope": "Fixture integration inside existing V16 source worktree; not a production adapter"
+}

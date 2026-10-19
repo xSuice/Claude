@@ -49,6 +49,20 @@ class GuardedProposalTests(unittest.TestCase):
                 self.assertEqual(result['decision'], 'KEEP_D')
                 self.assertEqual(result['reason'], 'INVALID_OBSERVATION_STEP')
 
+    def test_non_dict_observation_entries_fail_closed_in_composition(self):
+        # Kimi-K3 review finding (non-blocking): non-dict list entries skip the
+        # host step check by design; the composition must still fail closed at
+        # the reference gate. Pin the composed KEEP_D, never a crash or pass.
+        for bad in (None, 'x', 7, ['nested']):
+            with self.subTest(entry=repr(bad)):
+                result=self.guarded()('D_ABSTAIN',PROPOSAL,[dict(OBS[0]),bad] if bad is not None else None,**args())
+                self.assertEqual(result['decision'],'KEEP_D')
+                self.assertFalse(result['grounded'])
+                if bad is None:
+                    self.assertEqual(result['reason'],'INVALID_OBSERVATIONS')
+                else:
+                    self.assertEqual(result['reason'],'INVALID_OBSERVATION_OR_DUPLICATE_ID')
+
     def test_valid_read_is_preserved_without_executing_it(self):
         self.assertEqual(self.guarded()('D_ABSTAIN',PROPOSAL,OBS,**args()),
                          reference.check_proposal('D_ABSTAIN',PROPOSAL,OBS,**args()))
