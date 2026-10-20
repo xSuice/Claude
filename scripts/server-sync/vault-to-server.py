@@ -55,10 +55,21 @@ def ssh_out(cmd):
 
 
 def master_on():
+    """Prueft ob der Server die fuehrende Kopie ist (server-master-Flag).
+
+    Drei-Zustands-Rueckgabe (Sicherheitsluecke 1, 2026-10-20):
+    - True: Flag existiert definitiv.
+    - False: Flag existiert definitiv NICHT (Verbindung stand, kein Flag).
+    - None: UNBEKANNT (Verbindungsfehler -- Flag-Status konnte nicht
+      ermittelt werden). Der Aufrufer MUSS dann abbrechen, NICHT in den
+      Mirror-Modus zurueckfallen (sonst werden veraenderte Serverdateien
+      still ueberschrieben -- der Grund fuer diese Luecke).
+    """
     try:
-        return ssh_out(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip() == "1"
+        out = ssh_out(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip()
+        return out == "1"
     except Exception:
-        return False
+        return None  # UNBEKANNT, nicht False (Verbindungsfehler != Flag fehlt).
 
 
 def server_listing():
@@ -74,12 +85,25 @@ def server_listing():
 
 def divert(todo, old, srv):
     """Hauptkopie-Modus: Textnotizen, die auf dem Server seit dem letzten Abgleich geaendert wurden, werden hier NICHT ueberschrieben.
+    Sicherheitsluecke 2 (2026-10-20): eine Datei die auf dem Server existiert
+    aber NICHT im alten STATE steht (neu/unbekannt), wird ebenfalls NICHT
+    ueberschrieben -- sie geht nach Review als '(PC-Änderung)', damit die
+    Serverfassung erhalten bleibt. Vorher: wurde die Serverfassung still
+    ueberschrieben, weil `changed_on_server` nur Dateien schuetzte die im
+    STATE bekannt waren.
     Rueckgabe: (normal senden, als Kopie in 00 Inbox/Review auf den Server legen)."""
     send, copies = [], []
     for k in todo:
         s, b = srv.get(k), old.get(k)
+        # Geaendert auf dem Server seit letztem STATE?
         changed_on_server = bool(s and b and not (s[0] <= b[0] + 2 and s[1] == b[1]))
-        (copies if changed_on_server and k.lower().endswith(EXT) else send).append(k)
+        # NEU (Luecke 2): existiert auf dem Server, ist aber NICHT im STATE
+        # (unbekannte neue Datei) -> ebenfalls schuetzen, nicht ueberschreiben.
+        new_on_both_sides = bool(s and not b)
+        if (changed_on_server or new_on_both_sides) and k.lower().endswith(EXT):
+            copies.append(k)
+        else:
+            send.append(k)
     return send, copies
 
 
@@ -93,12 +117,22 @@ def main():
     cur = scan()
     todo = [k for k, v in cur.items() if old.get(k) != v]
     copies = []
-    if todo and not dry and master_on():
-        try:
-            todo, copies = divert(todo, old, server_listing())
-        except Exception as e:
-            log(f"Hauptkopie-Pruefung fehlgeschlagen, nichts gesendet: {e}")
+    if todo and not dry:
+        master = master_on()
+        if master is None:
+            # SICHERHEITSLUECKE 1 (2026-10-20): Verbindungsfehler bei der
+            # Flag-Pruefung -> UNBEKANNT, nicht False. Frueher wurde still in
+            # den Mirror-Modus zurueckgefallen und veraenderte Serverdateien
+            # wurden ueberschrieben. Jetzt: hart abbrechen, nichts gesendet.
+            log("Hauptkopie-Pruefung fehlgeschlagen (Verbindungsfehler), NICHTS gesendet: Flag-Status unbekannt, kein Mirror-Modus-Fallback.")
+            print("FEHLER: server-master-Flag konnte nicht geprueft werden (Verbindungsfehler). Abbruch, nichts gesendet.")
             return 1
+        if master:
+            try:
+                todo, copies = divert(todo, old, server_listing())
+            except Exception as e:
+                log(f"Hauptkopie-Pruefung fehlgeschlagen, nichts gesendet: {e}")
+                return 1
     print(f"{len(cur)} Dateien, {len(todo)} neu/geaendert, {len(copies)} als PC-Aenderung nach Review")
     if dry or not (todo or copies):
         if not (todo or copies):
