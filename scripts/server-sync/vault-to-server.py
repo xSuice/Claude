@@ -116,7 +116,8 @@ def main():
     full = "--full" in sys.argv
     dry = "--dry" in sys.argv
     try:
-        old = json.load(open(STATE, encoding="utf-8"))
+        with open(STATE, encoding="utf-8") as fh:
+            old = json.load(fh)
     except Exception:
         old = {}
     cur = scan()
