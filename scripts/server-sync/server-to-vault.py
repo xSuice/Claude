@@ -33,12 +33,17 @@ def ssh(cmd, binary=False, timeout=120):
 
 def listing(d):
     out = {}
-    for line in ssh(f"[ -d '{d}' ] && find '{d}' -type f -printf '%P\\t%T@\\t%s\\n' || true").splitlines():
-        try:
-            p, t, s = line.split("\t")
-            out[p] = (int(float(t)), int(s))
-        except ValueError:
-            pass
+    # Do not mask find/permission failures as a successful partial listing.
+    for line in ssh(f"if [ -d '{d}' ]; then find '{d}' -type f -printf '%P\\t%T@\\t%s\\n'; else exit 1; fi").splitlines():
+        p, t, s = line.split("\t")
+        if (not p or p in out or "\\" in p or ":" in p
+                or any(part in ("", ".", "..") for part in p.split("/"))
+                or any(ord(c) < 32 for c in p)):
+            raise ValueError("Invalid or duplicate listing path")
+        mt, size = int(float(t)), int(s)
+        if size < 0:
+            raise ValueError("Negative listing size")
+        out[p] = (mt, size)
     return out
 
 
@@ -59,9 +64,10 @@ FLAG = "/srv/ma-home/library/.jarvis/server-master"      # Datei auf dem Server:
 
 def master_on():
     try:
-        return ssh(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip() == "1"
+        out = ssh(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip()
+        return {"0": False, "1": True}.get(out)
     except Exception:
-        return False
+        return None
 
 
 def vanished(sent, srv, unchanged_here):
@@ -92,8 +98,11 @@ def main():
         inbox = listing(INBOX)
     except Exception as e:
         log(f"Server nicht erreichbar: {e}")
-        return 0
+        return 1
     master = master_on()
+    if master is None:
+        log("Hauptkopie-Status unbekannt, Abbruch ohne lokale Aenderungen")
+        return 1
     if master and not dry:
         def unchanged_here(rel, base):
             loc = os.path.join(VAULT, rel.replace("/", os.sep))

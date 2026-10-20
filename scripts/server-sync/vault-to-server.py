@@ -67,19 +67,24 @@ def master_on():
     """
     try:
         out = ssh_out(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip()
-        return out == "1"
+        return {"0": False, "1": True}.get(out)
     except Exception:
         return None  # UNBEKANNT, nicht False (Verbindungsfehler != Flag fehlt).
 
 
 def server_listing():
     out = {}
-    for line in ssh_out(f"[ -d '{DEST}' ] && find '{DEST}' -type f -printf '%P\\t%T@\\t%s\\n' || true").splitlines():
-        try:
-            p, t, s = line.split("\t")
-            out[p] = (int(float(t)), int(s))
-        except ValueError:
-            pass
+    # Do not mask find/permission failures as a successful partial listing.
+    for line in ssh_out(f"if [ -d '{DEST}' ]; then find '{DEST}' -type f -printf '%P\\t%T@\\t%s\\n'; else exit 1; fi").splitlines():
+        p, t, s = line.split("\t")
+        if (not p or p in out or "\\" in p or ":" in p
+                or any(part in ("", ".", "..") for part in p.split("/"))
+                or any(ord(c) < 32 for c in p)):
+            raise ValueError("Invalid or duplicate listing path")
+        mt, size = int(float(t)), int(s)
+        if size < 0:
+            raise ValueError("Negative listing size")
+        out[p] = (mt, size)
     return out
 
 
@@ -111,11 +116,11 @@ def main():
     full = "--full" in sys.argv
     dry = "--dry" in sys.argv
     try:
-        old = {} if full else json.load(open(STATE, encoding="utf-8"))
+        old = json.load(open(STATE, encoding="utf-8"))
     except Exception:
         old = {}
     cur = scan()
-    todo = [k for k, v in cur.items() if old.get(k) != v]
+    todo = [k for k, v in cur.items() if full or old.get(k) != v]
     copies = []
     if todo and not dry:
         master = master_on()
@@ -158,7 +163,16 @@ def main():
     if rc != 0:
         log(f"FEHLER ssh/tar rc={rc}: {err[:200]}")
         return 1
-    json.dump(cur, open(STATE, "w", encoding="utf-8"))
+    # Review copies did not update the original remote path. Keep its old
+    # baseline (also in --full), never acknowledge the unsent local edit.
+    synced = dict(cur)
+    for k in copies:
+        if k in old:
+            synced[k] = old[k]
+        else:
+            synced.pop(k, None)
+    with open(STATE, "w", encoding="utf-8") as state_file:
+        json.dump(synced, state_file)
     log(f"OK {len(todo)} Dateien uebertragen (gesamt {len(cur)})")
     # Wochen-Snapshot, 4 behalten
     wk = time.strftime("%G-W%V")
