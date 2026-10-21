@@ -207,7 +207,8 @@ def main():
         page.route(BASE + '/**', handler)
         page.goto(BASE + '/')
         page.wait_for_selector('#view .top', timeout=8000)
-        check('Startseite lädt, Version im Kopf', 'v2026-' in page.inner_text('.kicker').lower(), page.inner_text('.kicker'))
+        import re as _re
+        check('Startseite lädt, Version im Kopf', bool(_re.search(r'v\d{4}-\d{2}-\d{2}-\d+', page.inner_text('.kicker').lower())), page.inner_text('.kicker'))
         check('Jarvis-Karte erscheint', page.wait_for_selector('#jarvis', timeout=4000) is not None)
         page.click('#jarvis summary')
         page.click('#jarvis button[data-fb=again]')
