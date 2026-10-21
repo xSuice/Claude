@@ -175,6 +175,21 @@ def handler(route, request):
     return route.fulfill(status=200, content_type=mimetypes.guess_type(fp)[0] or 'text/plain', body=open(fp, 'rb').read())
 
 
+def wait_bridge(page, n0, rounds=160):
+    """Harness-Synchronisation: warten, bis die Suggest->Send-Kette des aktuellen Prompts als neuer
+    /api/claude-Aufruf an der Platzhalter-Bruecke angekommen ist (CALLS ist gewachsen)."""
+    for _ in range(rounds):
+        if len(CALLS) > n0:
+            return
+        page.wait_for_timeout(50)
+
+
+def wait_idle(page, timeout=8000):
+    """Harness-Synchronisation: klares UI-Merkmal fuer Abschluss des vorigen Prompts --
+    der Senden-Knopf zeigt nicht mehr „Stopp“ (Klick wuerde sonst abbrechen statt senden)."""
+    page.wait_for_function("!document.querySelector('#csend').innerText.toLowerCase().includes('stopp')", timeout=timeout)
+
+
 def main():
     results, errors = [], []
 
@@ -184,7 +199,7 @@ def main():
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        ctx = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True, accept_downloads=False)
+        ctx = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True, accept_downloads=False, service_workers='block')  # Harness 'ohne echtes Backend': SW-Script-Fetch liesse sich nicht ueber den Mock bedienen (browserinterner Konsolenfehler)
         ctx.grant_permissions([])
         page = ctx.new_page()
         page.on('pageerror', lambda e: errors.append('pageerror: ' + str(e)))
@@ -266,13 +281,21 @@ def main():
         att = [c for c in CALLS if c.get('attach')]
         check('Wiederanhängen nach Abbruch (attach ab Position 3)', att and att[-1].get('attach') == 'job123' and att[-1].get('from') == 3, att)
         # Automatischer Council bei einer Entscheidungsfrage
+        # Harness-Synchronisation (Pruefsemantik unveraendert): erst echte Signale abwarten, dann
+        # CALLS[-1] lesen. Der alte Wait auf 'Hallo' matchte stale Text aus frueheren Antworten.
+        wait_idle(page)                      # voriger Prompt bestaetigt abgeschlossen (kein Stopp-Knopf)
         page.fill('#cf textarea', 'Soll ich lieber Variante A oder Variante B nehmen, oder ein ganz anderes Konzept?')
+        n0 = len(CALLS)
         page.click('#csend')
-        page.wait_for_function("document.querySelector('#cmsgs').innerText.includes('Hallo')", timeout=8000)
+        wait_bridge(page, n0)                # Suggest->Send-Kette: dieser Prompt ist an der Bruecke
+        wait_idle(page)                      # Antwortkette abgeschlossen, bevor CALLS[-1] gelesen wird
         check('Council startet automatisch bei Entscheidungsfrage', str(CALLS[-1].get('prompt')).startswith('AI-Council:'), str(CALLS[-1].get('prompt'))[:60])
         page.fill('#cf textarea', 'Soll ich lieber A oder B nehmen? ohne Council')
+        n0 = len(CALLS)
         page.click('#csend')
         page.wait_for_function("document.querySelector('#cmsgs').innerText.includes('ohne Council')", timeout=8000)
+        wait_bridge(page, n0)
+        wait_idle(page)
         check('„ohne Council“ schaltet ihn ab', not str(CALLS[-1].get('prompt')).startswith('AI-Council:'))
         page.wait_for_function("!document.querySelector('#csend').innerText.toLowerCase().includes('stopp')", timeout=8000)
         page.fill('#cf textarea', 'Im Terminal soll der Ordner automatisch gewählt werden')
@@ -419,6 +442,9 @@ def main():
         page.wait_for_function("document.querySelector('#jvdet').innerText.toLowerCase().includes('braucht freigabe')", timeout=6000)
         sub = [x for x in JV_CALLS if x.get('cmd') == 'submit']
         check('JARVIS: Auftrag wird mit Schlüssel gesendet, Detail zeigt Freigabe', len(sub) == 1 and sub[0].get('request') == 'Neuer Auftrag eins' and len(sub[0].get('client_id', '')) >= 8, sub)
+        # Reale UI-Bedienlogik (freigegeben von jarvis-cloud-dev): bei wartendem Schritt verlangt der
+        # #jvok-Guard (app.js) eine Antwort auf die Rückfrage, bevor die Freigabe gesendet wird.
+        page.fill('#jvans', 'passt, fortfahren')
         page.click('#jvok')
         page.wait_for_function("document.querySelector('#jvdet').innerText.toLowerCase().includes('bericht.md')", timeout=6000)
         ap = [x for x in JV_CALLS if x.get('cmd') == 'approve']
