@@ -898,8 +898,8 @@ async function claude() {
     const b = e.target.closest('.cslashi'); if (!b) return;
     const ta = $('#cf').prompt; ta.value = '/' + b.dataset.c + ' '; $('#cslash').hidden = true; ta.focus();
   };
-  $('#cjump').onclick = () => { const b = $('#cmsgs'); b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); };
-  $('#cmsgs').addEventListener('scroll', () => { const b = $('#cmsgs'); $('#cjump').hidden = b.scrollHeight - b.scrollTop - b.clientHeight < 90; }, { passive: true });
+  $('#cjump').onclick = () => { const b = $('#cmsgs'); if (b) b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); };
+  $('#cmsgs').addEventListener('scroll', e => { const b = e.currentTarget; if (!b || !b.isConnected) return; const j = $('#cjump'); if (j) j.hidden = b.scrollHeight - b.scrollTop - b.clientHeight < 90; }, { passive: true });
   $('#csch').onclick = schedOpen;
   $('#cmsgs').onclick = claudeActions;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;   // Spracheingabe nur, wo der Browser sie kann (nicht im Android-WebView)
