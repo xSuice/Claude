@@ -18,6 +18,23 @@ ATT_MAX = 8 * 1024 * 1024
 MAXSIZE = 20 * 1024 * 1024
 SECRET_HINT = ("token", "passwort", "password", "apikey", "api-key", "secret", ".key", ".env")
 
+# S11 (Obsidian-Sync-Audit 2026-10-20): der alte Filter prueft nur den
+# Dateinamen, nie den Inhalt -- eine Notiz namens "Meeting.md" mit einem
+# eingefuegten API-Key waere ungeprueft auf den Server gegangen. Diese
+# Muster laufen NUR ueber Textdateien (EXT), nie ueber Bildanhaenge (ATT),
+# und blockieren konservativ: ein Treffer reicht, keine Content-Heuristik
+# versucht "false positive vermeiden" zu optimieren.
+CONTENT_SECRET_PATTERNS = (
+    r"-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----",
+    r"\bsk-[A-Za-z0-9]{20,}\b",                       # OpenAI/Anthropic-Stil
+    r"\bgh[pousr]_[A-Za-z0-9]{20,}\b",                 # GitHub-Token
+    r"\bAKIA[0-9A-Z]{16}\b",                           # AWS Access Key ID
+    r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b",               # Slack-Token
+    r"(?i:\b(?:api[_-]?key|secret|passwort|password)\s*[:=]\s*['\"]?[A-Za-z0-9/_\-\.]{8,})",
+)
+import re as _re
+_CONTENT_SECRET_RE = _re.compile("|".join(CONTENT_SECRET_PATTERNS))
+
 
 def log(msg):
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
@@ -25,8 +42,22 @@ def log(msg):
         f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
 
 
+def contains_secret(path):
+    """Konservativer Inhaltsscan fuer Textdateien (S11). Liest nie mehr als
+    MAXSIZE; ein Lesefehler blockiert NICHT (fail-open fuer IO-Fehler waere
+    hier vertretbar, da scan() ohnehin per Namen/Groesse filtert -- aber wir
+    melden es, statt es zu verschlucken)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read(MAXSIZE)
+    except OSError:
+        return False
+    return bool(_CONTENT_SECRET_RE.search(text))
+
+
 def scan():
     out = {}
+    skipped_secret = []
     for root, dirs, files in os.walk(VAULT):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for n in files:
@@ -40,7 +71,14 @@ def scan():
                 continue
             if st.st_size > MAXSIZE or (low.endswith(ATT) and st.st_size > ATT_MAX):
                 continue
-            out[os.path.relpath(p, VAULT).replace("\\", "/")] = [int(st.st_mtime), st.st_size]
+            rel = os.path.relpath(p, VAULT).replace("\\", "/")
+            if low.endswith(EXT) and contains_secret(p):
+                skipped_secret.append(rel)
+                continue
+            out[rel] = [int(st.st_mtime), st.st_size]
+    if skipped_secret:
+        log(f"Inhalts-Secret-Filter (S11): {len(skipped_secret)} Datei(en) NICHT gesendet: "
+            + ", ".join(skipped_secret[:20]))
     return out
 
 
