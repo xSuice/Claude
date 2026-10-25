@@ -39,6 +39,16 @@ from orders import Orders, killed
 import runner
 from secretscan import has_secret
 
+# Phase 1 Integration: Evidence-based routing (AP2 + AP3)
+try:
+    from task_classifier import TaskClassifier
+    from evidence_router import EvidenceRouter
+    _EVIDENCE_ROUTING_AVAILABLE = True
+except ImportError:
+    TaskClassifier = None  # type: ignore
+    EvidenceRouter = None  # type: ignore
+    _EVIDENCE_ROUTING_AVAILABLE = False
+
 IMPROVE_RESULT = 'improve-trial.json'
 IMPROVE_CAP = 'improve.trial'  # stored as a 'local' step (the job_steps CHECK on kind cannot be altered in place)
 SCHEMA = '''
@@ -306,6 +316,15 @@ class Engine:
         self.reg, self.ledger, self.claude, self.learning = registry, ledger, claude, learning
         self.route, self.router = route, router
         self.cfg, self.clock, self.pressure = cfg, clock, pressure
+        
+        # Phase 1 Integration: Lazy-init evidence_router (AP3)
+        self.evidence_router = None
+        if _EVIDENCE_ROUTING_AVAILABLE and EvidenceRouter is not None:
+            try:
+                self.evidence_router = EvidenceRouter(self.ledger, fail_closed=True)
+            except Exception:  # noqa: BLE001 - evidence_router init failure -> None (fallback to Claude-Router)
+                pass
+        
         self.orders = Orders(brain)
         self.accept = Acceptance(registry)
         self.state_dir = Path(cfg['state_dir'])
@@ -659,12 +678,63 @@ class Engine:
             return j['spec']['model'], 'manuell (Philipp)'
         if step_model in ('haiku', 'sonnet', 'opus'):
             return step_model, 'Plan'
+        
+        # === PHASE 1 INTEGRATION: AP2 + AP3 (Two-Tier Routing) ===
+        # Tier 1: EvidenceRouter (Provider-Selection: kimi_pro/nexum/local/None)
+        if _EVIDENCE_ROUTING_AVAILABLE and self.evidence_router is not None:
+            try:
+                # Lazy-init classifier (AP2)
+                if not hasattr(self, '_classifier'):
+                    if TaskClassifier is not None:
+                        self._classifier = TaskClassifier()
+                    else:
+                        self._classifier = None
+                
+                # Classify task complexity
+                complexity = 'routine'
+                strategic_flag = False
+                if self._classifier is not None:
+                    try:
+                        classification = self._classifier.classify(text[:4000])
+                        complexity = classification['complexity']
+                        strategic_flag = classification['strategic_flag']
+                    except Exception:  # noqa: BLE001 - classification failure -> default routine
+                        pass
+                
+                # Choose provider via evidence router (AP3)
+                provider = self.evidence_router.choose(
+                    task_text=text[:4000],
+                    complexity=complexity,
+                    strategic_flag=strategic_flag
+                )
+                
+                # Update tasks table with classification (Spec §2.2)
+                try:
+                    with self._conn(True) as c:
+                        c.execute(
+                            "UPDATE jobs SET task_type = ? WHERE id = ?",
+                            (complexity, j['id'])
+                        )
+                except Exception:  # noqa: BLE001 - DB update failure must not block routing
+                    pass
+                
+                # Provider-Selection: kimi_pro/nexum → direkt return (kein Claude-Call)
+                if provider == 'kimi_pro':
+                    return 'kimi_pro', f'MA-Evidence-Router: {complexity} → kimi_pro'
+                elif provider == 'nexum':
+                    return 'nexum', f'MA-Evidence-Router: {complexity} → nexum'
+                # provider == 'local' or None → fall through to Claude-Router (Tier 2)
+                
+            except Exception:  # noqa: BLE001 - evidence routing failure → fall through to Claude-Router
+                pass
+        
+        # Tier 2: Claude-Router (bestehend) für lokale Modell-Selection (haiku/sonnet/opus)
         m, reason = 'sonnet', 'Standard'
         if self.router:
             try:
                 m, _effort, reason = self.router.choose(text[:4000])
                 reason = 'MA-Auto-Router: ' + reason
-            except Exception:  # noqa: BLE001 - router failure -> status quo
+            except Exception:  # noqa: BLE001 - router failure → status quo
                 m, reason = 'sonnet', 'Router nicht verfügbar'
         if planning and m == 'haiku':
             m = 'sonnet'  # planning quality matters more than one cheap call
