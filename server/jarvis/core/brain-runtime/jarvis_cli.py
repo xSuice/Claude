@@ -31,6 +31,7 @@ from ledger import Ledger, bridge_plan_probe  # noqa: E402
 from learning import Learning  # noqa: E402
 import sandbox  # noqa: E402
 from taskengine import Engine, make_tar, safe_extract, FINAL  # noqa: E402
+import stagnation  # P3: watchdog hardening
 from workers import ClaudeWorker, HelperRoute  # noqa: E402
 
 VERSION = '16.0'
@@ -132,6 +133,16 @@ def cmd_tick(app, cfg, a):
                 fh.write(time.strftime('%Y-%m-%dT%H:%M:%S ') + json.dumps(res, ensure_ascii=False, default=str)[:4000] + '\n')
         except OSError:
             pass
+    # P3: Stagnation and loop detection (rate-limited to 3 checks)
+    stagnation_conn = stagnation.get_staging_conn()
+    if stagnation_conn:
+        try:
+            stag_results = stagnation.stagnation_check(stagnation_conn, max_checks=3)
+            loop_results = stagnation.loop_detection(stagnation_conn, max_checks=3)
+            res[stagnation] = stag_results
+            res[loop_detection] = loop_results
+        finally:
+            stagnation_conn.close()
     return out(res)
 
 
