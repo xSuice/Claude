@@ -36,7 +36,7 @@ DEFAULT_LIMITS = {
     'claude': {'calls_per_day': 40, 'tokens_per_day': 1_500_000, 'identity_calls_per_day': 30, 'max_concurrent': 1},
     'helper': {'calls_per_day': 30, 'tokens_per_day': 150_000, 'identity_calls_per_day': 30, 'max_concurrent': 2},
     'stale_after_s': 3600,
-    'plan_guard': {'five_hour_max_pct': 70, 'week_max_pct': 85, 'fail_closed': False},
+    'plan_guard': {'five_hour_max_pct': 70, 'week_max_pct': 85, 'fail_closed': True},
 }
 
 
