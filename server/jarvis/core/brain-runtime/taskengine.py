@@ -1016,6 +1016,12 @@ class Engine:
             return self._finalize(self._job(j['id']), forced=str(e))
         except CapError as e:
             r = {'ok': False, 'detail': f'Ungültiger Aufruf: {e}'}
+        # Fencing: Ergebnis nur persistieren, wenn der Lease noch bei uns liegt. Ein Verlust-
+        # Nachfolger besitzt den Auftrag; unsere spaete Antwort wird verworfen statt ueberschrieben.
+        if not self._lease(j['id']):
+            self.event(j['id'], 'fenced',
+                       f'Schritt {s["sid"]}: Lease verloren - Ergebnis des vorherigen Inhabers verworfen')
+            return {'progress': True, 'why': 'fenced'}
         if r.get('final'):  # no correction round can help (e.g. daily trial limit)
             self._step_set(s['id'], state='failed', result=r)
             self.event(j['id'], 'step_failed', f'Schritt {s["sid"]} ({s["title"]}) gescheitert: {r.get("detail", "")[:600]}')

@@ -44,7 +44,7 @@ def attribute_job(st: dict, events: list[dict] | None = None) -> dict:
 
     # Konsistenz: jeder gezählte Claude-Aufruf braucht ein Ereignis, sonst keine Behauptung.
     if events is not None:
-        n_ev = sum(1 for e in events if e.get('kind') == 'claude_done')
+        n_ev = sum(1 for e in events if e.get('kind') in ('claude_done', 'cloud_done'))
         if n_ev != len(calls):
             return _out(None, 'nicht verifiziert', '', '', ref, f'{len(calls)} Modellaufrufe, aber {n_ev} Ereignisse')
     if int(st.get('claude_calls') or 0) != len(calls):
