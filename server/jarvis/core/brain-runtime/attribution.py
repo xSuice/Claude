@@ -47,8 +47,10 @@ def attribute_job(st: dict, events: list[dict] | None = None) -> dict:
         n_ev = sum(1 for e in events if e.get('kind') in ('claude_done', 'cloud_done'))
         if n_ev != len(calls):
             return _out(None, 'nicht verifiziert', '', '', ref, f'{len(calls)} Modellaufrufe, aber {n_ev} Ereignisse')
-    if int(st.get('claude_calls') or 0) != len(calls):
-        return _out(None, 'nicht verifiziert', '', '', ref, f'Zähler claude_calls={st.get("claude_calls")} ≠ {len(calls)} Aufrufe')
+    n_claude_calls = sum(1 for c in calls if not str(c.get('model') or '').startswith('cloud:'))
+    if int(st.get('claude_calls') or 0) != n_claude_calls:
+        return _out(None, 'nicht verifiziert', '', '', ref,
+                    f'Zähler claude_calls={st.get("claude_calls")} ≠ {n_claude_calls} Claude-Aufrufe')
     if verdict == 'done' and not (claude_steps or local or template or local_answer):
         return _out(None, 'nicht verifiziert', '', '', ref, 'abgeschlossen ohne belegten ausgeführten Schritt')
 
