@@ -39,6 +39,14 @@ from orders import Orders, killed
 import runner
 from secretscan import has_secret
 
+try:
+    from cloud_worker import quota_exhausted as _quota_exhausted
+except ImportError:  # V16.1: Fallback-Modul nicht im Release (alte Kopie)
+
+    def _quota_exhausted(err: str) -> bool:
+        e = str(err or '').lower()
+        return any(s in e for s in ('usage_limit_reached', 'weekly limit', 'hit your usage limit'))
+
 # Phase 1 Integration: Evidence-based routing (AP2 + AP3)
 try:
     from task_classifier import TaskClassifier
@@ -357,6 +365,17 @@ class Engine:
             except Exception:  # noqa: BLE001 - evidence_router init failure -> None (fallback to Claude-Router)
                 pass
         
+        # V16.1: Cloud-Fallback-Brain (aktiv nur bei Claude-Kontingent-Problem oder expliziter Route)
+        self.cloud = None
+        _cf = cfg.get('cloud_fallback') or {}
+        if _cf.get('enabled'):
+            try:
+                from cloud_worker import CloudWorker
+                _cw = CloudWorker(_cf)
+                self.cloud = _cw if _cw.available() else None
+            except Exception:  # noqa: BLE001 - Fallback ist optional und nie blockierend
+                self.cloud = None
+
         self.orders = Orders(brain)
         self.accept = Acceptance(registry)
         self.state_dir = Path(cfg['state_dir'])
@@ -818,6 +837,46 @@ class Engine:
                                            f'Ergebnis {"ok" if r["ok"] else "Fehler: " + str(r["error"])[:200]}')
         return r
 
+    def _cloud_call(self, j: dict, *, prompt: str, system: str, sid: str, files: bool = False,
+                    timeout_s: int | None = None) -> dict | None:
+        """Budget-checkter Cloud-Fallback-Aufruf (Ledger-Kind 'nexum', Tageskostenlimit fail-closed).
+        Rueckgabe wie _claude_call: Worker-Ergebnisdict oder None bei Deferral."""
+        if self.cloud is None:
+            return None
+        est = 200_000
+        est_cost = round(est * (self.cloud.price_in + self.cloud.price_out) / 1_000_000, 4)
+        rid, why = self.ledger.reserve(self.brain.identity, self.project, 'nexum', est, j['id'],
+                                       check_plan=False, cost_usd=est_cost)
+        if why:
+            self._add_usage(j['id'], deferrals=1)
+            self.event(j['id'], 'deferred', f'Schritt {sid} (Cloud-Fallback) wartet: {why}')
+            return None
+        self.event(j['id'], 'cloud', f'Schritt {sid}: Cloud-Fallback ({self.cloud.model}) gestartet')
+        try:
+            if files:
+                r = self.cloud.run_files(prompt=prompt, system=system, workspace=Path(j['workspace']),
+                                         timeout_s=timeout_s)
+            else:
+                r = self.cloud.run(prompt=prompt, system=system, json_schema={'type': 'object'},
+                                   timeout_s=timeout_s)
+        except Exception as e:
+            self.ledger.release(rid, f'cloud worker crashed: {type(e).__name__}')
+            raise
+        u = r['usage']
+        self.ledger.settle(rid, u['new'] if u['known'] else None, r.get('list_usd'), note=r.get('subtype') or '')
+        self._add_usage(j['id'], tokens_new=u['new'] if u['known'] else est,
+                        list_usd=float(r.get('list_usd') or 0))
+        with self._conn(True) as c:  # gleiche Tabelle wie Claude-Aufrufe: Benchmark zaehlt jeden Token
+            c.execute('INSERT INTO job_calls(job_id,sid,model,ts,ms,ok,turns,known,tokens_in,cache_write,cache_read,tokens_out,'
+                      'list_usd) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                      (j['id'], sid, f'cloud:{self.cloud.model}', now_s(self.clock), r.get('ms'),
+                       int(bool(r.get('ok'))), r.get('turns'), int(bool(u.get('known'))),
+                       u.get('in', 0), u.get('cache_write', 0), u.get('cache_read', 0), u.get('out', 0),
+                       float(r.get('list_usd') or 0)))
+        self.event(j['id'], 'cloud_done', f'Schritt {sid}: Cloud {self.cloud.model}, {r["ms"] // 1000} s, '
+                                           f'neu {u["new"]} Token, Ergebnis {"ok" if r["ok"] else "Fehler: " + str(r["error"])[:200]}')
+        return r
+
     # ------------------------------------------------------------------ planning
     def _plan(self, j: dict) -> dict:
         self._set(j['id'], state='planning', started=j['started'] or now_s(self.clock))
@@ -851,7 +910,7 @@ class Engine:
                 self.event(j['id'], 'failed', f'Planung gescheitert: {plan[:800]}')
                 self._close_goal(j, 'failure', f'Planung gescheitert: {plan[:300]}')
                 return {'progress': True, 'state': 'failed'}
-            source = f'claude:adapted:{example["id"]}' if example else 'claude'
+            source = getattr(self, '_last_plan_source', 'claude')
         with self._conn(True) as c:
             c.execute('DELETE FROM job_steps WHERE job_id=?', (j['id'],))
             for i, s in enumerate(plan['steps']):
@@ -934,6 +993,7 @@ class Engine:
         return '\n'.join(rows) or '(leer)'
 
     def _plan_with_claude(self, j: dict, example: dict | None = None):
+        self._last_plan_source = f'claude:adapted:{example["id"]}' if example else 'claude'
         spec = j['spec']
         caps = self.reg.catalog_for_planner()
         lessons = self.learning.lessons(spec, (example or {}).get('task_type')) if self.learning else ''
@@ -968,6 +1028,22 @@ class Engine:
             except ValueError as e:
                 last_err = str(e)
                 self.event(j['id'], 'plan_invalid', last_err[:800])
+        if last_err and _quota_exhausted(last_err) and self.cloud is not None:
+            self.event(j['id'], 'cloud_fallback', 'Claude-Kontingent erschöpft - Planung ueber Cloud-Fallback')
+            r = self._cloud_call(j, prompt=prompt, system=PLANNER_SYSTEM, sid='plan:cloud')
+            if r is None:
+                return None
+            if r['ok']:
+                data = r.get('structured') if isinstance(r.get('structured'), dict) else _first_json(r['text'])
+                try:
+                    plan = validate_plan(data, self.reg, spec, self.jd['max_steps'])
+                    self._last_plan_source = f'cloud:adapted:{example["id"]}' if example else 'cloud:nexum'
+                    return plan
+                except ValueError as e:
+                    last_err = f'Cloud-Plan ungueltig: {e}'
+                    self.event(j['id'], 'plan_invalid', last_err[:800])
+            else:
+                last_err = f'Cloud-Fallback fehlgeschlagen: {r["error"]}'
         return last_err or 'unbekannter Fehler'
 
     # ------------------------------------------------------------------ step execution
@@ -1047,10 +1123,18 @@ class Engine:
         r = self._claude_call(j, prompt=prompt, model=model, tools=tools, system=WORKER_SYSTEM, sid=s['sid'])
         if r is None:
             return None
+        cloud_fallback = False
+        if not r['ok'] and _quota_exhausted(r.get('error') or '') and self.cloud is not None:
+            self.event(j['id'], 'cloud_fallback', f'Schritt {s["sid"]}: Claude-Kontingent erschöpft - Cloud-Fallback')
+            rc = self._cloud_call(j, prompt=prompt, system=WORKER_SYSTEM, sid=s['sid'], files=True)
+            if rc is None:
+                return None
+            r = rc
+            cloud_fallback = True
         w = Path(j['workspace'])
         missing = [o for o in st['outputs'] if not (w / o).exists()]
         out = {'ok': r['ok'] and not missing, 'model': model, 'model_reason': why, 'summary': (r['text'] or '')[-1200:],
-               'usage': r['usage'], 'ms': r['ms']}
+               'usage': r['usage'], 'ms': r['ms'], 'cloud_fallback': cloud_fallback}
         if not r['ok']:
             out['detail'] = f'Claude-Aufruf: {r["error"]}'
         elif missing:
