@@ -309,6 +309,38 @@ def read_pressure() -> dict:
     return out
 
 
+
+# --- AP-4: lazy provider registry (fail-closed) ---
+_provider_registry = None
+_provider_registry_warned = False
+
+def _get_provider_registry():
+    global _provider_registry, _provider_registry_warned
+    if _provider_registry is not None:
+        return _provider_registry
+    try:
+        from provider_registry import ProviderRegistry
+        _provider_registry = ProviderRegistry()
+        return _provider_registry
+    except Exception:
+        if not _provider_registry_warned:
+            import logging
+            logging.getLogger("taskengine").warning(
+                "provider_registry unavailable, using raw provider strings")
+            _provider_registry_warned = True
+        return None
+
+def _resolve_canonical(provider_str: str) -> str:
+    reg = _get_provider_registry()
+    if reg is None:
+        return provider_str
+    try:
+        return reg.resolve(provider_str).canonical
+    except Exception:
+        return provider_str
+# --- end AP-4 ---
+
+
 class Engine:
     def __init__(self, *, brain, project: str, registry, ledger, claude, learning, cfg: dict,
                  route=None, router=None, clock=time.time, pressure=read_pressure):
@@ -702,11 +734,11 @@ class Engine:
                         pass
                 
                 # Choose provider via evidence router (AP3)
-                provider = self.evidence_router.choose(
+                provider = _resolve_canonical(self.evidence_router.choose(
                     task_text=text[:4000],
                     complexity=complexity,
                     strategic_flag=strategic_flag
-                )
+                ))  # AP-4: canonical via provider_registry
                 
                 # Update tasks table with classification (Spec §2.2)
                 try:

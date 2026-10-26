@@ -371,6 +371,14 @@ def build(cfg_path: Path) -> Daemon:
     if d.get('providers'):  # V11: optional cloud helpers, default cloud_enabled=false
         from provider_adapter import HelperClient, load as load_providers
         from route_policy import RoutePolicy
+        # AP-4: load provider registry (fail-closed, log if unavailable)
+        _registry = None
+        try:
+            from provider_registry import ProviderRegistry
+            _registry = ProviderRegistry()
+        except Exception as _e:
+            import logging
+            logging.getLogger("daemon").warning("provider_registry unavailable: %s", _e)
         helpers = HelperClient(load_providers(rel('providers')), brain.db_path.parent / 'helpers.sqlite3', brain.identity)
         r = d.get('router', {})
         route = RoutePolicy(brain.db_path.parent / 'route.sqlite3', r.get('cmd'), helpers, r.get('mode', 'shadow'),

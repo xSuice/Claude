@@ -86,6 +86,32 @@ def merge_limits(cfg: dict | None) -> dict:
     return out
 
 
+
+# --- AP-4: lazy provider registry (fail-closed) ---
+_provider_registry = None
+
+def _get_provider_registry():
+    global _provider_registry
+    if _provider_registry is not None:
+        return _provider_registry
+    try:
+        from provider_registry import ProviderRegistry
+        _provider_registry = ProviderRegistry()
+        return _provider_registry
+    except Exception:
+        return None
+
+def _resolve_quota_bucket(resource: str) -> str:
+    reg = _get_provider_registry()
+    if reg is None:
+        return resource
+    try:
+        return reg.resolve(resource).quota_bucket
+    except Exception:
+        return resource
+# --- end AP-4 ---
+
+
 class Ledger:
     def __init__(self, db: Path, limits: dict | None = None, clock=time.time, plan_probe=None):
         self.db = Path(db).expanduser()
@@ -118,20 +144,14 @@ class Ledger:
 
     @staticmethod
     def kind(resource: str) -> str:
-        """Map resource name to provider kind.
-
-        'claude' / 'claude:*' -> 'claude'
-        'kimi_pro' / 'kimi_pro:*' -> 'kimi_pro'
-        'nexum' / 'nexum:*' -> 'nexum'
-        everything else -> 'helper'
-        """
-        if resource == 'claude' or resource.startswith('claude:'):
-            return 'claude'
-        if resource == 'kimi_pro' or resource.startswith('kimi_pro:'):
-            return 'kimi_pro'
-        if resource == 'nexum' or resource.startswith('nexum:'):
-            return 'nexum'
-        return 'helper'
+        """Map resource name to provider kind (AP-4: via provider_registry)."""
+        base = resource.split(':', 1)[0]
+        bucket = _resolve_quota_bucket(base)
+        canon_to_bucket = {
+            'claude': 'claude', 'kimi-pro': 'kimi_pro',
+            'nexum-v1': 'nexum', 'sonnet': 'local', 'helper': 'helper',
+        }
+        return canon_to_bucket.get(bucket, bucket if bucket in PROVIDER_KINDS else 'helper')
 
     def _used(self, c, where: str, args: tuple, now: int) -> tuple[int, int]:
         r = c.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN state='settled' THEN COALESCE(tokens_used, tokens_reserved) "
@@ -191,15 +211,8 @@ class Ledger:
         now = int(self.clock())
         with self._conn(True) as c:
             stale = now - int(self.limits['stale_after_s'])
-            # Build LIKE pattern for this provider kind
-            if kind == 'claude':
-                like = 'claude%'
-            elif kind == 'kimi_pro':
-                like = 'kimi_pro%'
-            elif kind == 'nexum':
-                like = 'nexum%'
-            else:
-                like = 'helper%'
+            # AP-4: LIKE pattern from resolved kind (fail-closed)
+            like = f'{kind}%'
             calls, toks = self._used(c, 'resource LIKE ?', (like,), now)
             if calls + 1 > lim['calls_per_day']:
                 return None, f'global daily {kind} call limit {lim["calls_per_day"]} reached'
@@ -263,14 +276,8 @@ class Ledger:
         lim = self.limits[kind]
         now = int(self.clock())
 
-        if kind == 'claude':
-            like = 'claude%'
-        elif kind == 'kimi_pro':
-            like = 'kimi_pro%'
-        elif kind == 'nexum':
-            like = 'nexum%'
-        else:
-            like = 'helper%'
+        # AP-4: LIKE pattern from resolved kind (fail-closed)
+        like = f'{kind}%'
 
         with self._conn() as c:
             calls_used, tokens_used = self._used(c, 'resource LIKE ?', (like,), now)
