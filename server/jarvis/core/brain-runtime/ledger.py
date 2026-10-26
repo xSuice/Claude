@@ -32,7 +32,7 @@ CREATE INDEX IF NOT EXISTS reservations_res_ts ON reservations(resource, ts);
 CREATE INDEX IF NOT EXISTS reservations_id_ts ON reservations(identity, ts);
 '''
 # Provider kinds: 'claude', 'helper' (legacy), 'kimi_pro', 'nexum' (Phase 1)
-PROVIDER_KINDS = ('claude', 'helper', 'kimi_pro', 'nexum')
+PROVIDER_KINDS = ('claude', 'helper', 'kimi_pro', 'nexum', 'local')  # 'local' = alias for sonnet (Phase 2 AP-3)
 DAY = 86400
 DEFAULT_LIMITS = {
     'claude': {'calls_per_day': 40, 'tokens_per_day': 1_500_000, 'identity_calls_per_day': 30, 'max_concurrent': 1},
