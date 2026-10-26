@@ -1,0 +1,42 @@
+[Unit]
+Description=MA-HOME JARVIS Portal (HTTP API)
+Documentation=https://hermes-agent.nousresearch.com/docs
+After=network-online.target postgresql.service jarvis-core.target
+Wants=network-online.target
+Requires=postgresql.service
+PartOf=jarvis-core.target
+
+[Service]
+Type=simple
+User=ma-web
+Group=ma-web
+# --- Arbeitsverzeichnis & Binary ---
+WorkingDirectory=/opt/jarvis/portal
+ExecStart=/opt/jarvis/portal/venv/bin/python -m jarvis.portal.http
+# --- Restart-Policy ---
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+# --- Systemd-Sandbox (Härtung) ---
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/jarvis/portal/var /var/log/jarvis/portal
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+MemoryDenyWriteExecute=true
+# --- Netzwerk ---
+# Bind nur an Loopback, Reverse-Proxy terminiert TLS
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# --- Secrets ---
+EnvironmentFile=/etc/jarvis/portal.env
+# --- Observability ---
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis-portal
+
+[Install]
+WantedBy=multi-user.target
