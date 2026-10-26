@@ -90,7 +90,8 @@ class LedgerTests(unittest.TestCase):
         self.assertIsNotNone(led.reserve('a', 'p', 'helper:gemini', 10)[0])   # helpers are not on the Claude plan
         led2 = Ledger(t / 's2.db', {'plan_guard': {'fail_closed': True}}, plan_probe=lambda: None)
         self.assertIsNone(led2.reserve('a', 'p', 'claude', 10)[0])
-        led3 = Ledger(t / 's3.db', plan_probe=lambda: (_ for _ in ()).throw(OSError('bridge down')))
+        led3 = Ledger(t / 's3.db', {'plan_guard': {'fail_closed': False}},
+                      plan_probe=lambda: (_ for _ in ()).throw(OSError('bridge down')))
         self.assertIsNotNone(led3.reserve('a', 'p', 'claude', 10)[0])            # unknown + not fail_closed -> allowed
 
     def test_units_are_reported_separately(self):

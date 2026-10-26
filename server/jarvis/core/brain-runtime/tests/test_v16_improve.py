@@ -2,6 +2,7 @@
 throwaway git repo, no promotion. Linux (sandbox) only."""
 import copy
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -44,6 +45,7 @@ class Base(unittest.TestCase):
         sh(self.repo, 'add', '.')
         sh(self.repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init')
         (self.t / 'actions.json').write_text(json.dumps(ACTIONS))
+        os.chmod(self.t / 'actions.json', 0o600)  # umask-002-Server: sonst group-writable
         self.cfg = {'improve': {'enabled': True, 'repo': str(self.repo), 'actions': str(self.t / 'actions.json'), 'checks': ['unit']}}
 
     def patch(self, rel, text):
