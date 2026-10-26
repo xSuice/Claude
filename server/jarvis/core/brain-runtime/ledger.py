@@ -148,7 +148,7 @@ class Ledger:
         base = resource.split(':', 1)[0]
         bucket = _resolve_quota_bucket(base)
         canon_to_bucket = {
-            'claude': 'claude', 'kimi-pro': 'kimi_pro',
+            'claude': 'claude', 'kimi-pro': 'kimi_pro', 'kimi': 'kimi_pro', 'kimi_pro': 'kimi_pro',
             'nexum-v1': 'nexum', 'sonnet': 'local', 'helper': 'helper',
         }
         return canon_to_bucket.get(bucket, bucket if bucket in PROVIDER_KINDS else 'helper')
