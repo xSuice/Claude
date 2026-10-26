@@ -103,9 +103,9 @@ class TestCloudWorker(unittest.TestCase):
 
     def test_available_requires_key_perms(self):
         with tempfile.TemporaryDirectory() as td:
-            k = _key_file(Path(td))
-            k.chmod(0o644)
-            self.assertFalse(CloudWorker(_cfg(Path(td))).available())
+            cfg = _cfg(Path(td))
+            Path(cfg['key_file']).chmod(0o644)
+            self.assertFalse(CloudWorker(cfg).available())
 
     def test_run_ok_shape(self):
         with tempfile.TemporaryDirectory() as td:
