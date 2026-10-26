@@ -367,6 +367,11 @@ class Engine:
         
         # V16.1: Cloud-Fallback-Brain (aktiv nur bei Claude-Kontingent-Problem oder expliziter Route)
         self.cloud = None
+        import inspect as _inspect
+        try:
+            self._reserve_cost_supported = 'cost_usd' in _inspect.signature(self.ledger.reserve).parameters
+        except (TypeError, ValueError):
+            self._reserve_cost_supported = False
         _cf = cfg.get('cloud_fallback') or {}
         if _cf.get('enabled'):
             try:
@@ -845,8 +850,12 @@ class Engine:
             return None
         est = 200_000
         est_cost = round(est * (self.cloud.price_in + self.cloud.price_out) / 1_000_000, 4)
-        rid, why = self.ledger.reserve(self.brain.identity, self.project, 'nexum', est, j['id'],
-                                       check_plan=False, cost_usd=est_cost)
+        if self._reserve_cost_supported:
+            rid, why = self.ledger.reserve(self.brain.identity, self.project, 'nexum', est, j['id'],
+                                           check_plan=False, cost_usd=est_cost)
+        else:
+            rid, why = self.ledger.reserve(self.brain.identity, self.project, 'nexum', est, j['id'],
+                                           check_plan=False)
         if why:
             self._add_usage(j['id'], deferrals=1)
             self.event(j['id'], 'deferred', f'Schritt {sid} (Cloud-Fallback) wartet: {why}')
