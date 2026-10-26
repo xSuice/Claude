@@ -53,6 +53,9 @@ FF_VALUE = re.compile(r'^[0-9A-Za-z_.:=,x/*+-]{1,80}$')
 _WAV = base64.b64encode(b'RIFF4\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00@\x1f\x00\x00@\x1f\x00\x00\x01\x00\x08\x00'
                         b'data\x08\x00\x00\x00' + b'\x80' * 8).decode()
 
+# one-page PDF (60x40 pt, text "Hi") for the pdftoppm self-test
+_PDF = 'JVBERi0xLjMKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSCj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nIC9OYW1lIC9GMSAvU3VidHlwZSAvVHlwZTEgL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDcgMCBSIC9NZWRpYUJveCBbIDAgMCA2MCA0MCBdIC9QYXJlbnQgNiAwIFIgL1Jlc291cmNlcyA8PAovRm9udCAxIDAgUiAvUHJvY1NldCBbIC9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9JbWFnZUkgXQo+PiAvUm90YXRlIDAgL1RyYW5zIDw8Cgo+PiAKICAvVHlwZSAvUGFnZQo+PgplbmRvYmoKNCAwIG9iago8PAovUGFnZU1vZGUgL1VzZU5vbmUgL1BhZ2VzIDYgMCBSIC9UeXBlIC9DYXRhbG9nCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9BdXRob3IgKGFub255bW91cykgL0NyZWF0aW9uRGF0ZSAoRDoyMDAwMDEwMTAwMDAwMCswMCcwMCcpIC9DcmVhdG9yIChhbm9ueW1vdXMpIC9LZXl3b3JkcyAoKSAvTW9kRGF0ZSAoRDoyMDAwMDEwMTAwMDAwMCswMCcwMCcpIC9Qcm9kdWNlciAoUmVwb3J0TGFiIFBERiBMaWJyYXJ5IC0gXChvcGVuc291cmNlXCkpIAogIC9TdWJqZWN0ICh1bnNwZWNpZmllZCkgL1RpdGxlICh1bnRpdGxlZCkgL1RyYXBwZWQgL0ZhbHNlCj4+CmVuZG9iago2IDAgb2JqCjw8Ci9Db3VudCAxIC9LaWRzIFsgMyAwIFIgXSAvVHlwZSAvUGFnZXMKPj4KZW5kb2JqCjcgMCBvYmoKPDwKL0ZpbHRlciBbIC9BU0NJSTg1RGVjb2RlIC9GbGF0ZURlY29kZSBdIC9MZW5ndGggOTAKPj4Kc3RyZWFtCkdhcFFoMEU9RiwwVVxIM1RccE5ZVF5RS2s/dGM+SVAsO1cjVTFeMjNpaFBFTV8/Q1c0S0lTaVowSmxjOGFdNl5XYU9GL3BhXGlEbCFcJHQoIVdZNyglbEZ+PmVuZHN0cmVhbQplbmRvYmoKeHJlZgowIDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDYxIDAwMDAwIG4gCjAwMDAwMDAwOTIgMDAwMDAgbiAKMDAwMDAwMDE5OSAwMDAwMCBuIAowMDAwMDAwMzkwIDAwMDAwIG4gCjAwMDAwMDA0NTggMDAwMDAgbiAKMDAwMDAwMDcxOSAwMDAwMCBuIAowMDAwMDAwNzc4IDAwMDAwIG4gCnRyYWlsZXIKPDwKL0lEIApbPDFjMTc4MTk4ZmJkZmE1MWIyNTk5NWQ4OWQ0MTAyMDQzPjwxYzE3ODE5OGZiZGZhNTFiMjU5OTVkODlkNDEwMjA0Mz5dCiUgUmVwb3J0TGFiIGdlbmVyYXRlZCBQREYgZG9jdW1lbnQgLS0gZGlnZXN0IChvcGVuc291cmNlKQoKL0luZm8gNSAwIFIKL1Jvb3QgNCAwIFIKL1NpemUgOAo+PgpzdGFydHhyZWYKOTU3CiUlRU9GCg=='
+
 BUILTIN: dict[str, dict] = {
     'python.run': {
         'title': 'Python-Skript im Arbeitsordner ausführen (Sandbox, ohne Netz; numpy/matplotlib/PIL/docx/openpyxl/reportlab verfügbar)',
@@ -90,6 +93,7 @@ BUILTIN: dict[str, dict] = {
         'params': {'input': {'type': 'relpath', 'ext': ['.docx', '.odt', '.xlsx', '.ods', '.pptx', '.odp', '.txt', '.rtf']},
                    'outdir': {'type': 'relpath', 'kind': 'dir', 'default': '.'}},
         'risk': 'reversible', 'timeout': 300, 'mem_mb': 4096, 'heavy': True,
+        'private_tmp': True,  # soffice legt seinen Pipe-Pfad unter /tmp an (im Jail schreibgeschützt): leeres, privates tmpfs
         'selftest': {'files': {'a.txt': 'Hallo PDF\n'}, 'args': {'input': 'a.txt'},
                      'expect': {'exit': 0, 'file': 'a.pdf', 'magic': 'pdf'}}},
     'image.convert': {
@@ -115,7 +119,9 @@ BUILTIN: dict[str, dict] = {
         'params': {'input': {'type': 'relpath', 'ext': ['.pdf']}, 'outprefix': {'type': 'relpath_out', 'ext': ['']},
                    'dpi': {'type': 'int', 'min': 30, 'max': 200, 'default': 72}, 'first': {'type': 'int', 'min': 1, 'max': 9999, 'default': 1},
                    'last': {'type': 'int', 'min': 1, 'max': 9999, 'default': 3}},
-        'risk': 'reversible', 'timeout': 180, 'mem_mb': 1024, 'selftest': None},
+        'risk': 'reversible', 'timeout': 180, 'mem_mb': 1024,
+        'selftest': {'files_b64': {'a.pdf': _PDF}, 'args': {'input': 'a.pdf', 'outprefix': 'o', 'dpi': 72, 'first': 1, 'last': 1},
+                     'expect': {'exit': 0, 'file': 'o-1.png', 'magic': 'png'}}},
     'data.jq': {
         'title': 'JSON filtern/umformen (jq); Ausgabe in eine Datei',
         'host': 'server', 'argv': ['jq', '{filter}', '{input}'], 'stdout_param': 'output',
@@ -520,7 +526,7 @@ class Registry:
             return {'exit': 126, 'ok': False, 'ms': 0, 'tail': 'no sandbox available: refused (fail closed)', 'sandboxed': False,
                     'cpu_ms': 0}
         exe = shutil.which(argv[0]) or argv[0]
-        wrapped = sandbox.wrap([exe, *argv[1:]], work, work, env, self.hide)
+        wrapped = sandbox.wrap([exe, *argv[1:]], work, work, env, [*self.hide, '/tmp'] if defn.get('private_tmp') else self.hide)
         t = min(timeout or defn.get('timeout', 300), defn.get('timeout', 300))
         start = time.monotonic()
         before = _child_cpu()

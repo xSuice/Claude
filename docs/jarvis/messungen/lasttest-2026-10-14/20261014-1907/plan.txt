@@ -1,0 +1,11 @@
+# Lastmessung 2026-10-14: off = ohne Takt, idle = Takt ohne Auftrag, load = echter Auftrag
+off
+idle
+load Schreibe ein Python-Modul zur Umwandlung zwischen römischen Zahlen und Dezimalzahlen (1 bis 3999) mit Fehlerbehandlung für ungültige Eingaben, unittest-Tests und README.
+idle
+load Erzeuge mit Python (Seed 42) einen simulierten stündlichen Temperaturverlauf über 7 Tage als CSV, zeichne ihn mit matplotlib als PNG und schreibe eine kurze Markdown-Auswertung mit Mittelwert, Minimum, Maximum und Tagesmitteln.
+off
+idle
+load Schreibe eine einseitige Markdown-Anleitung zum sicheren Umgang mit Passwörtern für Familienmitglieder und wandle sie mit pandoc in DOCX und HTML um.
+load2 Schreibe ein Python-Skript, das in einer Textdatei alle Palindrome mit mindestens 3 Buchstaben findet, mit unittest-Tests und einer Beispieldatei. || Erstelle ein Python-Skript, das ein Verzeichnis rekursiv nach doppelten Dateien (gleicher SHA-256) durchsucht und Gruppen ausgibt, mit unittest-Tests.
+idle

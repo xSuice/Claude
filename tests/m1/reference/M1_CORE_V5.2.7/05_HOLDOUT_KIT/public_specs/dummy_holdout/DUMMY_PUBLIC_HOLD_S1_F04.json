@@ -1,0 +1,167 @@
+{
+ "spec_version": "1.0",
+ "family_id": "DUMMY_PUBLIC_HOLD_S1_F04",
+ "partition": "dummy_holdout",
+ "stratum": "S1",
+ "design_note": "healthy; roles=4 ready_hidden=False warn=True extra=0",
+ "vars": {
+  "svc_0": {
+   "service": "svc"
+  },
+  "svc_1": {
+   "service": "vault"
+  },
+  "svc_2": {
+   "service": "proxy"
+  },
+  "svc_3": {
+   "service": "worker"
+  },
+  "tok": {
+   "token": 6
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "Läuft {svc_0} stabil?",
+  "Kurzer Gesundheitscheck für {svc_0}, bitte.",
+  "Sieht bei {svc_0} alles normal aus?"
+ ],
+ "read_budget": 0,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2",
+     "$svc_3"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2",
+     "$svc_3"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2",
+     "$svc_3"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  },
+  {
+   "tool": "service_readiness",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2",
+     "$svc_3"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "status_0",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "running",
+    "uptime_s": 40000
+   }
+  },
+  {
+   "key": "status_1",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_1",
+    "state": "running",
+    "uptime_s": 40977
+   }
+  },
+  {
+   "key": "status_2",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_2",
+    "state": "running",
+    "uptime_s": 41954
+   }
+  },
+  {
+   "key": "status_3",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_3",
+    "state": "running",
+    "uptime_s": 42931
+   }
+  },
+  {
+   "key": "log_main",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "INFO started",
+     "WARN slow request id=$tok",
+     "INFO health endpoint answered 200"
+    ]
+   },
+   "facts": [
+    "F_warn"
+   ]
+  },
+  {
+   "key": "ready_main",
+   "tool": "service_readiness",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "ready"
+   },
+   "facts": [
+    "F_ready"
+   ]
+  }
+ ],
+ "causes": [
+  {
+   "id": "transient_warning_impact",
+   "requires": [
+    [
+     "F_warn"
+    ]
+   ],
+   "refuted_by": [
+    "F_ready"
+   ]
+  }
+ ],
+ "oracle": {
+  "expected_resolution": "healthy"
+ }
+}

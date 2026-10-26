@@ -26,9 +26,29 @@ from pathlib import Path
 
 from helper_verify import PROMPTS, verify
 from provider_adapter import HelperClient, Refused, classify, load
+# AP-4: lazy provider registry (fail-closed)
+_provider_registry = None
+def _get_provider_registry():
+    global _provider_registry
+    if _provider_registry is not None:
+        return _provider_registry
+    try:
+        from provider_registry import ProviderRegistry
+        _provider_registry = ProviderRegistry()
+        return _provider_registry
+    except Exception:
+        return None
+
 
 
 def run(helpers: HelperClient, suite: Path, *, provider: str, project: str) -> dict:
+    # AP-4: resolve provider to canonical name (fail-closed)
+    _reg = _get_provider_registry()
+    if _reg is not None:
+        try:
+            provider = _reg.resolve(provider).canonical
+        except Exception:
+            pass  # keep raw provider string
     can = helpers.cfg.get('canary', {})
     if not can.get('enabled'):
         raise PermissionError('canary runs are disabled (providers.json canary.enabled=false)')

@@ -1,0 +1,146 @@
+{
+ "spec_version": "1.0",
+ "family_id": "DUMMY_PUBLIC_HOLD_S6_F07",
+ "partition": "dummy_holdout",
+ "stratum": "S6",
+ "design_note": "unknown error -> abstain; roles=1 budget=0 partial=False hidden=3",
+ "vars": {
+  "svc_0": {
+   "service": "reporter"
+  },
+  "svc_1": {
+   "service": "ledger"
+  },
+  "tok": {
+   "token": 6
+  },
+  "tok2": {
+   "token": 6
+  },
+  "dem": {
+   "int": [
+    20,
+    60
+   ]
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "Seltsame Fehlercodes bei {svc_0}, bitte einordnen.",
+  "{svc_0} bricht ohne erkennbaren Grund ab.",
+  "Kannst du die Fehler von {svc_0} erklären?"
+ ],
+ "read_budget": 0,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "log_app",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "ERROR E-$tok unexpected state transition",
+     "ERROR E-$tok2 handler aborted"
+    ]
+   },
+   "facts": [
+    "F_unknown_err"
+   ]
+  },
+  {
+   "key": "status_app",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "running",
+    "restarts": 1
+   }
+  },
+  {
+   "key": "hid_0",
+   "tool": "read_config",
+   "visible": true,
+   "payload": {
+    "service": "$svc_1",
+    "max_connections": 500
+   }
+  },
+  {
+   "key": "hid_1",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_1",
+    "lines": [
+     "INFO housekeeping done"
+    ]
+   }
+  },
+  {
+   "key": "hid_2",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_1",
+    "state": "running",
+    "restarts": 0
+   }
+  }
+ ],
+ "causes": [
+  {
+   "id": "resource_limit_below_demand",
+   "requires": [
+    [
+     "F_demand",
+     "F_limit_cfg"
+    ]
+   ]
+  },
+  {
+   "id": "dependency_down",
+   "requires": [
+    [
+     "F_dep_down"
+    ]
+   ]
+  }
+ ],
+ "oracle": {
+  "expected_resolution": "abstain"
+ }
+}

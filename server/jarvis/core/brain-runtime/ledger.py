@@ -31,12 +31,33 @@ CREATE TABLE IF NOT EXISTS reservations(
 CREATE INDEX IF NOT EXISTS reservations_res_ts ON reservations(resource, ts);
 CREATE INDEX IF NOT EXISTS reservations_id_ts ON reservations(identity, ts);
 '''
+# Provider kinds: 'claude', 'helper' (legacy), 'kimi_pro', 'nexum' (Phase 1)
+PROVIDER_KINDS = ('claude', 'helper', 'kimi_pro', 'nexum', 'local')  # 'local' = alias for sonnet (Phase 2 AP-3)
 DAY = 86400
 DEFAULT_LIMITS = {
     'claude': {'calls_per_day': 40, 'tokens_per_day': 1_500_000, 'identity_calls_per_day': 30, 'max_concurrent': 1},
     'helper': {'calls_per_day': 30, 'tokens_per_day': 150_000, 'identity_calls_per_day': 30, 'max_concurrent': 2},
+
+    # Phase 1: Kimi Pro Kontingent (strategisch)
+    'kimi_pro': {
+        'calls_per_day': 100,
+        'tokens_per_day': 5_000_000,
+        'cost_usd_per_day': 10.00,
+        'max_concurrent': 2,
+        'strategic_priority': True,
+    },
+
+    # Phase 1: Nexum Kontingent (routine)
+    'nexum': {
+        'calls_per_day': 500,
+        'tokens_per_day': 10_000_000,
+        'cost_usd_per_day': 5.00,
+        'max_concurrent': 5,
+        'strategic_priority': False,
+    },
+
     'stale_after_s': 3600,
-    'plan_guard': {'five_hour_max_pct': 70, 'week_max_pct': 85, 'fail_closed': False},
+    'plan_guard': {'five_hour_max_pct': 70, 'week_max_pct': 85, 'fail_closed': True},
 }
 
 
@@ -47,11 +68,48 @@ def merge_limits(cfg: dict | None) -> dict:
             out[k].update(v)
         else:
             out[k] = v
-    for kind in ('claude', 'helper'):
+    # Validate integer limits for all provider kinds
+    for kind in PROVIDER_KINDS:
+        if kind not in out:
+            continue
         for key, val in out[kind].items():
+            if key == 'strategic_priority':
+                if not isinstance(val, bool):
+                    raise ValueError(f'limit {kind}.{key} must be a bool')
+                continue
+            if key == 'cost_usd_per_day':
+                if not isinstance(val, (int, float)) or val < 0:
+                    raise ValueError(f'limit {kind}.{key} must be a number >= 0')
+                continue
             if type(val) is not int or val < 0:
                 raise ValueError(f'limit {kind}.{key} must be an integer >= 0')
     return out
+
+
+
+# --- AP-4: lazy provider registry (fail-closed) ---
+_provider_registry = None
+
+def _get_provider_registry():
+    global _provider_registry
+    if _provider_registry is not None:
+        return _provider_registry
+    try:
+        from provider_registry import ProviderRegistry
+        _provider_registry = ProviderRegistry()
+        return _provider_registry
+    except Exception:
+        return None
+
+def _resolve_quota_bucket(resource: str) -> str:
+    reg = _get_provider_registry()
+    if reg is None:
+        return resource
+    try:
+        return reg.resolve(resource).quota_bucket
+    except Exception:
+        return resource
+# --- end AP-4 ---
 
 
 class Ledger:
@@ -86,13 +144,27 @@ class Ledger:
 
     @staticmethod
     def kind(resource: str) -> str:
-        return 'claude' if resource == 'claude' or resource.startswith('claude:') else 'helper'
+        """Map resource name to provider kind (AP-4: via provider_registry)."""
+        base = resource.split(':', 1)[0]
+        bucket = _resolve_quota_bucket(base)
+        canon_to_bucket = {
+            'claude': 'claude', 'kimi-pro': 'kimi_pro',
+            'nexum-v1': 'nexum', 'sonnet': 'local', 'helper': 'helper',
+        }
+        return canon_to_bucket.get(bucket, bucket if bucket in PROVIDER_KINDS else 'helper')
 
     def _used(self, c, where: str, args: tuple, now: int) -> tuple[int, int]:
         r = c.execute(f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN state='settled' THEN COALESCE(tokens_used, tokens_reserved) "
                       f"ELSE tokens_reserved END),0) FROM reservations WHERE state!='released' AND ts>=? AND {where}",
                       (now - DAY, *args)).fetchone()
         return int(r[0]), int(r[1])
+
+    def _used_cost(self, c, where: str, args: tuple, now: int) -> float:
+        """Sum of list_usd (settled=actual, reserved=estimate) for a provider in the last 24h."""
+        r = c.execute(f"SELECT COALESCE(SUM(COALESCE(list_usd, 0.0)), 0.0) FROM reservations "
+                      f"WHERE state!='released' AND ts>=? AND {where}",
+                      (now - DAY, *args)).fetchone()
+        return float(r[0])
 
     def plan_check(self) -> str | None:
         """Real plan quota (percent) from the bridge. None = fine or unknown (unless fail_closed)."""
@@ -114,10 +186,22 @@ class Ledger:
         return None
 
     def reserve(self, identity: str, project: str, resource: str, tokens: int, job_id: str | None = None,
-                check_plan: bool = True) -> tuple[int | None, str]:
-        """Returns (reservation_id, '') or (None, reason). Atomic over all processes."""
+                check_plan: bool = True, cost_usd: float = 0.0) -> tuple[int | None, str]:
+        """Returns (reservation_id, '') or (None, reason). Atomic over all processes.
+
+        Args:
+            identity: Agent/process identity
+            project: Project name
+            resource: Provider resource (e.g. 'claude:sonnet', 'kimi_pro', 'nexum')
+            tokens: Estimated token count
+            job_id: Optional job identifier
+            check_plan: Whether to check Claude plan quota (only for claude kind)
+            cost_usd: Estimated cost in USD (for cost-tracked providers: kimi_pro, nexum)
+        """
         if type(tokens) is not int or tokens < 0:
             raise ValueError('tokens must be int >= 0')
+        if not isinstance(cost_usd, (int, float)) or cost_usd < 0:
+            raise ValueError('cost_usd must be a number >= 0')
         kind = self.kind(resource)
         lim = self.limits[kind]
         if kind == 'claude' and check_plan:
@@ -127,21 +211,30 @@ class Ledger:
         now = int(self.clock())
         with self._conn(True) as c:
             stale = now - int(self.limits['stale_after_s'])
-            like = 'claude%' if kind == 'claude' else 'helper%'
+            # AP-4: LIKE pattern from resolved kind (fail-closed)
+            like = f'{kind}%'
             calls, toks = self._used(c, 'resource LIKE ?', (like,), now)
             if calls + 1 > lim['calls_per_day']:
                 return None, f'global daily {kind} call limit {lim["calls_per_day"]} reached'
             if toks + tokens > lim['tokens_per_day']:
                 return None, f'global daily {kind} token limit {lim["tokens_per_day"]} reached'
-            icalls, _ = self._used(c, 'resource LIKE ? AND identity=?', (like, identity), now)
-            if icalls + 1 > lim['identity_calls_per_day']:
-                return None, f'daily {kind} call limit for {identity} reached'
+            # Identity-based call limit (for claude/helper which have identity_calls_per_day)
+            if 'identity_calls_per_day' in lim:
+                icalls, _ = self._used(c, 'resource LIKE ? AND identity=?', (like, identity), now)
+                if icalls + 1 > lim['identity_calls_per_day']:
+                    return None, f'daily {kind} call limit for {identity} reached'
+            # Cost limit (for kimi_pro, nexum)
+            if 'cost_usd_per_day' in lim and cost_usd > 0:
+                used_cost = self._used_cost(c, 'resource LIKE ?', (like,), now)
+                if used_cost + cost_usd > lim['cost_usd_per_day']:
+                    return None, f'daily {kind} cost limit {lim["cost_usd_per_day"]} USD reached (used {used_cost:.2f})'
             running = c.execute("SELECT COUNT(*) FROM reservations WHERE state='reserved' AND resource LIKE ? AND ts>=?",
                                 (like, stale)).fetchone()[0]
             if running + 1 > lim['max_concurrent']:
                 return None, f'{kind} concurrency limit {lim["max_concurrent"]} reached'
-            cur = c.execute('INSERT INTO reservations(ts,identity,project,job_id,resource,tokens_reserved,state) '
-                            "VALUES(?,?,?,?,?,?,'reserved')", (now, identity, project, job_id, resource, tokens))
+            # Store cost_usd as estimate in list_usd; settle() overwrites with actual
+            cur = c.execute('INSERT INTO reservations(ts,identity,project,job_id,resource,tokens_reserved,list_usd,state) '
+                            "VALUES(?,?,?,?,?,?,?,  'reserved')", (now, identity, project, job_id, resource, tokens, cost_usd or None))
             return int(cur.lastrowid), ''
 
     def settle(self, rid: int, tokens_used: int | None, list_usd: float | None = None, note: str = '') -> None:
@@ -154,6 +247,69 @@ class Ledger:
         with self._conn(True) as c:
             c.execute("UPDATE reservations SET state='released', settled=?, note=? WHERE id=? AND state='reserved'",
                       (int(self.clock()), note[:200], rid))
+
+    def get_provider_quota(self, resource: str) -> dict:
+        """Returns current quota status for a provider.
+
+        Args:
+            resource: Provider kind ('kimi_pro', 'nexum', 'claude', 'helper')
+
+        Returns:
+            {
+                'resource': str,
+                'calls_used': int,
+                'calls_limit': int,
+                'tokens_used': int,
+                'tokens_limit': int,
+                'cost_used_usd': float,
+                'cost_limit_usd': float,
+                'remaining_pct': float,  # min of all applicable ratios (0-100)
+                'strategic_priority': bool
+            }
+
+        Raises:
+            KeyError: if resource is not a known provider kind
+        """
+        kind = self.kind(resource) if resource in ('claude', 'helper', 'kimi_pro', 'nexum') else resource
+        if kind not in PROVIDER_KINDS:
+            raise KeyError(f'unknown provider: {resource!r}')
+        lim = self.limits[kind]
+        now = int(self.clock())
+
+        # AP-4: LIKE pattern from resolved kind (fail-closed)
+        like = f'{kind}%'
+
+        with self._conn() as c:
+            calls_used, tokens_used = self._used(c, 'resource LIKE ?', (like,), now)
+            cost_used = self._used_cost(c, 'resource LIKE ?', (like,), now) if 'cost_usd_per_day' in lim else 0.0
+
+        calls_limit = lim['calls_per_day']
+        tokens_limit = lim['tokens_per_day']
+        cost_limit = lim.get('cost_usd_per_day', 0.0)
+        strategic = bool(lim.get('strategic_priority', False))
+
+        # Compute remaining percentages
+        ratios = []
+        if calls_limit > 0:
+            ratios.append(max(0.0, 100.0 * (calls_limit - calls_used) / calls_limit))
+        if tokens_limit > 0:
+            ratios.append(max(0.0, 100.0 * (tokens_limit - tokens_used) / tokens_limit))
+        if cost_limit > 0:
+            ratios.append(max(0.0, 100.0 * (cost_limit - cost_used) / cost_limit))
+
+        remaining_pct = min(ratios) if ratios else 100.0
+
+        return {
+            'resource': kind,
+            'calls_used': calls_used,
+            'calls_limit': calls_limit,
+            'tokens_used': tokens_used,
+            'tokens_limit': tokens_limit,
+            'cost_used_usd': round(cost_used, 4),
+            'cost_limit_usd': float(cost_limit),
+            'remaining_pct': round(remaining_pct, 2),
+            'strategic_priority': strategic,
+        }
 
     def usage(self, identity: str | None = None) -> dict:
         now = int(self.clock())

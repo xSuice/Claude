@@ -2,6 +2,39 @@
 
 Alle Zeiten: Europe/Berlin. Diese Historie beginnt am 2026-10-05. Sie ist keine vollständige Rekonstruktion früherer Servereingriffe.
 
+## 2026-10-15 – JARVIS V16 Referenz-Audit: A9/A14/E2 behoben (Server)
+
+- Auftrag: Masterprompt Referenzanalyse. Fixes in `server/jarvis/core/brain-runtime/` (`secretscan.py` neu, `taskengine.py`, `attribution.py`, `learning.py`, CLI `--by`), Portal `app.js` (Antwortpflicht bei Rückfrage).
+- Prüfung: 340 Tests OK (4 skip, vorher 323), neue Datei `tests/test_v16_regress_a9_a14.py`. A9 11/11 erkannt, Fehlalarme 0/8. E2 offline 25/35 statt 21/35, Fehltreffer 0 (misst nicht Token-Ersparnis).
+- Deploy: Release `20261015-140650-f57d32f`, Rückweg `rollback-v16.sh`. Berichte und Prüfpaket: `docs/jarvis/JARVIS-REFERENZ-*`, Kopie in `/srv/ma-home/library/JARVIS/Referenz-Audit-2026-10-15/`.
+- Offen: Cron-Eintrag nicht prüfbar, Testjob `j20261015-86b8cb` bleibt `queued`, Brücken-Update und Portal-UI (sudo, Philipp), Vorlage 17 zurückziehen, Live-Messungen.
+
+## 2026-10-15 – JARVIS Integrationsprüfung vor dem Mobile-Test (Server)
+
+- Auftrag: Integrationsübersicht mit echten Abläufen, Teil des Prüfpakets.
+- Betroffene Dateien: `docs/jarvis/INTEGRATIONSPRUEFUNG-V16.md` (neu). Keine Änderung an Code oder Konfiguration.
+- Prüfung: Testauftrag `j20261015-6a27fc` über den Brücken-Socket, 3/3 abgenommen, eigener Testlauf 7/7 grün.
+- Offen: Brücken-Update, Browser-Durchlauf (Portal, Verlauf, Download), Router-Wirkung.
+
+## 2026-10-15 – JARVIS Phase E: Verbesserungsauftrag mit Probelauf-Gate (Server)
+
+- Auftrag: B39 Phase E, Kette JARVIS -> Claude Code ohne Rechteausweitung.
+- Betroffene Dateien: `server/jarvis/core/brain-runtime/taskengine.py` (neue Schritt-Art `improve`, `_run_improve_step`, `_improver`), `tests/test_v16_improve.py` (neu), `tests/v16_fakes.py` (`cfg_extra`), `server/jarvis/PHASE-E-ENTWURF.md`, `BACKLOG.md` (B39).
+- Änderung: Claude schreibt nur einen Patch (`patch.diff`) in den Arbeitsordner; `improve.py trial` prüft ihn gegen die unveränderten Tests. Erlaubt nur in Aufträgen mit Option `improve=true` und nur wenn `improve.enabled` in der Konfiguration steht (Standard: aus). Prüfungen kommen aus der Konfiguration (`improve.checks`), nie aus dem Plan. `allow_promote` bleibt aus; das Repo wird nicht verändert. Tagesgrenze und fehlende Konfiguration beenden den Schritt ohne Korrekturrunde.
+- Prüfung: neue Tests (10) und gesamte Suite im Quellbaum: 320 Tests grün, 4 übersprungen.
+- Rückweg: `rollback-v16.sh`; die Funktion ist ohne `improve.enabled` wirkungslos.
+- Offen: Freigabe-Schritt für Philipp (`human`) als Planvorlage, Einspielen in den aktiven Release, echter Lauf mit kleiner Änderung, `Claude:`-Kennzeichnung im Claude-Chat.
+
+## 2026-10-15 – JARVIS Phase E: Nachtrag, echter Lauf und zwei Korrekturen (Server)
+
+- Eingespielt: Release `20261015-032153-25df9d6` (322 Tests grün, 4 übersprungen, `doctor` ok). Commits `a9407b2` (Planer-Hinweis für Verbesserungsaufträge) und `25df9d6` (Korrektur).
+- Fehler 1 (behoben): Ein abgelehnter Probelauf hinterließ `improve-trial.json`; die Abnahme (`contains verdict`) wertete den Auftrag als Erfolg. Auftrag `j20261015-075335` meldete deshalb fälschlich `done` (alle drei Probeläufe waren `rejected`). Jetzt: Datei nur bei `improved`/`neutral`, Abnahme per `regex` auf dieses Urteil, Regressionstest ergänzt. Der Ergebnisordner `/srv/ma-home/library/JARVIS/j20261015-075335` ist noch vorhanden und irreführend (Löschen wartet auf Freigabe).
+- Fehler 2 (behoben): Die Prüf-Aktion `unit-attribution` hatte ein falsches `cwd`; die Basis schlug schon vor dem Patch fehl. Neu: `cwd` = `server/jarvis/core/brain-runtime`. Beleg: derselbe Patch ergibt jetzt `neutral` mit bestandenen Prüfungen auf Basis und Kandidat.
+- Folgefehler (bereinigt): Aus dem fälschlichen `done` wurde die gelernte Vorlage #6; sie wurde mit `jarvis_cli forget template 6` zurückgenommen.
+- Echter Lauf: `j20261015-465d49` (Haiku, ein Claude-Schritt): Patch erzeugt, Probelauf #4 `neutral`, Repo unverändert, kein `promote`. Hinweis: Dieser Lauf nutzte noch die Vorlage #6 mit der schwachen Abnahme (`contains verdict`); das Urteil `neutral` stammt aus `improve-trial.json` selbst. Ein Lauf mit der neuen regex-Abnahme steht noch aus.
+- Konfiguration: `improve.enabled` ist AN (`max_trials_per_day` 3, `allow_neutral` aus). Prüfungen: `unit-attribution`, `compile` (`~/.config/ma-jarvis/improve-actions.json`). Sicherung der Konfiguration davor: `~/.local/share/ma-jarvis/backups/jarvis.json.vor-improve-20261015`.
+- Offen: Freigabe-Schritt (`human`) als Planvorlage, Brücke reicht `options` nicht durch (`improve` nur über die CLI), `Claude:`-Kennzeichnung im Claude-Chat, Rollback-Test mit aktiver Phase E, Phase F bis I.
+
 ## 2026-10-05 – Projektdokumentation eingerichtet
 
 - Auftrag: Änderungen und Erkenntnisse dauerhaft festhalten und bekannte Fehler künftig berücksichtigen.
@@ -412,11 +445,131 @@ Nicht getestet / offen: Handy-Ansicht (Chrome-Fenster ließ sich nicht verkleine
 - Offen: PC holt `server-live` per `git fetch` und führt bewusst zusammen; `claude-abgleich.py` am PC danach anpassen, damit beide Wege sich nicht überschneiden.
 - Rückweg: `sudo systemctl disable --now ma-git-sync.timer; sudo rm /etc/systemd/system/ma-git-sync.{service,timer}`; Deploy-Key in GitHub löschen, `rm -r ~/.config/ma-github`.
 
-## 2026-10-14 – JARVIS V16 am Server installiert (PC-Kopie, live belegt)
+## 2026-10-13 – Abgleich-Bericht kürzer, spart Tokens (Server-Kopie)
 
-- Auftrag: V11.1 zu V16 ausbauen, am Server in Betrieb nehmen (Masterauftrag V11.1→V16).
-- Neu: `server/jarvis/` (V11.1 unverändert unter `core/`, dazu bwrap-Sandbox und V16-Module in `core/brain-runtime/`), `scripts/router/router_core.py`, `scripts/jarvis/jarvis.py` + Skill `/jarvis`, `install-v16.sh`, `rollback-v16.sh`. Doku: `docs/jarvis/STAND-V16.md`, `BENCHMARK-V16.md`.
-- Installation am Server ohne sudo als `andrew`: Release unter `~/.local/share/ma-jarvis/releases/`, Cron jede Minute (`flock`, `nice`, `ionice`), Konfiguration `~/.config/ma-jarvis/jarvis.json`. Erster Lauf wurde von roten Tests gestoppt (Pfad der Drop-in-Beispiele im Release, pandoc „Cannot allocate memory“); Korrekturen: Installer kopiert `dropin-beispiele` in den Release, Test sucht an beiden Orten und wiederholt einen fehlgeschlagenen Selbsttest einmal, `rollback-v16.sh --start` nutzt den eigenen Ordner statt `~/MA-Server`.
-- Geprüft 2026-10-14: 294 Tests am Server grün (4 übersprungen); `--stop` entfernt Cron und setzt KILL, `--start` stellt wieder her; Cron feuert laut journalctl jede Minute, `tick.err` leer; zwei echte Aufträge (Primzahlen-Skript) erledigt und am PC unabhängig geprüft; Wiederholung über Vorlage mit 61 % weniger neuen Token (n=1); `pc-report`: `java.build` tested; Leerlauflast mit Cron: CPU-Median 5,3 % (vorher 5,8 %), HA-Latenz Median 9,4 ms (vorher 7,2 ms).
-- Nicht geprüft: Last während eines Jobs, Gate B live, PC-Worker, Helfer/Canary, Benchmark (12 Aufgaben), `doc.office_pdf` (scheitert in der Sandbox).
-- Rückweg: `bash ~/jarvis-stage/v16/server/jarvis/rollback-v16.sh --stop` (Cron weg, Not-Aus); vollständig: Cron-Zeile aus `crontab -e` entfernen, `~/.local/share/ma-jarvis` und `~/.config/ma-jarvis` löschen. Sicherung vor der Installation: `~/.local/share/ma-jarvis/backups/`.
+- Auftrag: Philipp will weniger Tokenverbrauch; `Dienste/Server-Abgleich.md` war rund 600 Zeilen lang und wird bei jedem Lesen komplett geladen.
+- Datei: `scripts/server-sync/claude-abgleich.py`, Funktion `write_report`. Läuft am PC, die Änderung wirkt erst nach dem nächsten Abgleich (bei Änderung auf beiden Seiten entsteht `.server-konflikt`).
+- Änderung: nur die letzten 12 statt 48 Einträge; geholte und gesendete Dateien als eine Zeile mit höchstens 5 Namen und "(+N weitere)"; höchstens 3 verschiedene Claude-Sitzungen, Startsatz auf 60 Zeichen gekürzt.
+- Geprüft: Testlauf mit `/tmp/ma-test/test_report.py` (Skript wird geladen, `write_report` 15-mal mit Testdaten): genau 12 Einträge, 115 Zeilen, Dateiliste "(9): a0..a4 (+4 weitere)", doppelter Sitzungsstart nur einmal. Nicht geprüft: Lauf am PC mit echten Daten.
+- Rückweg: Die drei Änderungen in `write_report` zurücknehmen (`git diff` zeigt sie), `blocks[:12]` wieder auf `blocks[:48]`.
+
+## 2026-10-13 – Portal-Chat: Kontextfenster-Balken, Authelia-Diagnose geschwärzt (Server-Kopie, noch nicht eingespielt)
+
+- Auftrag: Philipp will im Portal-Chat eine Anzeige wie in Claude Desktop (Kontextfenster mit Balken, Sitzungs- und Wochenlimit).
+- Änderung: `portal-ui/web/app.js` (`tokRender`) zeigt "Kontextfenster 204k / 200k (100 %)" mit Balken, darunter Sitzungsverbrauch; Fenster 200k, bei Modellnamen mit `1m` 1 Mio. `style.css`: Klassen `.ctokh`, `.ctokbar`. Version in `app.js` und `sw.js` auf 2026-10-13-5.
+- Nicht gebaut: Sitzungs- und Wochenlimit in Prozent. Im Stream des Servers (`claude -p`) ist dafür kein Ereignis belegt (Suche in den Protokollen ohne Treffer); ohne Datenquelle würde die Anzeige erfunden. Fenstergröße des Server-Modells ist nicht belegt (200k angenommen).
+- Nicht geprüft: Syntax und Darstellung. `node` fehlt auf dem Server, kein Browsertest. Einspielen mit `deploy-ui.sh` (Sudo).
+- Fund: `ma-authelia-diag2.sh` hat Geheimnisse NICHT geschwärzt (Konfig liegt als JSON, das Muster erwartete keine Anführungszeichen). `/home/andrew/ma-authelia-diag2.txt` (0600) enthält jwt_secret, session secret, storage encryption_key und Passwort-Hashes im Klartext. Muster im Skript korrigiert und an Testwerten geprüft; die Datei selbst und die Geheimnisse sind nicht angefasst.
+- Rückweg: `git diff` zeigt die Änderungen an `app.js`, `style.css`, `sw.js`; Versionen zurücksetzen.
+
+## 2026-10-13 – Authelia: Skript für Passkey und Schlüsseltausch (Server-Kopie, nicht gelaufen)
+
+- Neu: `scripts/ma-authelia-haerten.sh` (`sudo bash ... passkey` schaltet WebAuthn und Passkey-Login ein; `... rotate` tauscht Session- und Reset-Schlüssel und fragt optional nach neuen Passwörtern). Beide sichern die Konfiguration, prüfen mit `authelia validate-config` und stellen bei Fehler die Sicherung zurück. `storage.encryption_key` bleibt unverändert (Wechsel braucht eine Datenbank-Migration).
+- Geprüft: nur `bash -n`. Nicht geprüft: Lauf; die Schlüssel `enable_passkey_login` und `selection_criteria` unter webauthn stammen aus dem Gedächtnis für v4.39, die Prüfung vor dem Neustart fängt Fehler ab.
+- Erledigt: `/home/andrew/ma-authelia-diag2.txt` (enthielt Geheimnisse im Klartext) gelöscht, Löschung belegt (`ls` meldet "No such file"). Die Werte stehen weiter im Chatprotokoll; daher `rotate` empfohlen.
+- Rückweg: Sicherungen `configuration.yml.bak-<Zeit>` und `users.yml.bak-<Zeit>` zurückkopieren, `docker restart ma-home-authelia-1`.
+- Gelaufen 2026-10-13 16:07 und 16:08 über die Sudo-Brücke: `passkey` (Prüfung "parsed and loaded successfully", Neustart, `/auth/api/health` = OK) und `rotate ohne-passwort` (Session- und Reset-Schlüssel neu, Sicherungen `*.bak-20261013-160808`, Health OK). Passwörter wurden nicht geändert (Modus ohne Passwort), Passkey noch nicht angelegt, Anmeldung mit Passkey nicht getestet.
+
+## 2026-10-14 – Portal: Reiter "Einstellungen", Stufe 1 (Server-Kopie, noch nicht eingespielt)
+
+- Auftrag: Philipp will Passkey und weitere Einstellungen in einem eigenen Reiter im Portal.
+- Dateien: `portal-ui/web/app.js` (TABS, ICONS, Funktion `einstellungen()`, ROUTES), Version in `app.js` und `sw.js` auf 2026-10-14-1.
+- Inhalt: Anmeldung (Hinweis auf Passwort, Code, Passkey, Knopf zu `/auth/settings`, dort legt Authelia Passkeys und Codes selbst an), Claude-Chat (Grenze für "neuer Chat", fest 200 000), Portalversion und Rolle. Keine neue API-Route, kein neuer Root-Weg.
+- Bewusst nicht gemacht: Admin-Schalter verschieben (der Code im Reiter Claude greift per ID `#cdep`/`#csudo` zu, ein Verschieben ohne Umbau würde ihn zum Absturz bringen); Knöpfe mit Root-Wirkung (Stufe 2, braucht eine Prüfung durch Philipp).
+- Nicht geprüft: Syntax und Darstellung (`node` und Browser fehlen auf dem Server). Die Aussage "Passwort und Code (TOTP) sind eingerichtet" stammt aus der Konfiguration, nicht aus einem Test der Anmeldung.
+- Einspielen: `deploy-ui.sh` (Sudo). Danach im Browser Reiter "Einstellungen" und "Claude" öffnen.
+- Rückweg: `git diff` zeigt die Änderungen; Version zurücksetzen.
+
+## 2026-10-14 – Portal: Limit-Ereignis im Chat, Text im Reiter Einstellungen korrigiert (Version 2026-10-14-3)
+
+- Auftrag: Sitzungs-/Wochenlimit im Claude-Reiter anzeigen; Screenshot der Einstellungen geklärt.
+- Betroffene Dateien: `portal-ui/web/app.js`, `portal-ui/web/sw.js`.
+- Änderung: `rate_limit_event` aus dem Datenstrom wird gelesen und unter dem Kontextbalken angezeigt (`rlRender`); Text im Reiter Einstellungen korrigiert (TOTP-Behauptung war ungeprüft, Hinweis auf Menü Sicherheit ergänzt).
+- Prüfung: Syntax mit esprima geprüft (Kopie mit ES2020-Operatoren ersetzt). Verhalten im Browser nicht geprüft. Die Limit-Anzeige liefert laut Philipp keine Werte; belegt sind in den Protokollen nur rejected-Ereignisse mit status, resetsAt, rateLimitType.
+- Rückweg: `/opt/ma-home/web.bak-*` (letzte Sicherung vor diesem Stand: 20261014-043154).
+- Offen: Quelle für Prozentwerte (wie die Claude-App) unbekannt; Weg über Anmelde-Token nur mit Freigabe von Philipp.
+
+## 2026-10-14 – Portal: Sitzungs- und Wochenlimit automatisch im Claude-Reiter (Version 2026-10-14-4)
+
+- Auftrag: Anzeige wie in der Claude-App (Sitzung 5 Std., Woche) immer automatisch.
+- Betroffene Dateien: `server/claude-bridge/ma-claude-bridge.py` (plan_usage, Antwort von `jobs` um `plan` ergaenzt), `portal-ui/web/app.js` (planRender, ersetzt den Weg ueber rate_limit_event), `portal-ui/web/sw.js`.
+- Aenderung: Die Bruecke fragt alle 120 s `https://api.anthropic.com/api/oauth/usage` mit dem Token von andrew ab (undokumentierte Schnittstelle, nur Prozent und Reset werden gespeichert, das Token nie ausgegeben). Das Portal liest `plan` aus der `jobs`-Abfrage (alle 4 s, solange der Reiter Claude offen ist).
+- Pruefung: Syntax von app.js (esprima, Kopie) und Bruecke (py_compile) ok. Probe `usage-probe.py` am 2026-10-14 06:49: five_hour 22 %, seven_day 25 %, Woche stimmt mit der Claude-App ueberein. Anzeige im Browser noch nicht geprueft.
+- Rueckweg: Bruecke `sudo cp /usr/local/lib/ma-claude-bridge.py.bak /usr/local/lib/ma-claude-bridge.py && sudo systemctl restart ma-claude-bridge`; Portal `/opt/ma-home/web.bak-*`.
+- Risiko/Offen: Schnittstelle kann sich aendern; Token laeuft ab (wird beim naechsten Chat erneuert), dann zeigt die Anzeige einen Hinweis. Paritaet: noch nicht am PC, Abgleich ueber ClaudeAbgleich.
+
+## 2026-10-14 – Portal: Label der Sitzungsanzeige gekürzt (noch nicht eingespielt)
+
+- Auftrag: Im Handy-Screenshot brach „Sitzung (5 Std.)“ auf drei Zeilen um.
+- Aenderung: `portal-ui/web/app.js` (planRender), Label „Sitzung (5 Std.)“ zu „Sitzung 5h“.
+- Pruefung: nur Textaenderung, nicht im Browser geprueft. Einspielen mit `deploy-ui.sh` (Sudo-Bruecke) steht aus.
+- Rueckweg: Label zurueckaendern. Paritaet: Abgleich ueber ClaudeAbgleich (BACKLOG B33).
+
+## 2026-10-14 – Kontext-Wächter-Hook für den Server (nur im Projekt, noch nicht aktiv)
+
+- Auftrag: Server-Chat meldet große Sitzungen wie der PC (Übergabe-Schritt 4).
+- Dateien: neu `server/claude-config/hooks/kontext-waechter.py`; `server/claude-config/settings.json` (zweiter UserPromptSubmit-Hook neben council-auto.py).
+- Verhalten: liest Token der letzten Antwort aus `transcript_path`; ab 250 000 Hinweis, ab 300 000 Auftrag `/uebergabe`; Abschalten mit „ohne waechter“; bei Fehlern still (Exit 0).
+- Pruefung: Testlauf mit künstlichen Transcripts (100k: keine Ausgabe, 260k: Warnung, 310k: Übergabe, „ohne waechter“ und fehlende Datei: still); settings.json ist gültiges JSON. Nicht in einer echten Sitzung getestet.
+- Offen: Einspielen nach `~/.claude/hooks/` und `~/.claude/settings.json` (Abgleich oder Installer); ob die Brücke `transcript_path` an Hooks liefert, ist ungeprüft.
+- Rueckweg: Eintrag in settings.json entfernen, Datei löschen. Paritaet: PC hat eigenen Wächter.
+
+- Nachtrag 2026-10-14: Hook und settings.json nach ~/.claude eingespielt (settings.json gleich der Projektkopie, Testlauf mit 310k-Transcript ok). Wirkt ab dem nächsten neuen Chat.
+
+## 2026-10-14 – KI-Effizienz V5: Bestandsaufnahme, Wirkungsregister, zwei kleine Änderungen (Server-Kopie, live)
+
+- Auftrag: V5-Recherche auf das bestehende Setup anwenden, nur belegte Wirkung eintragen. Register: Vault `30 Technik/MA-Server/Wirkungsregister-KI-Setup.md`.
+- `scripts/vault-q.py`: Notizen mit `status` veraltet/ungueltig/zurueckgezogen werden im Rang auf 0,3 abgewertet (Eintrag 275). Geprüft an einem Testpaar (Plan Port 8080 veraltet, Beobachtung Port 3000): vorher stand die veraltete Notiz vorn, nachher die Beobachtung; `--status gueltig` unverändert. Goldstandard `vault-q-gold.py`: 18/20 Treffer@5 wie vorher. Testnotizen gelöscht. Rückweg: `vault-snapshots/wissen-vor-umbau-20261013-0921/vault-q.py.vor-veraltet`. PC-Kopie über ClaudeAbgleich.
+- `kontext-waechter.py` (`~/.claude/hooks` und `server/claude-config/hooks`, gleich): schreibt `~/.claude/waechter.log` (Zeit, Tokenzahl oder „kein transcript_path“, nie Text), damit B34 belegbar wird. Geprüft mit echtem Transcript (130k, keine Warnung) und ohne Pfad. Nicht geprüft: Lieferung durch die Brücke (erst im nächsten Portal-Chat sichtbar).
+- Nicht umgesetzt (kein Beleg für Nutzen oder keine Freigabe): Router, Embeddings, neue Regeldatei (Doppelung zu TASK-POLICY), die 12 Vergleichsaufgaben.
+- Nachtrag 2026-10-14 (V5 komplett erneut gelesen, alle 1337 Zeilen): `scripts/vault-pg.py` an `vault-q` angeglichen: `--art`, `--status`, Abwertung veraltet/ungueltig/zurueckgezogen auf 0,3 (Eintrag 275/276). Geprüft: Suche mit und ohne `--status` läuft, Wirkung der Abwertung am Testpaar **nicht** geprüft (Index braucht Sync). Rückweg: `vault-snapshots/wissen-vor-umbau-20261013-0921/vault-pg.py.vor-status`. `LESSONS-LEARNED.md`: Feld „Schicht“ in der Vorlage (Eintrag 175/272). `BACKLOG.md` B34: `transcript_path` bestätigt (waechter.log 142k bis 243k).
+- Nachtrag 2: `vault-pg` Abwertung am Testpaar **geprüft** (Pgtestdienst: gültig 0,10, veraltet 0,03 = Faktor 0,3); nach Löschen der Testnotizen und Sync „Keine Treffer“ (M6 für vault-pg bestanden). Beobachtung (nicht geändert): Bei UND-Treffern unter 3 fällt die Suche auf ODER zurück und überschreibt die UND-Treffer, daher fehlten die Testnotizen bei Mehrwort-Suchen. `~/.claude/CLAUDE.md` Regeln 12 und 13 gekürzt (Pfad nur noch über `ask.py --help`), Sicherung `vault-snapshots/wissen-vor-umbau-20261013-0921/CLAUDE.md.vor-kuerzen`. Die PC-Kopie dieser Datei ist davon getrennt.
+- Nachtrag 3 (2026-10-14): `scripts/vault-pg.py` Mehrwort-Suche: Die UND-Treffer wurden nicht mehr überschrieben (Beobachtung aus Nachtrag 2 war schon behoben), standen aber hinten, weil die Ränge von UND- und ODER-Durchlauf gemeinsam sortiert wurden (UND-Ränge viel kleiner; mit Standard `-n 8` fielen sie heraus). Jetzt wird je Durchlauf sortiert, UND-Treffer bleiben vorn. Geprüft: „Startprompt Hooks Connector“ liefert Übergabe und Wirkungsregister auf Platz 1 und 2 (vorher Platz 22 und 24 bei `-n 30`, bei `-n 8` fehlend); Einwort-Suche „Startprompt“ unverändert. Nicht geprüft: weitere Mehrwort-Fälle, Filter `--art`/`--status`, Zone `alle`. Rückweg: `scripts/vault-pg.py.vor-und-vorrang`. PC-Kopie von `vault-pg.py` noch nicht angeglichen (Parität: in BACKLOG eintragen).
+
+## 2026-10-14 – KI-Setup (Startprompt): Hooks, Connectoren, Gedächtnis-Link, Regeln (Server, live)
+
+- Auftrag: Autonomer Startprompt plus Auftrag Hooks/Skills/Tools.
+- Dateien: `server/claude-config/hooks/{council-auto,kontext-waechter,ma-guard}.py`, `server/claude-config/settings.json` (deny für 8 Connectoren), `server/claude-config/CLAUDE.md`, `server/claude-config/server-abschnitt.md` (Server-Ergänzungen zu Regel 4, 6, 11 und Gedächtnis-Link), `CLAUDE.md` (Vault-Suche eingegrenzt); live gleich in `~/.claude`; Agent `docs-lookup` deaktiviert (braucht Context7, nicht vorhanden); Symlink `~/.claude/projects/-home-andrew-MA-Server/memory` auf Vault `_Claude-Memory/Auto-Memory`.
+- council-auto: Texte über 1500 Zeichen lösen nur bei dem Wort Council aus; "sinnvoll" nur als "ist/wäre das sinnvoll". Anlass: Die Startprompt-Datei (5958 Zeichen) und "Wie ist das Wetter, sinnvoll, eine Jacke?" lösten fälschlich aus. 5 Testfälle.
+- kontext-waechter: Stufe nur einmal je Sitzung (neu nach +50k), nur Transcript-Ende, Sidechain ignoriert, Log begrenzt, Zustand atomar in `~/.claude/state/`. 10 Testfälle.
+- ma-guard: unlesbare Eingabe gibt Exit 2 (fail-closed), 5 Testfälle. Restrisiko: Formatänderung von Claude Code sperrt alle MCP-Aufrufe.
+- Connectoren Vercel, Figma, Canva, Supabase, Linear, Postman, vidIQ, Jam per `permissions.deny` ausgeblendet (in 237 Sitzungen nie genutzt). Start-Kontext einer leeren Haiku-Sitzung 41 999 -> 37 075 Token (Einzelmessung).
+- Gedächtnis: neue Sitzung nannte die Entscheidung Variante 2 aus dem Index (M1).
+- **Befund 06:43:** `claude-abgleich.py` (PC) hat `CLAUDE.md`, `settings.json`, `ma-guard.py`, `council-auto.py` und `docs-lookup.md` auf dem Server mit dem alten PC-Stand überschrieben (push_config nimmt PC-Repo-Stand). Am Server aus dem Repo wieder eingespielt, alle fünf Dateien gleich Repo. Solange der PC `server-live` nicht geholt hat, droht erneutes Überschreiben (BACKLOG B35).
+- Rückweg: Backups in `~/.claude/backups/2026-10-14-ki-setup/`; deny-Zeilen löschen; Symlink entfernen und Ordner anlegen; `docs-lookup.md.disabled` zurückbenennen.
+
+## 2026-10-15 – JARVIS V16 im Portal (Reiter JARVIS, im Repo, noch nicht eingespielt)
+
+- Auftrag: JARVIS als Hauptoberfläche ins vorhandene Portal einbauen, kein zweites Dashboard, gleiche Steuerung wie CLI und PC-Client.
+- Dateien: `server/claude-bridge/ma-claude-bridge.py` (Op `jarvis`, Zulassungsliste, Benutzerzuordnung), `portal-ui/patch-portal-jarvis.py` (neu, Route `/api/jarvis`, nur Admin), `portal-ui/deploy-ui.sh` (ruft den Patch auf), `portal-ui/web/app.js` und `sw.js` (Reiter JARVIS, Version 2026-10-14-5), `tests/portal_smoke.py` (vier neue Prüfungen), `docs/jarvis/PORTAL.md` (neu). Server: `~/.config/ma-jarvis/portal-users.json` (andrew -> jarvis.json).
+- Änderung: Aufträge starten, Fortschritt, Freigabe, Abbrechen, Ergebnisdateien im vorhandenen Betrachter, Not-Aus, Fähigkeiten und Gelerntes. Abfrage nur bei offenem Reiter und laufendem Auftrag. V16-Kern unverändert.
+- Prüfung: `jarvis_api` gegen den echten Kern am Server (list, status, usage, fremder Benutzer, ungültige ID, unbekannter Befehl); Portal-Patch an einer Kopie von `portal.py` (idempotent, kompiliert); Browser-Rauchtest 82/82 mit Platzhalter-Antworten. Nicht geprüft: echter Lauf durch Portal und Brücke, Freigabe eines echten Auftrags, Bridge-Sandbox gegen `submit`.
+- Ergebnis: Code fertig im Repo. Einspielen braucht sudo (Schritte in `docs/jarvis/PORTAL.md`).
+- Rückweg: `portal.py.bak-<Zeit>`, `web.bak-<Zeit>` und `/usr/local/lib/ma-claude-bridge.py.bak` zurückkopieren; `portal-users.json` löschen.
+
+## 2026-10-15 – JARVIS V16: eingespielt, Herkunftskennzeichnung (Nachtrag)
+
+- Auftrag: Gesamtauftrag `MA-Home-JARVIS-V16-Gesamtauftrag-2026-10-15.md` (Phasen A bis D umgesetzt, E bis I offen).
+- Eingespielt (belegt): Brücke mit Op `jarvis` und Portal-Oberfläche per Sudo-Freigabe (`/srv/ma-home/deploy-sudo/ergebnis.txt`: OK, Sicherungen `ma-claude-bridge.py.bak`, `/opt/ma-home/web.bak-20261015-020401` und `-024119`). Kern-Release `20261015-023846-c6e404c` über `install-v16.sh --no-cron` (Status `tests-ok`).
+- Neu: `server/jarvis/core/brain-runtime/attribution.py` (reine Funktion: `Jarvis:`, `Claude:`, `Jarvis + Claude:` nur aus Schritten, Modellaufrufen und Ereignissen; sonst `Ausführung nicht verifiziert`), Einbindung in `taskengine.py` (Statusfeld `attribution`, Ereignis `attribution`, Zeile am Ende von `BERICHT.md`), Anzeige in `portal-ui/web/app.js` (Version 2026-10-15-1, kein neuer Tab), `tests/test_v16_attribution.py` (14 Tests), `tests/portal_smoke.py` (1 Prüfung mehr).
+- Prüfung: 310 Tests am Server grün (4 übersprungen, brauchen root); Browser-Rauchtest 83/83; echter Auftrag `j20261015-864ffc` (Bridge-Sandbox `submit` ok) und `j20261015-25b832` (Kennzeichnung im Status, Ereignisprotokoll und Bericht).
+- Nicht geprüft: Kennzeichnung `Jarvis:` ohne Claude nur mit konstruierten Statusdaten, nicht mit der echten Engine; `Claude:` nur als Funktion, noch nicht im Claude-Chat; neuer Wortlaut und Anzeige im Reiter nicht an einem frischen echten Auftrag im Browser; `approve` live; Cron-Zeile nicht lesbar (Auftrag lief trotzdem im Takt).
+- Falle: Staging für die Tests braucht das volle Release-Layout (`brain-runtime` neben `dropin-beispiele`), sonst 30 falsche Fehler. Hintergrundläufe abgekoppelt starten (`setsid nohup`), sonst stirbt der Lauf mit der Sitzung.
+- Rückweg: `bash server/jarvis/rollback-v16.sh --to <früherer Release>`; Oberfläche `web.bak-<Zeit>` zurückkopieren.
+
+## 2026-10-15 – JARVIS V16: Rollback auf früheren Release getestet (Nachtrag 2)
+
+- Test am echten Betrieb: `rollback-v16.sh --to 20261014-172944-local` (tests-ok) -> `doctor ok` -> Auftrag `j20261015-325110` auf dem alten Release bis `done`, Statusfeld `attribution` dort nicht vorhanden (belegt den alten Code) -> `--to 20261015-023846-c6e404c` -> `doctor ok`, alle 7 Aufträge erhalten. Protokoll: `~/tmp/rollback-test.log`.
+- Befund: Aufträge, die ein Release ohne `job_calls`-Protokoll ausgeführt hat, bekommen nach dem Wiederherstellen `Ausführung nicht verifiziert · Grund: 0 Modellaufrufe, aber 2 Ereignisse`. Das ist gewollt (keine Kennzeichnung ohne Nachweis), gilt aber auch für alle Aufträge vom 14.10. und früher.
+- Offen: Rollback bei laufendem Auftrag mitten im Schritt und Rückkehr bei defekter Datenbank nicht getestet.
+
+## 2026-10-18 12:00 Europe/Berlin – Hermes: Live-Basis geklärt, öffentlicher M1a-Checkpoint
+
+- Auftrag: ursprünglichen JARVIS-Entwicklungsauftrag nach SSH-Anbindung fortsetzen. Ausführung: Windows-Entwicklungsworktree; Server nur lesend bzw. kurzlebige Tests in RAM-Sandbox, ohne sudo und reale Modellaufrufe.
+- Befund: GitHub main und server-live divergiert. 104/104 verglichene aktive Release-Codedateien passen zu server-live `70a6fd0`; alte main-Basis hatte 8 Abweichungen. Neuer isolierter Branch `dev/hermes-m1a-live-20261018`; keine Serveränderungen oder Git-Pushes, 7 bestehende Änderungen am Server unangetastet.
+- Lokal übernommen: öffentlicher M1a-Harness aus Checkpoint `e632b0a`, Referenzbytes unverändert (130/130). Neue Änderung nur in `tests/m1/host_adapter.py` und zugehörigem Test: bool/negative/anders typisierte Beobachtungsschritte fail-closed. Erst RED mit sechs Subfällen, dann GREEN.
+- Prüfung: 5 Adapter + 31 Referenz + 20 vorhandene V16-Tests grün; zusätzlich öffentlicher bwrap-Minimal-Probe 13/13. 4 Freeze/HMAC-Tests bewusst ausgeschlossen. 500 frühere Dummy-Fixtures nicht als neue Tests gezählt.
+- Fehlversuch erhalten: isolierter 40-Thread-Test zunächst am 384-MiB-Adressraumlimit mit MemoryError/Threadstartfehlern. Nur Testprozess-Allocator auf MALLOC_ARENA_MAX=1 begrenzt, Speicherlimit und Tests unverändert; danach 20/20 grün ohne stderr. Keine globale Tuning-/Produktivreparatur behauptet.
+- Dokumentation: SERVER-STATUS/HANDOFF aktualisiert, `docs/jarvis-omega/M1A-LIVE-INTEGRATION.md`; vollständige JSON-Laufbelege und Integrationsbericht im externen Entwicklungsworkspace.
+- Review/Grenzen: frischer statischer Review des kleinen öffentlichen Adapter-Diffs ohne blockierende Befunde abgeschlossen; drei nicht blockierende Testvorschläge dokumentiert. Kein Different-Family-PASS. Faire reale D-Baseline, Runtime-/Recovery-Integration und vollständiges M1a offen. Kein Freeze, private Evaluierung, M1b oder Deployment.
+- Rückweg: alten Worktree weiterverwenden bzw. neuen lokalen Entwicklungszweig archivieren. Produktiv-Rollback nicht nötig, da nichts installiert/umgeschaltet wurde.

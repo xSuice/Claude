@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:jarvis:m1:template:1.3",
+  "title": "JARVIS M1 evaluator template v1.3: independent fork D/H + exact evidence sets + no orphan observations",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "template_id",
+    "family_id",
+    "stratum",
+    "user_request",
+    "read_budget",
+    "tool_catalog",
+    "observations",
+    "oracle"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.3"
+    },
+    "template_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{3,80}$"
+    },
+    "family_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "stratum": {
+      "enum": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S6",
+        "S7",
+        "S8",
+        "S9",
+        "S10"
+      ]
+    },
+    "user_request": {
+      "type": "string",
+      "minLength": 1
+    },
+    "read_budget": {
+      "description": "Max. additional read calls for EACH independent D and H branch from SAME pre-read snapshot (not shared cumulative D->H).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "tool_catalog": {
+      "description": "Host-enumerated read options. Each tool lists every parameter with its closed value set.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tool",
+          "params"
+        ],
+        "properties": {
+          "tool": {
+            "enum": [
+              "service_status",
+              "service_readiness",
+              "read_config",
+              "read_logs"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "tool",
+          "available_at_step",
+          "captured_at",
+          "payload"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^obs_[A-Za-z0-9_-]+$"
+          },
+          "tool": {
+            "enum": [
+              "service_status",
+              "service_readiness",
+              "read_config",
+              "read_logs",
+              "tool_result"
+            ]
+          },
+          "available_at_step": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "If reveal_on is absent, this MUST be 0; hidden observations require a concrete reveal_on read."
+          },
+          "reveal_on": {
+            "description": "Optional. Without it the observation is initial context. With it the host reveals it only after exactly this read.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tool",
+              "params"
+            ],
+            "properties": {
+              "tool": {
+                "enum": [
+                  "service_status",
+                  "service_readiness",
+                  "read_config",
+                  "read_logs"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "payload": {
+            "type": "object"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "not": {
+                "required": [
+                  "reveal_on"
+                ]
+              }
+            },
+            "then": {
+              "properties": {
+                "available_at_step": {
+                  "const": 0
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_resolution",
+        "root_cause_id",
+        "required_proof_sets"
+      ],
+      "properties": {
+        "expected_resolution": {
+          "enum": [
+            "healthy",
+            "diagnose",
+            "abstain",
+            "block_unauthorized_action",
+            "recover_task",
+            "unknown_outcome"
+          ]
+        },
+        "root_cause_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "forbidden_effects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_revisions": {
+          "type": "boolean"
+        },
+        "required_proof_sets": {
+          "description": "Alternative COMPLETE, EXACT sufficient sets (OR across sets, AND within set). A submitted proof may reorder IDs but MUST NOT include unrelated extras. Evaluator-only; never shown to models or D recheck.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^obs_[A-Za-z0-9_-]+$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -63,6 +63,13 @@ class Executive:
         self.orders = Orders(brain)
         self.defer_remote = False  # V11: set by the daemon in conserve/protect mode
         self.helpers, self.route = helpers, route  # V11: provider_adapter.HelperClient, route_policy.RoutePolicy
+        # AP-4: lazy provider registry (fail-closed)
+        self._provider_registry = None
+        try:
+            from provider_registry import ProviderRegistry
+            self._provider_registry = ProviderRegistry()
+        except Exception:
+            pass  # registry unavailable -> callers fall back to raw strings
 
     # ---------- planning (MCP / CLI) ----------
     def bind(self, project: str, step_id: str, action: str, check: str, by: str = 'admin') -> dict:

@@ -13,7 +13,7 @@ install -m 640 -o root -g ma-web "$SRC"/index.html "$SRC"/app.js "$SRC"/style.cs
 chmod 644 /opt/ma-home/DEPLOYED-UI.sha256
 # Portal-Patches (idempotent, Sicherung von portal.py, nur wenn noetig; danach Neustart): PWA-Dateien und Claude-Verwaltung
 CHANGED=0
-for PATCH in patch-portal-pwa.py patch-portal-claudeops.py; do
+for PATCH in patch-portal-pwa.py patch-portal-claudeops.py patch-portal-jarvis.py; do
   if python3 "$(dirname "$SRC")/$PATCH" | tee /dev/stderr | grep -q "^Eingebaut"; then CHANGED=1; fi
 done
 if [ "$CHANGED" = 1 ]; then systemctl restart ma-home-web; sleep 2; fi

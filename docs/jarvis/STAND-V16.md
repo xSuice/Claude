@@ -68,3 +68,7 @@ Belegt am 2026-10-14: erster Lauf brach bei roten Tests ab und ließ den alten Z
 - `pandoc --sandbox` kann unter Ubuntu kein DOCX schreiben. `/tmp` ist tmpfs.
 - Tests am Server sind Linux-only; am PC fehlen WSL und Docker.
 - `rollback-v16.sh --start` legt jedes Mal einen neuen Release an (alte bleiben unter `releases/`).
+
+## Portal-Integration (2026-10-15)
+
+Reiter JARVIS im vorhandenen Portal, API `/api/jarvis`. Stand und Einspielen: `docs/jarvis/PORTAL.md`, BACKLOG B38.

@@ -2,6 +2,8 @@
 
 Zweck: belegen, ob JARVIS gegenüber „Claude direkt am PC“ Token spart und gleich gute Ergebnisse liefert. Bisher gibt es **eine** Wiederholungsmessung (Primzahlen, −61 % Token, n=1). Das ist kein Benchmark.
 
+> Stand 2026-10-15: Aufgaben T01 bis T12 mit Prüfungen liegen unter `server/jarvis/benchmark/tasks/` (Übersicht dort in `README.md`); Selbstprüfung der Prüfungen: `python3 server/jarvis/benchmark/selfcheck.py` (Referenzlösungen bestehen, Fehlerfälle werden erkannt). Gemessen wurde noch nichts. T01 ist dort die Zähler-Aufgabe statt Primzahlen (Abweichung, in der Auswertung nennen).
+
 ## Methode
 
 - Je Aufgabe zwei Läufe: **A** JARVIS (`jarvis.py submit`), **B** Claude direkt (gleiches Modell, gleicher Prompt, ohne JARVIS-Vorlage). Reihenfolge abwechseln, jeweils frischer Kontext.

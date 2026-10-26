@@ -1,5 +1,18 @@
 # MA Home – zuletzt belegter Projektstand
 
+## Aktuell live geprüft: 2026-10-18, Europe/Berlin
+
+Quelle: neue SSH-Inventare und read-only Code-Fingerprints im Workspace `Hermes-Engineering-2026-10-17/reports/`. Kein sudo, kein Produktions-DB-Inhalt, keine Dienständerung.
+
+- SSH als andrew auf ma-server erfolgreich; Ubuntu 26.04.1, Kernel 7.0.0-38, Python 3.14.4, Celeron N2840/2 CPUs, 3,21 GiB RAM.
+- Portal-Health HTTP 200, PostgreSQL 18/main online und nur localhost:5432; ma-home-web/-agent/-terminal, Docker und SSH aktiv. Dies ist kein vollständiger Portal-/Job-Funktionstest.
+- Aktives JARVIS: `~/.local/share/ma-jarvis/current` -> `releases/20261015-140650-f57d32f`; Cron referenziert current, KILL nicht vorhanden. 104 verglichene Codedateien passen exakt zu GitHub server-live / `70a6fd0`, nicht zu main / `72e1607`.
+- Server-Repo `~/MA-Server`: HEAD `70a6fd0`, 7 bestehende getrackte Änderungen; nicht überschrieben. Aktives Release ist keine Git-Arbeitskopie.
+- Docker-Containerinventar mangels Socket-Rechten blockiert. Datenbankinhalte, private Holdouts, Live-Modellqualität, vollständige Recovery und Browserablauf nicht neu geprüft.
+- 20 ausgewählte bestehende V16-Regressionen mit synthetischen Modellantworten in RAM-/Netzwerk-Isolation grün; kein Ersatz für die gesamte frühere 294/310-Test-Suite. Produktionscode und Dienste unverändert.
+
+Ältere Befunde folgen unverändert; sie gelten nur mit ihrem jeweiligen Beobachtungsdatum. Aktuelle Integrationsgrenzen: `docs/jarvis-omega/M1A-LIVE-INTEGRATION.md`.
+
 Stand: 2026-10-05, Europe/Berlin. Keine aktuelle Live-Diagnose verfügbar. Diese Datei beschreibt die Beleglage und ersetzt keine Serverprüfung.
 
 ## Quellen und Belegstatus

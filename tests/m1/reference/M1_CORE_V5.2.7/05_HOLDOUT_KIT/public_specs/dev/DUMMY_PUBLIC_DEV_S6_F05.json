@@ -1,0 +1,149 @@
+{
+ "spec_version": "1.0",
+ "family_id": "DUMMY_PUBLIC_DEV_S6_F05",
+ "partition": "dev",
+ "stratum": "S6",
+ "design_note": "unknown error -> abstain; roles=1 budget=2 partial=False hidden=2",
+ "vars": {
+  "svc_0": {
+   "service": "portal"
+  },
+  "svc_1": {
+   "service": "broker"
+  },
+  "tok": {
+   "token": 6
+  },
+  "tok2": {
+   "token": 6
+  },
+  "dem": {
+   "int": [
+    20,
+    60
+   ]
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "{svc_0} wirft unbekannte Fehler. Was ist die Ursache?",
+  "Bitte {svc_0} analysieren.",
+  "Unerklärliche Abbrüche bei {svc_0}."
+ ],
+ "read_budget": 2,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "log_app",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "ERROR E-$tok unexpected state transition",
+     "ERROR E-$tok2 handler aborted"
+    ]
+   },
+   "facts": [
+    "F_unknown_err"
+   ]
+  },
+  {
+   "key": "status_app",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "running",
+    "restarts": 1
+   }
+  },
+  {
+   "key": "hid_0",
+   "tool": "read_config",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "max_connections": 500
+   },
+   "reveal_on": {
+    "tool": "read_config",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  },
+  {
+   "key": "hid_1",
+   "tool": "read_logs",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "lines": [
+     "INFO housekeeping done"
+    ]
+   },
+   "reveal_on": {
+    "tool": "read_logs",
+    "params": {
+     "service": "$svc_1",
+     "window": "last_1h"
+    }
+   }
+  }
+ ],
+ "causes": [
+  {
+   "id": "resource_limit_below_demand",
+   "requires": [
+    [
+     "F_demand",
+     "F_limit_cfg"
+    ]
+   ]
+  },
+  {
+   "id": "dependency_down",
+   "requires": [
+    [
+     "F_dep_down"
+    ]
+   ]
+  }
+ ],
+ "oracle": {
+  "expected_resolution": "abstain"
+ }
+}

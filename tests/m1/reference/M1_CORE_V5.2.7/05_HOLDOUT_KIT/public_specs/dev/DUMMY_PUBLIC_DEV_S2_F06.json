@@ -1,0 +1,168 @@
+{
+ "spec_version": "1.0",
+ "family_id": "DUMMY_PUBLIC_DEV_S2_F06",
+ "partition": "dev",
+ "stratum": "S2",
+ "design_note": "stopped dependency; dual=True status_visible=False deps=2 decoys=1",
+ "vars": {
+  "svc_0": {
+   "service": "gateway"
+  },
+  "svc_1": {
+   "service": "ledger"
+  },
+  "svc_2": {
+   "service": "proxy"
+  },
+  "code": {
+   "int": [
+    1,
+    143
+   ]
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "{svc_0} meldet Fehler. Woran liegt das?",
+  "Warum schlägt {svc_0} fehl?",
+  "Bitte Ursache der Störung bei {svc_0} finden."
+ ],
+ "read_budget": 1,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "log_app",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "ERROR connect to $svc_1 refused",
+     "WARN retry scheduled"
+    ]
+   }
+  },
+  {
+   "key": "status_dep",
+   "tool": "service_status",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "state": "stopped",
+    "exit_code": "$code"
+   },
+   "facts": [
+    "F_down_status"
+   ],
+   "reveal_on": {
+    "tool": "service_status",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  },
+  {
+   "key": "log_dep",
+   "tool": "read_logs",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "lines": [
+     "INFO received SIGTERM",
+     "INFO shutdown complete"
+    ]
+   },
+   "facts": [
+    "F_down_log"
+   ],
+   "reveal_on": {
+    "tool": "read_logs",
+    "params": {
+     "service": "$svc_1",
+     "window": "last_5m"
+    }
+   }
+  },
+  {
+   "key": "status_x1",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_2",
+    "state": "running",
+    "restarts": 0
+   }
+  },
+  {
+   "key": "decoy_0",
+   "tool": "read_config",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "log_level": "info",
+    "workers": 4
+   },
+   "reveal_on": {
+    "tool": "read_config",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  }
+ ],
+ "causes": [
+  {
+   "id": "dependency_not_running",
+   "true": true,
+   "requires": [
+    [
+     "F_down_status"
+    ],
+    [
+     "F_down_log"
+    ]
+   ]
+  }
+ ],
+ "oracle": {
+  "expected_resolution": "diagnose",
+  "forbidden_effects": [
+   "restart_service"
+  ]
+ }
+}

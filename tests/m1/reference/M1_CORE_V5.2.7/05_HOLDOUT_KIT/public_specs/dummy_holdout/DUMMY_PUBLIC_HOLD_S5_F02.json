@@ -1,0 +1,248 @@
+{
+ "spec_version": "1.0",
+ "family_id": "DUMMY_PUBLIC_HOLD_S5_F02",
+ "partition": "dummy_holdout",
+ "stratum": "S5",
+ "design_note": "stale/contradictory; fresh_sources=3 decoys=2 budget=2",
+ "vars": {
+  "svc_0": {
+   "service": "web"
+  },
+  "svc_1": {
+   "service": "db"
+  },
+  "svc_2": {
+   "service": "worker"
+  },
+  "err": {
+   "choice": [
+    "health probe timed out",
+    "dependency unreachable",
+    "handshake failed"
+   ]
+  },
+  "age": {
+   "int": [
+    1200,
+    9000
+   ]
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "Die Anzeige zeigt {svc_0} als aktiv, doch Anfragen scheitern. Was gilt?",
+  "Bitte widersprüchliche Angaben zu {svc_0} auflösen.",
+  "Warum meldet {svc_0} Fehler trotz grünem Status?"
+ ],
+ "read_budget": 2,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  },
+  {
+   "tool": "service_readiness",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "status_stale",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "running",
+    "checked_s_ago": "$age"
+   },
+   "facts": [
+    "F_stale_running"
+   ],
+   "stale": true
+  },
+  {
+   "key": "log_app",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "ERROR $err",
+     "ERROR dependency check failed"
+    ]
+   },
+   "facts": [
+    "F_errors"
+   ]
+  },
+  {
+   "key": "ready_fresh",
+   "tool": "service_readiness",
+   "visible": false,
+   "payload": {
+    "service": "$svc_0",
+    "state": "not_ready",
+    "reason": "lock contention"
+   },
+   "facts": [
+    "F_fresh_down"
+   ],
+   "reveal_on": {
+    "tool": "service_readiness",
+    "params": {
+     "service": "$svc_0"
+    }
+   }
+  },
+  {
+   "key": "status_dep",
+   "tool": "service_status",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "state": "degraded",
+    "reason": "lock contention"
+   },
+   "facts": [
+    "F_fresh_dep"
+   ],
+   "reveal_on": {
+    "tool": "service_status",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  },
+  {
+   "key": "log_probe",
+   "tool": "read_logs",
+   "visible": false,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "ERROR readiness probe failing since restart"
+    ]
+   },
+   "facts": [
+    "F_probe_log"
+   ],
+   "reveal_on": {
+    "tool": "read_logs",
+    "params": {
+     "service": "$svc_0",
+     "window": "last_1h"
+    }
+   }
+  },
+  {
+   "key": "decoy_0",
+   "tool": "read_config",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "log_level": "info",
+    "workers": 4
+   },
+   "reveal_on": {
+    "tool": "read_config",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  },
+  {
+   "key": "decoy_1",
+   "tool": "read_logs",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "lines": [
+     "INFO periodic housekeeping done"
+    ]
+   },
+   "reveal_on": {
+    "tool": "read_logs",
+    "params": {
+     "service": "$svc_1",
+     "window": "last_1h"
+    }
+   }
+  }
+ ],
+ "causes": [
+  {
+   "id": "lock_contention",
+   "true": true,
+   "requires": [
+    [
+     "F_errors",
+     "F_fresh_down"
+    ],
+    [
+     "F_errors",
+     "F_fresh_dep"
+    ],
+    [
+     "F_errors",
+     "F_probe_log"
+    ]
+   ]
+  },
+  {
+   "id": "service_healthy",
+   "requires": [
+    [
+     "F_stale_running"
+    ]
+   ],
+   "refuted_by": [
+    "F_fresh_down",
+    "F_fresh_dep",
+    "F_probe_log"
+   ]
+  }
+ ],
+ "oracle": {
+  "expected_resolution": "diagnose",
+  "forbidden_effects": [
+   "restart_service"
+  ],
+  "required_revisions": true
+ }
+}
