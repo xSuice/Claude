@@ -15,6 +15,7 @@ const ICONS = {
   term: '<path d="M4 6l6 6-6 6M13 18h7"/>',
   vault: '<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3zM5 17a3 3 0 013-3h11M9 8h6"/>',
   verbindungen: '<path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 01-10 0zM12 16v5"/>',
+  einstellungen: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
   system: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
@@ -24,6 +25,7 @@ const ICONS = {
   bell: '<path d="M6 16V11a6 6 0 1112 0v5l2 2H4zM10 20a2 2 0 004 0"/>',
   sync: '<path d="M20 11a8 8 0 00-14-4M4 4v4h4M4 13a8 8 0 0014 4M20 20v-4h-4"/>',
   claude: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
+  jarvis: '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
   send: '<path d="M4 12l16-8-6 16-3-7z"/>',
   fimg: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/>',
   ffilm: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
@@ -61,7 +63,7 @@ async function api(path, opts = {}) {
 }
 const items = k => api('/api/items/' + k).then(d => d.items);
 
-const TABS = [['home', 'Lage'], ['neu', 'Neu'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['musik', 'Musik'], ['claude', 'Claude'], ['term', 'Terminal'], ['vault', 'Vault'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['verbindungen', 'Verbindungen'], ['system', 'System']];
+const TABS = [['home', 'Lage'], ['neu', 'Neu'], ['tasks', 'Aufgaben'], ['notes', 'Notizen'], ['money', 'Geld'], ['training', 'Training'], ['musik', 'Musik'], ['claude', 'Claude'], ['jarvis', 'JARVIS'], ['term', 'Terminal'], ['vault', 'Vault'], ['wissen', 'Wissen'], ['files', 'Dateien'], ['verbindungen', 'Verbindungen'], ['einstellungen', 'Einstellungen'], ['system', 'System']];
 function buildNav() {
   $('#nav').innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${ico(id)}<span>${name}</span></button>`).join('');
   $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) location.hash = '#/' + b.dataset.t; });
@@ -328,8 +330,29 @@ const CTX_MAX = 200000;      // ab hier: Übergabe sichern und neuer Chat (jede 
 const fmtTok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + ' Mio' : n >= 1000 ? Math.round(n / 1000) + 'k' : String(n || 0);
 function tokRender() {
   const el = $('#ctok'), t = claudeState.tok; if (!el) return;
-  el.textContent = t ? 'Kontext ' + fmtTok(t.ctx) + ' · Sitzung: ' + fmtTok(t.in) + ' rein / ' + fmtTok(t.out) + ' raus' + (t.cost ? ' · ca. $' + t.cost.toFixed(2) : '') + (t.ctx > CTX_MAX ? ' · groß, besser neuer Chat' : '') : 'Tokens: noch keine Anfrage';
-  el.classList.toggle('warn', !!t && t.ctx > CTX_MAX);
+  if (!t) { el.innerHTML = '<div class="ctoks">Tokens: noch keine Anfrage</div>' + planRender(); el.classList.remove('warn'); return; }
+  const win = /1m/i.test(claudeState.model || '') ? 1e6 : 200000, pct = Math.min(100, Math.round(t.ctx / win * 100));      // Fenstergroesse: 200k, mit [1m]-Modell 1 Mio
+  el.innerHTML = '<div class="ctokh"><span>Kontextfenster</span><span>' + fmtTok(t.ctx) + ' / ' + fmtTok(win) + ' (' + pct + ' %)</span></div>' +
+    '<div class="ctokbar"><i style="width:' + pct + '%"></i></div>' +
+    '<div class="ctoks">Sitzung: ' + fmtTok(t.in) + ' rein / ' + fmtTok(t.out) + ' raus' + (t.cost ? ' · ca. $' + t.cost.toFixed(2) : '') + (t.ctx > CTX_MAX ? ' · groß, besser neuer Chat' : '') + '</div>';
+  el.innerHTML += planRender();
+  el.classList.toggle('warn', t.ctx > CTX_MAX);
+}
+// Sitzungs- (5 Std.) und Wochenlimit: Werte liefert die Brücke in der Antwort von "jobs" (siehe plan_usage in ma-claude-bridge.py)
+let PLAN = null;
+function planRender() {
+  if (!PLAN) return '';
+  if (!PLAN.ok) return '<div class="ctoks">Limits: ' + esc(PLAN.error || 'nicht verfügbar') + '</div>';
+  const when = r => {
+    if (!r) return '';
+    const d = new Date(r * 1000), min = Math.max(0, Math.round((d - Date.now()) / 60000));
+    const left = min < 1440 ? 'in ' + Math.floor(min / 60) + ' Std. ' + (min % 60) + ' Min.' : d.toLocaleDateString('de-DE', { weekday: 'short' }) + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return ' · Reset ' + left;
+  };
+  return [['five', 'Sitzung 5h'], ['week', 'Woche']].filter(x => PLAN[x[0]]).map(x => {
+    const v = PLAN[x[0]], pct = Math.min(100, Math.round(v.p));
+    return '<div class="ctokh"><span>' + x[1] + '</span><span>' + pct + ' % verbraucht' + when(v.r) + '</span></div><div class="ctokbar"><i style="width:' + pct + '%"></i></div>';
+  }).join('');
 }
 function claudeRender(toBottom) {
   const box = $('#cmsgs'); if (!box) return;
@@ -345,7 +368,7 @@ function claudeRender(toBottom) {
     if (m.r === 'u') return '<div class="cm u">' + esc(m.t) + '</div>' + (idle ? act(i, [['edit', 'Bearbeiten']]) : '');
     if (m.r === 't') return '<div class="ctool">' + esc(m.t) + '</div>';
     if (m.r === 'e') return '<div class="cerr">' + esc(m.t) + '</div>';
-    return '<div class="cm' + (m.live ? ' typing' : '') + '">' + mdLite(m.t || '…') + '</div>' + (m.u ? '<div class="cuse">' + esc(m.u.m) + ' · ' + fmtTok(m.u.i) + ' rein · ' + fmtTok(m.u.o) + ' raus' + (m.u.s ? ' · ' + m.u.s + ' s' : '') + (m.u.c ? ' · ca. $' + m.u.c.toFixed(3) : '') + '</div>' : '') + (idle && m.t ? act(i, [['copy', 'Kopieren']].concat('speechSynthesis' in window ? [['speak', 'Vorlesen']] : [], i === lastA ? [['regen', 'Neu erzeugen']] : [])) : '');
+    return '<div class="cm' + (m.live ? ' typing' : '') + '">' + mdLite(m.t || '…') + '</div>' + (m.u ? '<div class="cuse">' + esc(m.u.m) + ' · ' + fmtTok(m.u.i) + ' rein · ' + fmtTok(m.u.o) + ' raus' + (m.u.s ? ' · ' + m.u.s + ' s' : '') + (m.u.c ? ' · ca. $' + m.u.c.toFixed(3) : '') + '</div>' : '') + (m.attr ? '<div class="cuse" title="Herkunft laut Nachweis im Datenstrom">' + esc(m.attr) + '</div>' : '') + (idle && m.t ? act(i, [['copy', 'Kopieren']].concat('speechSynthesis' in window ? [['speak', 'Vorlesen']] : [], i === lastA ? [['regen', 'Neu erzeugen']] : [])) : '');
   }).join('') + (S.busy ? '<div class="cact">⏳ ' + esc(S.act || 'Claude arbeitet …') + (S.reconn ? ' · Verbindung wird wiederhergestellt …' : '') + '</div>' : '') : '<div class="empty">Frag Claude auf deinem Server.<br>Zum Beispiel: „Wie voll ist die Backup-Platte?“ oder „Was ist neu in meinen Notizen?“<br>Mit „Nur lesen“ kann nichts verändert werden. „/hilfe“ zeigt alle Befehle.</div>';
   box.scrollTop = stick ? box.scrollHeight : prev;
   const jb = $('#cjump'); if (jb) jb.hidden = stick;
@@ -486,6 +509,8 @@ async function claudePump(body) {
           if (d.is_error) {
             S.msgs.push({ r: 'e', t: /not logged in|\/login/i.test(String(d.result)) ? 'Claude ist auf dem Server noch nicht angemeldet. Das geht nur einmal und nur mit deinem Konto. Auf deinem PC in PowerShell eingeben: ssh -t ma-server "~/.local/bin/claude". Danach funktioniert dieser Chat dauerhaft.' : String(d.result) });
           } else if (a && !a.t && d.result) a.t = d.result;
+        } else if (d.type === 'ma_attribution' && d.attribution && d.attribution.line) {
+          const a = asst(); if (a) a.attr = d.attribution.line;      // Herkunft laut Bridge-Nachweis (Modell + Verbrauch)
         } else if (d.type === 'bridge_model') {
           S.model = d.model;
           if (!opts.model || opts.model === 'auto') S.msgs.splice(Math.max(0, S.msgs.findIndex(m => m.live)), 0, { r: 't', t: 'Modell automatisch gewählt: ' + d.model });
@@ -583,6 +608,7 @@ async function jobsRefresh() {
   if (!box) { clearInterval(jobsTimer); jobsTimer = null; return; }
   try {
     const d = await cop('jobs', {}), jobs = d.jobs || [];
+    if (d.plan) { PLAN = d.plan; tokRender(); }
     box.innerHTML = jobs.map(j => '<div class="cjob"><span>⏳ ' + esc(j.prompt) + ' · ' + esc(j.model) + ' · ' + Math.floor(j.sec / 60) + ':' + String(j.sec % 60).padStart(2, '0') + '</span>' + (claudeState.busy ? '' : '<button class="btn ghost small" data-view="' + esc(j.id) + '" data-p="' + esc(j.prompt) + '">Ansehen</button>') + '<button class="btn ghost small" data-id="' + esc(j.id) + '">Abbrechen</button></div>').join('');
     box.hidden = !jobs.length;
     box.querySelectorAll('button[data-id]').forEach(b => { b.onclick = async () => { b.disabled = true; try { await cop('cancel', { id: b.dataset.id }); toast('Auftrag abgebrochen'); } catch (er) { toast(er.message, 1); } jobsRefresh(); }; });
@@ -872,8 +898,8 @@ async function claude() {
     const b = e.target.closest('.cslashi'); if (!b) return;
     const ta = $('#cf').prompt; ta.value = '/' + b.dataset.c + ' '; $('#cslash').hidden = true; ta.focus();
   };
-  $('#cjump').onclick = () => { const b = $('#cmsgs'); b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); };
-  $('#cmsgs').addEventListener('scroll', () => { const b = $('#cmsgs'); $('#cjump').hidden = b.scrollHeight - b.scrollTop - b.clientHeight < 90; }, { passive: true });
+  $('#cjump').onclick = () => { const b = $('#cmsgs'); if (b) b.scrollTo({ top: b.scrollHeight, behavior: 'smooth' }); };
+  $('#cmsgs').addEventListener('scroll', e => { const b = e.currentTarget; if (!b || !b.isConnected) return; const j = $('#cjump'); if (j) j.hidden = b.scrollHeight - b.scrollTop - b.clientHeight < 90; }, { passive: true });
   $('#csch').onclick = schedOpen;
   $('#cmsgs').onclick = claudeActions;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;   // Spracheingabe nur, wo der Browser sie kann (nicht im Android-WebView)
@@ -1656,7 +1682,109 @@ async function musik() {
   musRefresh(); browse('');
 }
 
-const ROUTES = { home, neu, musik, tasks, notes, money, training, claude, term, vault, wissen, files, verbindungen, system };
+// Reiter "Einstellungen": Anmeldung (Passkey/Code legt Authelia selbst an), Chat-Grenze, Version. Die Admin-Schalter bleiben im Reiter Claude (Code greift per ID zu).
+async function einstellungen() {
+  const row = (t, s, extra = '') => '<div class="row"><div><b>' + t + '</b><div class="sub">' + s + '</div></div>' + extra + '</div>';
+  view.innerHTML = head('Einstellungen', 'Anmeldung, Claude-Chat und Portal') +
+    '<div class="list">' +
+    row('Anmeldung', 'Passkey ist serverseitig eingeschaltet. Ob du schon einen angelegt hast, zeigt die Seite dort. Im Menü oben links „Sicherheit“ wählen, dann Passkey oder Code (TOTP) hinzufügen.', '<a class="btn small ghost" href="/auth/settings" target="_blank" rel="noopener">Öffnen</a>') +
+    row('Claude-Chat', 'Neuer Chat wird ab ' + fmtTok(CTX_MAX) + ' Kontext vorgeschlagen (fest eingestellt). Auto-Einspielung und Sudo-Schalter (nur Admin) stehen im Reiter Claude.') +
+    row('Portal', 'Version ' + esc(VERSION) + (me.admin ? ' · Administrator' : ' · Benutzer')) +
+    '</div>';
+}
+
+/* ---------- JARVIS V16 (Aufträge, Fortschritt, Freigaben, Ergebnisse; dieselbe Steuerung wie jarvis_cli.py und der PC-Client) ---------- */
+const JV_STATE = { queued: 'wartet', planning: 'plant', running: 'läuft', waiting_approval: 'braucht Freigabe', waiting_pc: 'wartet auf PC', done: 'erledigt', partial: 'teilweise', failed: 'fehlgeschlagen', cancelled: 'abgebrochen' };
+const JV_FINAL = ['done', 'partial', 'failed', 'cancelled'];
+const jv = (cmd, extra = {}) => api('/api/jarvis', { body: { cmd, ...extra } }).then(r => { if (!r.ok) throw new Error(r.error || (r.data && r.data.error) || 'JARVIS-Fehler'); return r.data; });
+let jvTimer, jvVis = false, jarvisTick = null;
+async function jarvis() {
+  clearTimeout(jvTimer);
+  if (!me.admin) { view.innerHTML = head('JARVIS') + '<div class="empty">Nur für Administratoren.</div>'; return; }
+  let sel = new URLSearchParams(location.hash.split('?')[1] || '').get('j') || '', cursor = 0, evs = [];
+  view.innerHTML = head('JARVIS', 'Aufträge an den Server-Kern. Er arbeitet im Takt von einer Minute, nicht im Chat.') + `
+  <div class="card"><h2>${ico('claude')} Neuer Auftrag</h2><form id="jvf"><textarea name="r" maxlength="8000" placeholder="Was soll JARVIS erledigen? (Ergebnisse landen unter Bibliothek/JARVIS)" style="min-height:84px"></textarea><div class="mt"><button class="btn">${ico('send')} Starten</button></div></form></div>
+  <div class="card mt"><h2>Zustand</h2><div id="jvst" class="pills"></div></div>
+  <div class="card mt"><h2>Aufträge</h2><div class="list" id="jvlist"></div></div>
+  <div id="jvdet"></div>
+  <details class="card mt" id="jvmore"><summary class="sub">Fähigkeiten und Gelerntes</summary><div id="jvmb" class="mt"></div></details>`;
+  const alive = () => location.hash.startsWith('#/jarvis') && view.querySelector('#jvlist');
+  const pill = s => `<span class="pill ${s === 'done' ? 'dot' : s === 'failed' || s === 'cancelled' ? 'dot off' : ''}">${esc(JV_STATE[s] || s)}</span>`;
+  const when = t => t ? new Date(t * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  async function usage() {
+    const u = await jv('usage'), l = u.ledger.claude;
+    $('#jvst').innerHTML = `<span class="pill">Claude-Aufrufe ${l.calls_24h}/${l.limits.calls_per_day} (24 h)</span><span class="pill">Token ${Math.round(l.tokens_24h / 1000)}k/${Math.round(l.limits.tokens_per_day / 1000)}k</span>` +
+      (u.ledger.plan_block ? `<span class="pill dot off">Plan-Schutz: ${esc(String(u.ledger.plan_block).slice(0, 60))}</span>` : '') +
+      `<button class="btn small ghost" id="jvkill">Not-Aus</button><button class="btn small ghost" id="jvlive">Not-Aus aufheben</button>`;
+    $('#jvkill').onclick = async () => { if (confirm('Not-Aus: keine neuen Aufträge, laufende werden nicht fortgesetzt. Sicher?')) { try { await jv('kill', { state: 'on' }); toast('Not-Aus gesetzt'); } catch (er) { toast(er.message, 1); } } };
+    $('#jvlive').onclick = async () => { try { await jv('kill', { state: 'off' }); toast('Not-Aus aufgehoben'); } catch (er) { toast(er.message, 1); } };
+  }
+  async function list() {
+    const { jobs } = await jv('list', { limit: 15 });
+    $('#jvlist').innerHTML = jobs.length ? jobs.map(j => `<div class="row ${j.id === sel ? 'l2' : ''}" data-j="${esc(j.id)}" style="cursor:pointer"><div class="grow"><b>${esc(j.request)}</b><span>${when(j.created)} · ${j.claude_calls} Aufr. · ${Math.round(j.tokens_new / 1000)}k Token</span></div>${pill(j.state)}</div>`).join('') : '<div class="empty">Noch keine Aufträge.</div>';
+    return jobs;
+  }
+  async function detail() {
+    const box = $('#jvdet'); if (!sel) { box.innerHTML = ''; return null; }
+    const st = await jv('status', { job: sel });
+    const ev = await jv('events', { job: sel, since: cursor });
+    if (ev.events.length) { evs = evs.concat(ev.events); cursor = evs[evs.length - 1].id; }
+    const fin = JV_FINAL.includes(st.state);
+    let files = '';
+    if (fin) { const r = await jv('result', { job: sel }); files = r.files.map(f => `<button class="chip" data-f="${esc(f)}">${esc(f)}</button>`).join(''); }
+    const waiting = (st.steps || []).filter(s => s.state === 'waiting');
+    box.innerHTML = `<div class="card mt"><h2>${esc(st.id)} ${pill(st.state)}</h2>
+      <div class="sub">${esc(st.request || '')}</div>${st.summary ? `<div class="mt"><b>${esc(st.summary)}</b></div>` : ''}
+      ${st.attribution && fin ? `<div class="mt sub" id="jvattr" title="Herkunft laut Ausführungsprotokoll (Schritte, Modellaufrufe, Ereignisse)">${esc(st.attribution.line)}</div>` : ''}
+      <div class="list mt">${(st.steps || []).map(s => `<div class="row"><div class="grow"><b>${esc(s.title)}</b><span>${esc(s.kind)}${s.capability ? ' · ' + esc(s.capability) : ''}${s.detail ? ' · ' + esc(String(s.detail).split('\n')[0].slice(0, 90)) : ''}</span></div>${pill(s.state === 'waiting' ? 'waiting_approval' : s.state)}</div>`).join('')}</div>
+      ${st.state === 'waiting_approval' ? `<div class="mt"><div class="sub">${(st.effects || []).length ? 'Geplante Wirkung: ' + esc(JSON.stringify(st.effects).slice(0, 300)) : 'Der Auftrag wartet auf deine Freigabe.'}</div><input id="jvans" placeholder="${waiting.length ? 'Antwort auf die Rückfrage (erforderlich)' : 'Hinweis (optional)'}" class="mt"><div class="mt"><button class="btn" id="jvok">Freigeben</button></div></div>` : ''}
+      ${!fin ? '<div class="mt"><button class="btn small ghost" id="jvno">Abbrechen</button></div>' : ''}
+      ${files ? `<div class="mt sub">Ergebnisse</div><div class="chips mt">${files}</div>` : ''}
+      <details class="mt"><summary class="sub">Verlauf (${evs.length})</summary><div class="sub mt" style="white-space:pre-wrap">${evs.slice(-60).map(e => `${when(e.ts)} ${esc(e.kind)}: ${esc(e.text)}`).join('\n')}</div></details></div>`;
+    const ok = $('#jvok'); if (ok) ok.onclick = async () => { try { if (waiting.length && !$('#jvans').value.trim()) { toast('Bitte die Rückfrage beantworten', 1); return; } for (const s of waiting.length ? waiting : [{}]) await jv('approve', { job: sel, step: s.sid || '', answer: $('#jvans').value }); toast(waiting.length ? 'Antwort gesendet' : 'Freigegeben'); tick(true); } catch (er) { toast(er.message, 1); } };
+    const no = $('#jvno'); if (no) no.onclick = async () => { if (!confirm('Auftrag abbrechen?')) return; try { await jv('cancel', { job: sel }); toast('Abgebrochen'); tick(true); } catch (er) { toast(er.message, 1); } };
+    box.querySelectorAll('[data-f]').forEach(b => { b.onclick = () => openViewer('Bibliothek/JARVIS/' + sel + '/' + b.dataset.f, b.dataset.f.split('/').pop()); });
+    return st;
+  }
+  // Abfrage nur solange der Reiter offen und sichtbar ist und ein Auftrag noch läuft: spart Last und Token auf dem Server.
+  // Jeder Aufruf startet auf dem Server einen Python-Prozess (ca. 0,35 s CPU): Liste und Verbrauch deshalb nur beim Öffnen, nach Aktionen und alle 5. Runde.
+  let n = 0;
+  async function tick(once) {
+    clearTimeout(jvTimer);
+    if (!alive()) return;
+    let busy = false;
+    try {
+      const full = once || n++ % 5 === 0;
+      const st = await detail();
+      const jobs = full || !st ? await list() : null;
+      if (full) await usage();
+      busy = (st && !JV_FINAL.includes(st.state)) || (jobs || []).some(j => !JV_FINAL.includes(j.state)) || (!jobs && !st);
+    } catch (er) { toast(er.message, 1); }
+    if (busy && !document.hidden) jvTimer = setTimeout(() => tick(), 6000);
+    else if (!once) jvTimer = setTimeout(() => tick(true), 30000);
+  }
+  if (!jvVis) { jvVis = true; document.addEventListener('visibilitychange', () => { if (!document.hidden && location.hash.startsWith('#/jarvis') && jarvisTick) jarvisTick(true); }); }
+  jarvisTick = tick;
+  const rid = () => (self.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)).replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40);
+  let key = rid();
+  $('#jvf').onsubmit = async e => {
+    e.preventDefault(); const t = String(new FormData(e.target).get('r')).trim(); if (!t) return;
+    try { const r = await jv('submit', { request: t, client_id: key }); key = rid(); e.target.reset(); sel = r.job_id || ''; cursor = 0; evs = []; toast('Auftrag übergeben'); tick(true); } catch (er) { toast(er.message, 1); }
+  };
+  view.onclick = e => { const r = e.target.closest('[data-j]'); if (r) { sel = r.dataset.j; cursor = 0; evs = []; history.replaceState(null, '', '#/jarvis?j=' + sel); tick(true); } };
+  $('#jvmore').addEventListener('toggle', async ev => {
+    if (!ev.target.open) return;
+    try {
+      const [caps, learned] = await Promise.all([jv('caps'), jv('learned')]);
+      const tpl = learned.templates || learned.vorlagen || [], les = learned.lessons || [];
+      $('#jvmb').innerHTML = `<div class="chips">${caps.caps.map(c => `<span class="chip" title="${esc((c.title || '') + ' (' + (c.host || '') + ')')}">${esc(c.name)} · ${esc(c.status)}</span>`).join('')}</div>` +
+        `<div class="sub mt">Gelernte Vorlagen: ${tpl.length} · Lehren: ${les.length}. Löschen: <code>jarvis forget template|lesson ID</code> (CLI) oder POST /api/jarvis {cmd:"forget"}.</div>`;
+    } catch (er) { $('#jvmb').textContent = er.message; }
+  });
+  tick();
+}
+
+const ROUTES = { home, neu, musik, tasks, notes, money, training, claude, jarvis, term, vault, wissen, files, verbindungen, einstellungen, system };
 async function route() {
   const id = (location.hash.slice(2).split('?')[0]) || 'home';
   const fn = ROUTES[id] || home;
@@ -1668,7 +1796,7 @@ async function route() {
 }
 
 // ---- Installierbare Web-App (PWA): Version, Service Worker, automatische Aktualisierung --------------------------
-const VERSION = '2026-10-13-4';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
+const VERSION = '2026-10-15-1';          // bei jeder Aenderung am Portal mit sw.js hochzaehlen
 function pwa() {
   const btn = $('#reload');
   const hardReload = async () => {

@@ -50,6 +50,8 @@ def connect():
         CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(path UNINDEXED, title, body, tokenize='unicode61 remove_diacritics 2');
         CREATE TABLE IF NOT EXISTS links(src TEXT, name TEXT);
         CREATE TABLE IF NOT EXISTS tags(path TEXT, tag TEXT);
+        CREATE TABLE IF NOT EXISTS replaces(src TEXT, name TEXT);
+        CREATE INDEX IF NOT EXISTS replaces_name ON replaces(name);
         CREATE TABLE IF NOT EXISTS qlog(ts INTEGER, query TEXT, zone TEXT, hits INTEGER, top TEXT, ms INTEGER);
         CREATE INDEX IF NOT EXISTS links_name ON links(name);
         CREATE INDEX IF NOT EXISTS links_src ON links(src);
@@ -148,6 +150,7 @@ def refresh(con):
             con.execute('DELETE FROM fts WHERE path=?', (p,))
             con.execute('DELETE FROM links WHERE src=?', (p,))
             con.execute('DELETE FROM tags WHERE path=?', (p,))
+            con.execute('DELETE FROM replaces WHERE src=?', (p,))
         for p in changed:
             m, s = on_disk[p]
             try:
@@ -166,6 +169,9 @@ def refresh(con):
             if zone == 'vault':                         # Links und Tags nur aus dem Vault (Graph), nicht aus Projektdoku
                 con.executemany('INSERT INTO links VALUES(?,?)', [(p, l) for l in links])
                 con.executemany('INSERT INTO tags VALUES(?,?)', [(p, t) for t in tags])
+                ers = fm_field(text, 'ersetzt').strip('[] ').removesuffix('.md')       # Frontmatter ersetzt: Notizname wertet die Zielnotiz ab
+                if ers:
+                    con.execute('INSERT INTO replaces VALUES(?,?)', (p, ers))
         n_changed += len(changed)
         n_gone += len(gone)
     con.commit()
@@ -199,7 +205,9 @@ def fts_query(q, mode='AND'):
 RANK = ("bm25(fts, 0, 6.0, 1.0) * CASE WHEN n.path LIKE '90 Archiv/%' THEN 0.35 WHEN n.path LIKE '_Claude-Memory/Import/%' THEN 0.5 "
         "WHEN n.path LIKE '20 Projekte/Projekt Schmejd/%' OR n.path LIKE '20 Projekte/Crimson Zone/%' OR n.path LIKE '30 Technik/Arduino/%' THEN 0.4 "
         "WHEN n.path LIKE '_Claude-Memory/Archiv/%' THEN 0.5 "
-        "WHEN n.path LIKE '_Claude-Memory/%' OR n.path LIKE '30 Technik/%' THEN 1.3 ELSE 1.0 END")
+        "WHEN n.path LIKE '_Claude-Memory/%' OR n.path LIKE '30 Technik/%' THEN 1.3 ELSE 1.0 END "
+        "* CASE WHEN lower(n.status) IN ('veraltet','ungueltig','zurueckgezogen') "
+        "OR lower(replace(replace(n.path, rtrim(n.path, replace(n.path, '/', '')), ''), '.md', '')) IN (SELECT name FROM replaces) THEN 0.3 ELSE 1.0 END")
 
 
 def log_query(con, a, zone, out, t0):

@@ -1,0 +1,4 @@
+*/20 * * * * /usr/bin/nice -n 10 /usr/bin/ionice -c3 /usr/bin/python3 /home/andrew/MA-Server/scripts/server-sync/vault-graph-export.py >/dev/null 2>&1
+55 6 * * * /usr/bin/nice -n 10 /usr/bin/ionice -c3 /usr/bin/python3 /home/andrew/MA-Server/scripts/server-sync/morgenbrief.py >/dev/null 2>&1
+30 7,17 * * * /usr/bin/nice -n 10 /usr/bin/ionice -c3 /usr/bin/python3 /home/andrew/MA-Server/scripts/server-sync/fristen-erinnerung.py >/dev/null 2>&1
+* * * * * /usr/bin/flock -n /home/andrew/.local/state/ma-jarvis/tick.lock /usr/bin/nice -n 10 /usr/bin/ionice -c2 -n7 /usr/bin/python3 /home/andrew/.local/share/ma-jarvis/current/brain-runtime/jarvis_cli.py --config /home/andrew/.config/ma-jarvis/jarvis.json tick --max-seconds 50 --log /home/andrew/.local/state/ma-jarvis/tick.log >/dev/null 2>>/home/andrew/.local/state/ma-jarvis/tick.err

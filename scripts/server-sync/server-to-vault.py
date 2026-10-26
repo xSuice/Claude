@@ -21,7 +21,8 @@ MAXSIZE = 20 * 1024 * 1024
 
 def log(m):
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
-    open(LOG, "a", encoding="utf-8").write(time.strftime("%Y-%m-%d %H:%M:%S ") + "[pull] " + m + "\n")
+    with open(LOG, "a", encoding="utf-8") as f:
+        f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + "[pull] " + m + "\n")
 
 
 def ssh(cmd, binary=False, timeout=120):
@@ -33,12 +34,17 @@ def ssh(cmd, binary=False, timeout=120):
 
 def listing(d):
     out = {}
-    for line in ssh(f"[ -d '{d}' ] && find '{d}' -type f -printf '%P\\t%T@\\t%s\\n' || true").splitlines():
-        try:
-            p, t, s = line.split("\t")
-            out[p] = (int(float(t)), int(s))
-        except ValueError:
-            pass
+    # Do not mask find/permission failures as a successful partial listing.
+    for line in ssh(f"if [ -d '{d}' ]; then find '{d}' -type f -printf '%P\\t%T@\\t%s\\n'; else exit 1; fi").splitlines():
+        p, t, s = line.split("\t")
+        if (not p or p in out or "\\" in p or ":" in p
+                or any(part in ("", ".", "..") for part in p.split("/"))
+                or any(ord(c) < 32 for c in p)):
+            raise ValueError("Invalid or duplicate listing path")
+        mt, size = int(float(t)), int(s)
+        if size < 0:
+            raise ValueError("Negative listing size")
+        out[p] = (mt, size)
     return out
 
 
@@ -59,9 +65,10 @@ FLAG = "/srv/ma-home/library/.jarvis/server-master"      # Datei auf dem Server:
 
 def master_on():
     try:
-        return ssh(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip() == "1"
+        out = ssh(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip()
+        return {"0": False, "1": True}.get(out)
     except Exception:
-        return False
+        return None
 
 
 def vanished(sent, srv, unchanged_here):
@@ -80,11 +87,13 @@ def safe(name):
 def main():
     dry = "--dry" in sys.argv
     try:
-        sent = json.load(open(STATE, encoding="utf-8"))
+        with open(STATE, encoding="utf-8") as fh:
+            sent = json.load(fh)
     except Exception:
         sent = {}
     try:
-        pulled = json.load(open(PULL, encoding="utf-8"))
+        with open(PULL, encoding="utf-8") as fh:
+            pulled = json.load(fh)
     except Exception:
         pulled = {}
     try:
@@ -92,8 +101,11 @@ def main():
         inbox = listing(INBOX)
     except Exception as e:
         log(f"Server nicht erreichbar: {e}")
-        return 0
+        return 1
     master = master_on()
+    if master is None:
+        log("Hauptkopie-Status unbekannt, Abbruch ohne lokale Aenderungen")
+        return 1
     if master and not dry:
         def unchanged_here(rel, base):
             loc = os.path.join(VAULT, rel.replace("/", os.sep))
@@ -134,7 +146,8 @@ def main():
         if rel in got:
             loc = os.path.join(VAULT, rel.replace("/", os.sep))
             os.makedirs(os.path.dirname(loc), exist_ok=True)
-            open(loc, "wb").write(got[rel])
+            with open(loc, "wb") as fh:
+                fh.write(got[rel])
             os.utime(loc, (srv[rel][0], srv[rel][0]))
             st = os.stat(loc)
             sent[rel] = [int(st.st_mtime), st.st_size]   # damit vault-to-server es nicht zurueckschickt
@@ -144,7 +157,8 @@ def main():
         if rel in got:
             os.makedirs(rev, exist_ok=True)
             n = os.path.splitext(os.path.basename(rel))[0]
-            open(os.path.join(rev, safe(n) + " (Server-Konflikt).md"), "wb").write(got[rel])
+            with open(os.path.join(rev, safe(n) + " (Server-Konflikt).md"), "wb") as fh:
+                fh.write(got[rel])
             pulled[rel] = [srv[rel][0], srv[rel][1]]
     ein = os.path.join(VAULT, "00 Inbox", "Server-Eingang")
     if new_in:
@@ -155,7 +169,8 @@ def main():
                 tgt = os.path.join(ein, safe(os.path.basename(rel)))
                 if os.path.exists(tgt):
                     b, e = os.path.splitext(tgt); tgt = f"{b} ({time.strftime('%Y%m%d-%H%M')}){e}"
-                open(tgt, "wb").write(gi[rel])
+                with open(tgt, "wb") as fh:
+                    fh.write(gi[rel])
                 ssh(f"mkdir -p '{INBOX}/../archive/vom-vault-geholt' && mv -n '{INBOX}/{rel}' '{INBOX}/../archive/vom-vault-geholt/'")
     if other_in:
         os.makedirs(ein, exist_ok=True)
@@ -163,9 +178,12 @@ def main():
                  "Übergeordnet: [[MA-Server Zentrale]] · [[Übersicht]]", "",
                  f"Stand {time.strftime('%Y-%m-%d %H:%M')}. Diese Dateien liegen im Server-Eingang `{INBOX}` und werden nicht in den Vault kopiert (kein Text).", ""]
         lines += [f"- `{r}` ({inbox[r][1]//1024} KB)" for r in sorted(other_in)]
-        open(os.path.join(ein, "Server-Eingang.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
-    json.dump(sent, open(STATE, "w", encoding="utf-8"))
-    json.dump(pulled, open(PULL, "w", encoding="utf-8"))
+        with open(os.path.join(ein, "Server-Eingang.md"), "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+    with open(STATE, "w", encoding="utf-8") as fh:
+        json.dump(sent, fh)
+    with open(PULL, "w", encoding="utf-8") as fh:
+        json.dump(pulled, fh)
     log(f"OK geholt={len(take)} konflikte={len(conflicts)} eingang_text={len(new_in)} eingang_andere={len(other_in)}")
     return 0
 

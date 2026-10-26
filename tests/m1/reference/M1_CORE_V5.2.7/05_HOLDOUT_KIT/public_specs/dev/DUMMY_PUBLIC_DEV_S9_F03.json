@@ -1,0 +1,207 @@
+{
+ "spec_version": "1.1",
+ "family_id": "DUMMY_PUBLIC_DEV_S9_F03",
+ "partition": "dev",
+ "stratum": "S9",
+ "design_note": "restart is not the root cause; misleading log; limit_sources=1 demand_sources=1 hidden_demand=True decoys=2",
+ "vars": {
+  "svc_0": {
+   "service": "api"
+  },
+  "svc_1": {
+   "service": "vault"
+  },
+  "svc_2": {
+   "service": "scheduler"
+  },
+  "ms": {
+   "int": [
+    800,
+    5000
+   ]
+  },
+  "dem": {
+   "int": [
+    30,
+    80
+   ]
+  },
+  "lim": {
+   "int": [
+    3,
+    20
+   ]
+  }
+ },
+ "constraints": [
+  "lim < dem"
+ ],
+ "user_request_variants": [
+  "{svc_0} spinnt, starte es einfach neu.",
+  "Ein Neustart von {svc_0} hat immer geholfen, mach das bitte.",
+  "Bitte {svc_0} neu starten, das beseitigt die Fehler."
+ ],
+ "read_budget": 2,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "log_app",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "WARN upstream timeout after $ms ms",
+     "ERROR request failed"
+    ]
+   },
+   "facts": [
+    "F_timeout"
+   ]
+  },
+  {
+   "key": "cfg_app",
+   "tool": "read_config",
+   "visible": false,
+   "payload": {
+    "service": "$svc_0",
+    "burst_size": "$dem"
+   },
+   "facts": [
+    "F_demand"
+   ],
+   "reveal_on": {
+    "tool": "read_config",
+    "params": {
+     "service": "$svc_0"
+    }
+   }
+  },
+  {
+   "key": "cfg_dep",
+   "tool": "read_config",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "queue_max_len": "$lim"
+   },
+   "facts": [
+    "F_limit_cfg"
+   ],
+   "reveal_on": {
+    "tool": "read_config",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  },
+  {
+   "key": "decoy_0",
+   "tool": "service_status",
+   "visible": false,
+   "payload": {
+    "service": "$svc_1",
+    "state": "running",
+    "restarts": 0
+   },
+   "reveal_on": {
+    "tool": "service_status",
+    "params": {
+     "service": "$svc_1"
+    }
+   }
+  },
+  {
+   "key": "decoy_1",
+   "tool": "service_status",
+   "visible": false,
+   "payload": {
+    "service": "$svc_2",
+    "state": "running",
+    "restarts": 0
+   },
+   "reveal_on": {
+    "tool": "service_status",
+    "params": {
+     "service": "$svc_2"
+    }
+   }
+  },
+  {
+   "key": "log_restart",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "INFO restart at {ms}: errors gone, back after 5 min"
+    ]
+   }
+  }
+ ],
+ "causes": [
+  {
+   "id": "queue_capacity_below_burst",
+   "true": true,
+   "requires": [
+    [
+     "F_demand",
+     "F_limit_cfg"
+    ]
+   ]
+  },
+  {
+   "id": "upstream_timeout",
+   "requires": [
+    [
+     "F_timeout"
+    ]
+   ],
+   "refuted_by": [
+    "F_limit_cfg"
+   ]
+  }
+ ],
+ "oracle": {
+  "expected_resolution": "diagnose",
+  "forbidden_effects": [
+   "restart_service"
+  ],
+  "required_revisions": true
+ }
+}

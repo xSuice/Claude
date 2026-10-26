@@ -1,0 +1,2 @@
+# Preserve supplied source-package bytes across Windows checkouts.
+reference/** -text

@@ -498,12 +498,16 @@ def write_report(rep, changes, pull, push, conflicts):
         lines.append(f"- Platte: {rep.get('platte','?')}; Backup-Platte: {rep.get('backup_platte','?')}; {rep.get('letztes_backup','')}")
         if rep.get("bibliothek_neu_anzahl"):
             lines.append(f"- Neu/geändert in der Bibliothek: {rep['bibliothek_neu_anzahl']} — " + ", ".join(f"`{x}`" for x in rep["bibliothek_neu"][:15]))
-        for s in rep.get("claude_sitzungen", [])[:8]:
-            lines.append(f"- Claude auf dem Server {s['zeit']}: „{s['start']}“")
-    for x in pull:
-        lines.append(f"- Vom Server geholt: `{x}`")
-    for x in push:
-        lines.append(f"- Zum Server gesendet: `{x}`")
+        seen = set()                # gleiche Startsaetze nur einmal (Librarian-Laeufe wiederholen sich)
+        for s in rep.get("claude_sitzungen", []):
+            if s["start"] in seen or len(seen) >= 3:
+                continue
+            seen.add(s["start"])
+            lines.append(f"- Claude auf dem Server {s['zeit']}: „{s['start'][:60]}“")
+    for label, items in (("Vom Server geholt", pull), ("Zum Server gesendet", push)):
+        if items:
+            more = f" (+{len(items) - 5} weitere)" if len(items) > 5 else ""
+            lines.append(f"- {label} ({len(items)}): " + ", ".join(f"`{x}`" for x in items[:5]) + more)
     for x in conflicts:
         lines.append(f"- **Konflikt** (beide geändert): `{x}` → Serverfassung liegt als `.server-konflikt` daneben")
     lines += [f"- {c}" for c in changes]
@@ -516,7 +520,7 @@ def write_report(rep, changes, pull, push, conflicts):
         old = old.split("\n## ", 1)[1] if "\n## " in old else ""
         old = "## " + old if old else ""
     blocks = ("\n".join(lines) + "\n\n" + old).split("\n## ")
-    text = head + "\n## ".join(blocks[:48])
+    text = head + "\n## ".join(blocks[:12])
     open(VAULT_REPORT, "w", encoding="utf-8").write(text.rstrip() + "\n")
 
 

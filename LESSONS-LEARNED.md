@@ -25,6 +25,7 @@ H01: Unzugänglicher Webordner könnte die historische JSON-404 erklären. Laut 
 - Tatsächliche Reparatur und Ergebnis:
 - Kurze Vermeidungsregel und passende Prüfung:
 - Grenzen / weiterhin offene Punkte:
+- Schicht (ab 2026-10-14, V5 Nr. 175/272): Retrieval (falsches/fehlendes Dokument) · Rechte (ACL, Dienstkonto) · Test (Prüflücke) · Router (Modellwahl) · Auftrag (unklar) · Werkzeug (Toolfehler). Nur die betroffene Schicht verbessern, nicht jeden Fehler durch längere Regeln beheben.
 
 Überholte Erkenntnisse mit datierter Korrektur versehen. Nur allgemeingültige dauerhafte Regeln zusätzlich in AGENTS.md übernehmen; keine unbestätigten Vermutungen verallgemeinern.
 

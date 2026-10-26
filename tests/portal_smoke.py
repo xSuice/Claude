@@ -19,6 +19,7 @@ NDJSON = '\n'.join(json.dumps(x) for x in [
     {'type': 'assistant', 'message': {'usage': {'input_tokens': 1200, 'cache_read_input_tokens': 3000}, 'content': [{'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'df -h'}}]}},
     {'type': 'stream_event', 'event': {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'Welt\n\n```\ndf -h\n```\n\n```html\n<b>Vorschau-Test</b>\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |'}}},
     {'type': 'result', 'result': 'Hallo Welt', 'usage': {'input_tokens': 1200, 'cache_read_input_tokens': 3000, 'output_tokens': 40}, 'total_cost_usd': 0.01, 'duration_ms': 8200},
+    {'type': 'ma_attribution', 'attribution': {'label': 'Claude', 'line': 'Claude: Antwort erzeugt (haiku, 1240 neue Token) · Status: abgeschlossen · Nachweis: job123'}},
     {'type': 'bridge_end', 'code': 0}]) + '\n'
 DENY = '\n'.join(json.dumps(x) for x in [
     {'type': 'bridge_model', 'model': 'haiku'}, {'type': 'bridge_job', 'id': 'job123'},
@@ -46,6 +47,8 @@ NOTES = {'Plan.md': '# Plan\nSiehe [[Fahrschule]] und #planung\n\n![[bild.png]]\
 JOBS = []          # laufende Auftraege, die die Platzhalter-Bruecke meldet
 FEEDBACK = []
 TERM_CALLS = []
+JV = {'state': 'waiting_approval'}
+JV_CALLS = []
 
 
 def api(route, request):
@@ -56,6 +59,33 @@ def api(route, request):
         return j({'user': 'andrew', 'admin': True, 'domain': BASE, 'modules': {}})
     if path.startswith('/api/items/'):
         return j({'items': []})
+    if path.startswith('/api/jarvis'):
+        d = json.loads(body or '{}'); c = d.get('cmd'); JV_CALLS.append(d)
+        job = {'id': 'j20261014-abc123', 'state': JV['state'], 'request': 'Teste Freigabe', 'summary': '', 'effects': [], 'created': 1790000000, 'claude_calls': 1, 'tokens_new': 2000,
+               'steps': [{'sid': 's1', 'title': 'Schreiben', 'kind': 'claude', 'state': 'waiting' if JV['state'] == 'waiting_approval' else 'done', 'capability': None, 'detail': ''}]}
+        if JV['state'] == 'done':
+            job['attribution'] = {'label': 'Jarvis + Claude', 'status': 'abgeschlossen', 'ref': job['id'],
+                                  'line': 'Jarvis + Claude: Jarvis – Abnahme; Claude – 1 Inhaltsschritt · Status: abgeschlossen · Nachweis: ' + job['id']}
+        if c == 'usage':
+            return j({'ok': True, 'data': {'ledger': {'claude': {'calls_24h': 5, 'tokens_24h': 53000, 'limits': {'calls_per_day': 40, 'tokens_per_day': 1500000}}, 'plan_block': None}}})
+        if c == 'list':
+            return j({'ok': True, 'data': {'jobs': [job]}})
+        if c == 'status':
+            return j({'ok': True, 'data': job})
+        if c == 'events':
+            return j({'ok': True, 'data': {'events': [{'id': 1, 'ts': 1790000000, 'kind': 'submitted', 'text': 'Datenklasse internal'}]}})
+        if c == 'approve':
+            JV['state'] = 'done'
+            return j({'ok': True, 'data': {'ok': True}})
+        if c == 'result':
+            return j({'ok': True, 'data': {'files': ['BERICHT.md'], 'state': 'done'}})
+        if c == 'submit':
+            return j({'ok': True, 'data': {'job_id': 'j20261014-abc123', 'state': 'queued'}})
+        if c == 'caps':
+            return j({'ok': True, 'data': {'caps': [{'name': 'python.run', 'status': 'tested', 'host': 'server', 'title': 'x'}]}})
+        if c == 'learned':
+            return j({'ok': True, 'data': {'templates': [], 'lessons': []}})
+        return j({'ok': True, 'data': {}})
     if path.startswith('/api/claude/op'):
         op = json.loads(body or '{}').get('op')
         if op == 'suggest':
@@ -145,6 +175,21 @@ def handler(route, request):
     return route.fulfill(status=200, content_type=mimetypes.guess_type(fp)[0] or 'text/plain', body=open(fp, 'rb').read())
 
 
+def wait_bridge(page, n0, rounds=160):
+    """Harness-Synchronisation: warten, bis die Suggest->Send-Kette des aktuellen Prompts als neuer
+    /api/claude-Aufruf an der Platzhalter-Bruecke angekommen ist (CALLS ist gewachsen)."""
+    for _ in range(rounds):
+        if len(CALLS) > n0:
+            return
+        page.wait_for_timeout(50)
+
+
+def wait_idle(page, timeout=8000):
+    """Harness-Synchronisation: klares UI-Merkmal fuer Abschluss des vorigen Prompts --
+    der Senden-Knopf zeigt nicht mehr „Stopp“ (Klick wuerde sonst abbrechen statt senden)."""
+    page.wait_for_function("!document.querySelector('#csend').innerText.toLowerCase().includes('stopp')", timeout=timeout)
+
+
 def main():
     results, errors = [], []
 
@@ -154,7 +199,7 @@ def main():
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        ctx = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True, accept_downloads=False)
+        ctx = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True, accept_downloads=False, service_workers='block')  # Harness 'ohne echtes Backend': SW-Script-Fetch liesse sich nicht ueber den Mock bedienen (browserinterner Konsolenfehler)
         ctx.grant_permissions([])
         page = ctx.new_page()
         page.on('pageerror', lambda e: errors.append('pageerror: ' + str(e)))
@@ -162,7 +207,8 @@ def main():
         page.route(BASE + '/**', handler)
         page.goto(BASE + '/')
         page.wait_for_selector('#view .top', timeout=8000)
-        check('Startseite lädt, Version im Kopf', 'v2026-' in page.inner_text('.kicker').lower(), page.inner_text('.kicker'))
+        import re as _re
+        check('Startseite lädt, Version im Kopf', bool(_re.search(r'v\d{4}-\d{2}-\d{2}-\d+', page.inner_text('.kicker').lower())), page.inner_text('.kicker'))
         check('Jarvis-Karte erscheint', page.wait_for_selector('#jarvis', timeout=4000) is not None)
         page.click('#jarvis summary')
         page.click('#jarvis button[data-fb=again]')
@@ -208,6 +254,8 @@ def main():
         check('Tabelle gerendert', page.locator('.tblwrap table').count() == 1)
         cu = page.inner_text('#cmsgs .cuse')
         check('Verbrauch pro Nachricht (Modell, Tokens, Dauer)', 'haiku' in cu.lower() and 'rein' in cu and '40 raus' in cu and '8 s' in cu, cu)
+        at = page.inner_text('#cmsgs .cuse >> nth=1')
+        check('Herkunft Claude unter der Antwort', at.startswith('Claude: Antwort erzeugt') and 'job123' in at, at)
         check('Token-Anzeige', 'Kontext' in page.inner_text('#ctok'), page.inner_text('#ctok'))
         check('Senden-Knopf nach Ende wieder „Senden“', 'senden' in page.inner_text('#csend').lower(), page.inner_text('#csend'))
         check('Vorlesen-Knopf vorhanden', page.locator('.cacts button[data-a=speak]').count() >= 1)
@@ -234,13 +282,21 @@ def main():
         att = [c for c in CALLS if c.get('attach')]
         check('Wiederanhängen nach Abbruch (attach ab Position 3)', att and att[-1].get('attach') == 'job123' and att[-1].get('from') == 3, att)
         # Automatischer Council bei einer Entscheidungsfrage
+        # Harness-Synchronisation (Pruefsemantik unveraendert): erst echte Signale abwarten, dann
+        # CALLS[-1] lesen. Der alte Wait auf 'Hallo' matchte stale Text aus frueheren Antworten.
+        wait_idle(page)                      # voriger Prompt bestaetigt abgeschlossen (kein Stopp-Knopf)
         page.fill('#cf textarea', 'Soll ich lieber Variante A oder Variante B nehmen, oder ein ganz anderes Konzept?')
+        n0 = len(CALLS)
         page.click('#csend')
-        page.wait_for_function("document.querySelector('#cmsgs').innerText.includes('Hallo')", timeout=8000)
+        wait_bridge(page, n0)                # Suggest->Send-Kette: dieser Prompt ist an der Bruecke
+        wait_idle(page)                      # Antwortkette abgeschlossen, bevor CALLS[-1] gelesen wird
         check('Council startet automatisch bei Entscheidungsfrage', str(CALLS[-1].get('prompt')).startswith('AI-Council:'), str(CALLS[-1].get('prompt'))[:60])
         page.fill('#cf textarea', 'Soll ich lieber A oder B nehmen? ohne Council')
+        n0 = len(CALLS)
         page.click('#csend')
         page.wait_for_function("document.querySelector('#cmsgs').innerText.includes('ohne Council')", timeout=8000)
+        wait_bridge(page, n0)
+        wait_idle(page)
         check('„ohne Council“ schaltet ihn ab', not str(CALLS[-1].get('prompt')).startswith('AI-Council:'))
         page.wait_for_function("!document.querySelector('#csend').innerText.toLowerCase().includes('stopp')", timeout=8000)
         page.fill('#cf textarea', 'Im Terminal soll der Ordner automatisch gewählt werden')
@@ -379,6 +435,23 @@ def main():
         page.goto(BASE + '/?text=Hallo%20Teilen')
         page.wait_for_selector('#cf textarea', timeout=6000)
         check('Teilen-Menü legt Text als Entwurf in den Chat', page.input_value('#cf textarea') == 'Hallo Teilen', page.input_value('#cf textarea'))
+        page.evaluate("location.hash = '#/jarvis'")
+        page.wait_for_selector('#jvlist .row', timeout=5000)
+        check('JARVIS-Reiter: Navigation markiert, Auftrag gelistet', page.locator('#nav button[data-t=jarvis][aria-current=page]').count() == 1 and 'Teste Freigabe' in page.inner_text('#jvlist'))
+        page.fill('#jvf textarea', 'Neuer Auftrag eins')
+        page.click('#jvf button')
+        page.wait_for_function("document.querySelector('#jvdet').innerText.toLowerCase().includes('braucht freigabe')", timeout=6000)
+        sub = [x for x in JV_CALLS if x.get('cmd') == 'submit']
+        check('JARVIS: Auftrag wird mit Schlüssel gesendet, Detail zeigt Freigabe', len(sub) == 1 and sub[0].get('request') == 'Neuer Auftrag eins' and len(sub[0].get('client_id', '')) >= 8, sub)
+        # Reale UI-Bedienlogik (freigegeben von jarvis-cloud-dev): bei wartendem Schritt verlangt der
+        # #jvok-Guard (app.js) eine Antwort auf die Rückfrage, bevor die Freigabe gesendet wird.
+        page.fill('#jvans', 'passt, fortfahren')
+        page.click('#jvok')
+        page.wait_for_function("document.querySelector('#jvdet').innerText.toLowerCase().includes('bericht.md')", timeout=6000)
+        ap = [x for x in JV_CALLS if x.get('cmd') == 'approve']
+        check('JARVIS: Freigabe sendet Schritt, danach erscheinen Ergebnisdateien', len(ap) == 1 and ap[0].get('step') == 's1', ap)
+        check('JARVIS: Kennzeichnung nur am Ende, mit Status und Nachweis', page.locator('#jvattr').count() == 1 and page.inner_text('#jvattr').startswith('Jarvis + Claude: ') and 'Status: abgeschlossen' in page.inner_text('#jvattr') and 'j20261014-abc123' in page.inner_text('#jvattr'), page.inner_text('#jvdet')[:300])
+        check('JARVIS: kein Querscrollen', page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'))
         check('keine JavaScript-Fehler', not errors, '; '.join(errors[:3]))
         browser.close()
     failed = [n for n, ok in results if not ok]

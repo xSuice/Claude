@@ -1,0 +1,21 @@
+# Opt-in offline CPU-friendly supervisor for MA-Home; NO model calls or public ports.
+# Run in the project directory: docker compose -f compose.brain.yml up -d --build
+services:
+  ma-brain-offline:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    volumes:
+      - ./local-state:/state:rw

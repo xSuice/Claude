@@ -1,5 +1,16 @@
 # MA Home – aktuelle Übergabe
 
+## 2026-10-18 12:00 Europe/Berlin – Hermes, M1a vor Freeze
+
+- Führend für diese Entwicklung: Worktree `jarvis-m1a-live`, Branch `dev/hermes-m1a-live-20261018`, Basis `server-live` / `70a6fd0242c349bb798c4545ff58e5c4f2843ce3`. Alter main-basierter M1a-Worktree bleibt erhalten.
+- SSH ist jetzt tatsächlich verifiziert. Das aktive Release stimmt in allen 104 verglichenen Codedateien mit dieser Basis überein; die main-Basis wich in 8 Dateien ab. Server-Arbeitskopie mit 7 bestehenden Änderungen nicht angefasst.
+- Lokale M1a-Schrittvalidierung per RED/GREEN gehärtet. Abschließend 5 Adapter-, 31 Referenz- und 20 isolierte bestehende V16-Tests grün; öffentlicher Minimal-Sandbox-Probe 13/13. Keine vollständige Runtime-/Modellqualifikation daraus ableiten.
+- Different-Family-Review, faire tatsächliche D-Baseline, integrierte Laufzeit/Recovery und vollständige M1a-Abnahme bleiben offen. Kein Freeze/M1b/Deployment. Produktivdienste und Daten nicht geändert.
+- Details: `docs/jarvis-omega/M1A-LIVE-INTEGRATION.md`; externe Laufbelege im Workspace `Hermes-Engineering-2026-10-17/reports/`, Gesamtbericht `JARVIS-INTEGRATION-2026-10-18.md`.
+- Nächster Schritt: faire D-Baseline und D-Recheck-/V16-M1a-Laufzeitkette vervollständigen; unabhängigen anderen Modellfamilien-Review qualifizieren, bevor Gates geschlossen werden. Der frische statische Review des kleinen öffentlichen Adapter-Diffs ist ohne blockierende Befunde abgeschlossen, ersetzt aber keine Different-Family-Abnahme. Zusatzbudget EUR 0; keine erschöpften Kontingente umgehen.
+
+## Historische Übergabe (nicht als aktueller Prüfbeleg verwenden)
+
 Stand: 2026-10-09 (Abend), Europe/Berlin. Historie in CHANGELOG.md, Zustand in SERVER-STATUS.md, Aufgaben in BACKLOG.md.
 
 ## Stand (live bestätigt)

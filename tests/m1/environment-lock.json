@@ -1,0 +1,14 @@
+{
+  "purpose": "Environment snapshot, NOT a freeze receipt or wheel-hash lock",
+  "python": "3.14.7 (main, Sep  1 2026, 14:17:30) [MSC v.1944 64 bit (AMD64)]",
+  "dependencies": {
+    "jsonschema": "4.26.0",
+    "jsonschema-specifications": "2025.9.1",
+    "attrs": "26.1.0",
+    "referencing": "0.37.0",
+    "rpds-py": "2026.6.3",
+    "typing-extensions": "4.16.0",
+    "ruamel.yaml": "0.18.16",
+    "ruamel.yaml.clib": "NOT_INSTALLED"
+  }
+}

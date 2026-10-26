@@ -1,0 +1,51 @@
+{
+ "quality": {
+  "grounded": {
+   "step": "verified",
+   "helper_counted_success": 1,
+   "requests": 1,
+   "crash": null
+  },
+  "ok": {
+   "step": "blocked",
+   "helper_counted_success": 0,
+   "requests": 1,
+   "crash": null
+  },
+  "empty": {
+   "step": "blocked",
+   "helper_counted_success": 0,
+   "requests": 1,
+   "crash": null
+  },
+  "fabricated": {
+   "step": "blocked",
+   "helper_counted_success": 0,
+   "requests": 1,
+   "crash": null
+  },
+  "inject": {
+   "step": "blocked",
+   "helper_counted_success": 0,
+   "requests": 1,
+   "crash": null
+  }
+ },
+ "quality_summary": {
+  "correct_done": 1,
+  "false_done": 0,
+  "crashes": 0,
+  "false_trust_points": 0
+ },
+ "shadow": {
+  "executed": "claude",
+  "would_call_helper": false
+ },
+ "parallel_budget": {
+  "budget": 3,
+  "requests_reached_provider": 3
+ },
+ "token_budget_zero": {
+  "requests_reached_provider": 0
+ }
+}

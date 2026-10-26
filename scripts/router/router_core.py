@@ -116,3 +116,43 @@ def suggest_access(prompt):
     if _any(p, _NOTE_WRITE) and folder == 'notizen':
         return 'notizen', folder, False
     return 'lesen', folder, False
+
+
+# ---- JARVIS (Cognitive Brain V11.1/V16): Ziel eines Arbeitsschritts ----------------------------
+# Vertrag: docs/jarvis/v11.1/ROUTER-INTERFACE.md. Eingabe sind nur Metadaten (nie Inhalte); die
+# Datenklasse hat JARVIS schon bestimmt, der Router darf sie nicht herabstufen. Externe Helfer
+# nur fuer Klasse A (oeffentlich) und nur fuer lange, einfache, unkritische Texte (Regeln 8/12).
+HELPER_TASKS = ('text_draft', 'translate', 'rewrite', 'summarize_public', 'prompt_improve')
+HELPER_ORDER = ('gemini', 'openrouter')
+
+
+def route_task(meta):
+    """Gibt {'target': 'local'|'helper:<anbieter>'|'claude:<modell>'|'human', 'reason': ...} zurueck."""
+    meta = meta if isinstance(meta, dict) else {}
+    risk, dc = meta.get('risk'), meta.get('data_class')
+    try:
+        size = int(meta.get('size_chars') or 0)
+    except (TypeError, ValueError):
+        size = 0
+    if risk == 'privileged' or risk not in ('read', 'reversible'):
+        return {'target': 'human', 'reason': 'privileged_or_unknown_risk'}
+    if meta.get('has_procedure') is True:
+        return {'target': 'local', 'reason': 'confirmed_procedure'}
+    if dc == 'public' and meta.get('task_type') in HELPER_TASKS and size >= 1500:
+        return {'target': 'helper:' + HELPER_ORDER[0], 'reason': 'rule12_long_simple_public_text'}
+    model = meta.get('model') if meta.get('model') in MODELS else 'sonnet'
+    return {'target': 'claude:' + model, 'reason': 'default' if dc in ('public', 'internal') else 'private_data_stays_with_claude'}
+
+
+if __name__ == '__main__':  # Aufruf als router.cmd: python3 router_core.py --route  (stdin: JSON, stdout: JSON)
+    import json
+    import sys
+    if sys.argv[1:] == ['--route']:
+        try:
+            req = json.loads(sys.stdin.read(65536) or '{}')
+        except ValueError:
+            req = {}
+        print(json.dumps(route_task(req)))
+    else:
+        print('Aufruf: router_core.py --route  (JSON auf stdin)', file=sys.stderr)
+        raise SystemExit(2)

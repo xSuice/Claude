@@ -24,7 +24,15 @@
       "Bash(git push --force*)",
       "Bash(*.claude/secrets*)",
       "Bash(*.ssh/*)",
-      "Bash(*credentials*)"
+      "Bash(*credentials*)",
+      "mcp__claude_ai_Vercel",
+      "mcp__claude_ai_Figma",
+      "mcp__claude_ai_Canva",
+      "mcp__claude_ai_Supabase",
+      "mcp__claude_ai_Linear",
+      "mcp__claude_ai_Postman",
+      "mcp__claude_ai_vidIQ",
+      "mcp__claude_ai_Jam"
     ]
   },
   "hooks": {
@@ -46,6 +54,11 @@
           {
             "type": "command",
             "command": "python3 /home/andrew/.claude/hooks/council-auto.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 /home/andrew/.claude/hooks/kontext-waechter.py",
             "timeout": 10
           }
         ]

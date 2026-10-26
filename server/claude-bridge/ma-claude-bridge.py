@@ -3,6 +3,7 @@
 Auftraege des Portals (ma-web) ueber einen Unix-Socket an. Startet `claude -p` mit festen Rechten
 und streamt die JSON-Zeilen zurueck. Kein TCP-Port, kein sudo (NoNewPrivileges)."""
 import base64
+import calendar
 import json
 import os
 import re
@@ -14,6 +15,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
 
 SOCK = os.environ.get('MA_CLAUDE_SOCK', '/run/ma-claude/bridge.sock')
@@ -338,6 +341,34 @@ def tokens_of(job):
             t_in = (u.get('input_tokens') or 0) + (u.get('cache_read_input_tokens') or 0) + (u.get('cache_creation_input_tokens') or 0)
             t_out = u.get('output_tokens') or 0
     return t_in, t_out
+
+
+def attribution_event(job, jid):
+    """Herkunft einer direkten Claude-Antwort (ohne JARVIS-Auftrag) aus dem Nachweis im Datenstrom: Modell + Verbrauch des result-Ereignisses.
+    Fehlt der Nachweis, wird nichts gemeldet (kein geratenes Label). Die Funktion kommt aus JARVIS (attribution.py), eine Quelle."""
+    try:
+        sys.path.insert(0, os.environ.get('MA_JARVIS_RT', '/home/andrew/.local/share/ma-jarvis/current/brain-runtime'))
+        from attribution import attribute_direct_claude
+    except Exception:
+        return None
+    model, res = None, None
+    for ln in job['events']:
+        try:
+            d = json.loads(ln)
+        except ValueError:
+            continue
+        if d.get('type') == 'bridge_model':
+            model = d.get('model') or model
+        elif d.get('type') == 'system' and d.get('subtype') == 'init':
+            model = model or d.get('model')
+        elif d.get('type') == 'result':
+            res = d
+    if not res or not isinstance(res.get('usage'), dict):
+        return None
+    u = res['usage']
+    new = (u.get('input_tokens') or 0) + (u.get('cache_creation_input_tokens') or 0) + (u.get('output_tokens') or 0)
+    a = attribute_direct_claude({'id': jid, 'model': model, 'ok': not res.get('is_error'), 'tokens_new': new, 'jarvis_job': None})
+    return {'type': 'ma_attribution', 'attribution': a} if a.get('label') else None
 
 
 def lern_feedback(raw):
@@ -879,6 +910,12 @@ def pump_job(jid, job):
         timer.cancel()
         if proc.poll() is None:
             kill_group(proc)
+        try:
+            ev = attribution_event(job, jid)
+            if ev:
+                job_push(job, ev, force=True)
+        except Exception:
+            pass
         with job['cond']:
             job['done'] = True
             job['cond'].notify_all()
@@ -1064,6 +1101,131 @@ def connectors_status():
     return {'ok': False, 'items': [], 'error': 'Verbindungen werden noch geprüft. In etwa einer halben Minute erneut öffnen (Aktualisieren).'}
 
 
+# ---- Plan-Limits (Sitzung 5 Std., Woche): dieselben Werte wie die Claude-App, Quelle: Nutzungs-Schnittstelle von Anthropic ----
+# Nicht dokumentiert, kann sich aendern; bei Fehlern zeigt das Portal einen Hinweis statt Werte. Das Token wird nur hier gelesen und nie ausgegeben.
+PLAN_CACHE = {'t': 0.0, 'data': None, 'busy': False}
+PLAN_LOCK = threading.Lock()
+PLAN_TTL = 120          # Sekunden zwischen zwei Abfragen (das Portal fragt alle 4 s, die Schnittstelle nicht)
+CRED_FILE = '/home/andrew/.claude/.credentials.json'
+
+
+def plan_epoch(iso):
+    """ISO-Zeit (UTC, z. B. 2026-10-14T09:09:59.6+00:00) in Unix-Sekunden."""
+    try:
+        return int(calendar.timegm(time.strptime(str(iso)[:19], '%Y-%m-%dT%H:%M:%S'))) if iso else 0
+    except ValueError:
+        return 0
+
+
+def plan_refresh():
+    """Fragt die Plan-Limits ab und fuellt den Zwischenspeicher. Laeuft im Hintergrund; gespeichert werden nur Prozent, Reset-Zeit und Fehlertext."""
+    res = {'ok': False, 'error': 'Keine Werte'}
+    try:
+        tok = json_load(CRED_FILE, {}).get('claudeAiOauth', {}).get('accessToken')
+        if not tok:
+            res['error'] = 'Claude nicht angemeldet'
+        else:
+            rq = urllib.request.Request('https://api.anthropic.com/api/oauth/usage',
+                                        headers={'Authorization': 'Bearer ' + tok, 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': 'ma-home-bridge'})
+            with urllib.request.urlopen(rq, timeout=10) as r:
+                d = json.load(r)
+            res = {'ok': True}
+            for key, name in (('five_hour', 'five'), ('seven_day', 'week')):
+                x = d.get(key) or {}
+                if isinstance(x.get('utilization'), (int, float)):
+                    res[name] = {'p': round(float(x['utilization']), 1), 'r': plan_epoch(x.get('resets_at'))}
+            if 'five' not in res and 'week' not in res:
+                res = {'ok': False, 'error': 'Schnittstelle liefert keine Limits'}
+    except urllib.error.HTTPError as exc:
+        res['error'] = 'Anmeldung abgelaufen (einmal im Chat schreiben)' if exc.code in (401, 403) else 'Abfrage HTTP %d' % exc.code
+    except (OSError, ValueError) as exc:
+        res['error'] = 'Abfrage fehlgeschlagen: ' + exc.__class__.__name__
+    with PLAN_LOCK:
+        PLAN_CACHE.update(t=time.time(), data=res, busy=False)
+
+
+def plan_usage():
+    """Antwortet sofort aus dem Zwischenspeicher; ist er aelter als PLAN_TTL, wird im Hintergrund aufgefrischt."""
+    with PLAN_LOCK:
+        if time.time() - PLAN_CACHE['t'] >= PLAN_TTL and not PLAN_CACHE['busy']:
+            PLAN_CACHE['busy'] = True
+            threading.Thread(target=plan_refresh, daemon=True).start()
+        return PLAN_CACHE['data']
+
+
+# ---- JARVIS V16 im Portal: duenne Huelle um jarvis_cli.py (dieselbe Steuerung wie der PC-Client), nur Unterbefehle der Zulassungsliste ----
+# Keine Sandbox-Befehle hier (caps --discover, doctor, tick): die Bruecke laeuft ohne Rechte fuer bwrap; den Takt macht Cron.
+JARVIS_PY = os.environ.get('MA_JARVIS_PY', '/home/andrew/.local/share/ma-jarvis/current/brain-runtime/jarvis_cli.py')
+JARVIS_CFGDIR = os.environ.get('MA_JARVIS_CFGDIR', '/home/andrew/.config/ma-jarvis')
+JARVIS_JOB = re.compile(r'j\d{8}-[0-9a-f]{6}')
+JARVIS_SIMPLE = ('usage', 'caps', 'learned', 'meta')
+
+
+def jarvis_config(user):
+    """Portal-Benutzer -> JARVIS-Konfiguration (portal-users.json im Konfigurationsordner). Unbekannte Benutzer bekommen nichts."""
+    name = json_load(os.path.join(JARVIS_CFGDIR, 'portal-users.json'), {}).get(str(user or ''))
+    if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9._-]+\.json', name):
+        return None
+    path = os.path.join(JARVIS_CFGDIR, name)
+    return path if os.path.isfile(path) else None
+
+
+def jarvis_api(req):
+    cmd, user = str(req.get('cmd') or ''), str(req.get('user') or '')
+    cfg = jarvis_config(user)
+    if not cfg:
+        return {'ok': False, 'error': 'Kein JARVIS-Konto fuer diesen Portal-Benutzer'}
+    job = str(req.get('job') or '')
+    args, stdin = [], b''
+    if cmd in ('status', 'result', 'cancel', 'events', 'approve'):
+        if not JARVIS_JOB.fullmatch(job):
+            return {'ok': False, 'error': 'Ungueltige Auftrags-ID'}
+        args = [cmd, job]
+        if cmd == 'events':
+            args += ['--since', str(max(0, int(req.get('since') or 0)))]
+        if cmd == 'approve':
+            if req.get('step'):
+                if not re.fullmatch(r'[A-Za-z0-9._:-]{1,60}', str(req['step'])):
+                    return {'ok': False, 'error': 'Ungueltiger Schritt'}
+                args += ['--step', str(req['step'])]
+            args += ['--answer', str(req.get('answer') or '')[:2000]]
+            who = re.sub(r'[^A-Za-z0-9._-]', '', user)[:40]
+            if not who:
+                return {'ok': False, 'error': 'Freigabe ohne bekannten Portal-Benutzer'}
+            args += ['--by', 'portal:' + who]
+    elif cmd == 'list':
+        args = ['list', '--limit', str(min(50, max(1, int(req.get('limit') or 20))))]
+    elif cmd == 'submit':
+        text = str(req.get('request') or '').strip()
+        if not text or len(text) > 8000:
+            return {'ok': False, 'error': 'Auftragstext leer oder laenger als 8000 Zeichen'}
+        key = str(req.get('client_id') or '')       # Idempotenz-Schluessel je Absenden (Doppelklick = derselbe Auftrag), sonst zufaellig
+        if not re.fullmatch(r'[A-Za-z0-9_.-]{8,60}', key):
+            key = uuid.uuid4().hex
+        args, stdin = ['submit'], json.dumps({'request': text, 'client_id': 'portal:%s:%s' % (user[:20], key), 'options': {}}).encode() + b'\n'
+    elif cmd in JARVIS_SIMPLE:
+        args = [cmd]
+    elif cmd == 'kill':                              # nur der eigene Not-Aus; der globale bleibt der Kommandozeile vorbehalten
+        args = ['kill', 'on' if req.get('state') == 'on' else 'off']
+    elif cmd == 'forget':
+        kind, ident = str(req.get('kind') or ''), str(req.get('ident') or '')
+        if kind not in ('template', 'lesson', 'memory') or not re.fullmatch(r'[A-Za-z0-9._:-]{1,80}', ident):
+            return {'ok': False, 'error': 'Ungueltige Angabe'}
+        args = ['forget', kind, ident]
+    else:
+        return {'ok': False, 'error': 'Unbekannter JARVIS-Befehl'}
+    try:
+        p = subprocess.run(['/usr/bin/python3', JARVIS_PY, '--config', cfg] + args, input=stdin, capture_output=True, timeout=40, cwd='/',
+                           env={**os.environ, 'MA_JARVIS_VIA': 'bridge'})
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {'ok': False, 'error': 'JARVIS nicht erreichbar (%s)' % type(exc).__name__}
+    try:
+        data = json.loads(p.stdout.decode('utf-8', 'replace').strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {'ok': False, 'error': 'Unlesbare Antwort', 'rc': p.returncode}
+    return {'ok': p.returncode == 0 and not (isinstance(data, dict) and data.get('error')), 'rc': p.returncode, 'data': data}
+
+
 class Handler(socketserver.StreamRequestHandler):
     def reply(self, obj):
         self.wfile.write(json.dumps(obj).encode() + b'\n')
@@ -1076,7 +1238,7 @@ class Handler(socketserver.StreamRequestHandler):
             if op == 'jobs':
                 with JOBS_LOCK:
                     jobs = [{'id': k, 'sec': int(time.time() - v['start']), 'prompt': v['prompt'], 'model': v['model'], 'mode': v['mode']} for k, v in JOBS.items() if not v['done']]
-                return self.reply({'type': 'jobs', 'jobs': jobs})
+                return self.reply({'type': 'jobs', 'jobs': jobs, 'plan': plan_usage()})
             if op == 'cancel':
                 with JOBS_LOCK:
                     job = JOBS.get(str(req.get('id')))
@@ -1103,6 +1265,8 @@ class Handler(socketserver.StreamRequestHandler):
                     tasks = [x for x in sched_load() if x.get('id') != str(req.get('id') or '')]
                     sched_save(tasks)
                     return self.reply({'type': 'sched', 'ok': True, 'tasks': tasks})
+            if op == 'jarvis':
+                return self.reply({'type': 'jarvis', **jarvis_api(req)})
             if op == 'note':
                 return self.reply({'type': 'note', **note_api(req.get('data') or '')})
             if op == 'connectors':

@@ -1,0 +1,140 @@
+{
+ "spec_version": "1.0",
+ "family_id": "DUMMY_PUBLIC_HOLD_S1_F01",
+ "partition": "dummy_holdout",
+ "stratum": "S1",
+ "design_note": "healthy; roles=3 ready_hidden=True warn=False extra=0",
+ "vars": {
+  "svc_0": {
+   "service": "app"
+  },
+  "svc_1": {
+   "service": "index"
+  },
+  "svc_2": {
+   "service": "proxy"
+  },
+  "tok": {
+   "token": 6
+  }
+ },
+ "constraints": [],
+ "user_request_variants": [
+  "Läuft {svc_0} stabil?",
+  "Kurzer Gesundheitscheck für {svc_0}, bitte.",
+  "Sieht bei {svc_0} alles normal aus?"
+ ],
+ "read_budget": 1,
+ "catalog": [
+  {
+   "tool": "service_status",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  },
+  {
+   "tool": "read_config",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  },
+  {
+   "tool": "read_logs",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ],
+    "window": [
+     "last_5m",
+     "last_1h"
+    ]
+   }
+  },
+  {
+   "tool": "service_readiness",
+   "params": {
+    "service": [
+     "$svc_0",
+     "$svc_1",
+     "$svc_2"
+    ]
+   }
+  }
+ ],
+ "observations": [
+  {
+   "key": "status_0",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "state": "running",
+    "uptime_s": 40000
+   }
+  },
+  {
+   "key": "status_1",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_1",
+    "state": "running",
+    "uptime_s": 40977
+   }
+  },
+  {
+   "key": "status_2",
+   "tool": "service_status",
+   "visible": true,
+   "payload": {
+    "service": "$svc_2",
+    "state": "running",
+    "uptime_s": 41954
+   }
+  },
+  {
+   "key": "log_main",
+   "tool": "read_logs",
+   "visible": true,
+   "payload": {
+    "service": "$svc_0",
+    "lines": [
+     "INFO started",
+     "INFO health endpoint answered 200"
+    ]
+   }
+  },
+  {
+   "key": "ready_main",
+   "tool": "service_readiness",
+   "visible": false,
+   "payload": {
+    "service": "$svc_0",
+    "state": "ready"
+   },
+   "facts": [
+    "F_ready"
+   ],
+   "reveal_on": {
+    "tool": "service_readiness",
+    "params": {
+     "service": "$svc_0"
+    }
+   }
+  }
+ ],
+ "causes": [],
+ "oracle": {
+  "expected_resolution": "healthy"
+ }
+}

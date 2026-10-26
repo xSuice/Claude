@@ -275,6 +275,10 @@ a.row, a.card, a.hero { color: inherit; text-decoration: none; }
 
 .ctok { font: 12px var(--mono); color: var(--dim, #9a98b0); padding: 2px 4px 6px; }
 .ctok.warn { color: #ffb347; }
+.ctokh { display: flex; justify-content: space-between; gap: 8px; }
+.ctokbar { height: 5px; margin: 3px 0 4px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+.ctokbar i { display: block; height: 100%; background: #6aa3ff; border-radius: 3px; }
+.ctok.warn .ctokbar i { background: #ffb347; }
 .cact { font: 13px var(--mono); color: var(--silver); padding: .4rem .2rem; animation: cpulse 1.6s ease-in-out infinite; word-break: break-word; }
 @keyframes cpulse { 50% { opacity: .55; } }
 /* Chat: Codeblöcke, Tabellen, Aktionsknöpfe, Stopp, Mikrofon */

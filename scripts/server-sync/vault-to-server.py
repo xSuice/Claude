@@ -18,6 +18,23 @@ ATT_MAX = 8 * 1024 * 1024
 MAXSIZE = 20 * 1024 * 1024
 SECRET_HINT = ("token", "passwort", "password", "apikey", "api-key", "secret", ".key", ".env")
 
+# S11 (Obsidian-Sync-Audit 2026-10-20): der alte Filter prueft nur den
+# Dateinamen, nie den Inhalt -- eine Notiz namens "Meeting.md" mit einem
+# eingefuegten API-Key waere ungeprueft auf den Server gegangen. Diese
+# Muster laufen NUR ueber Textdateien (EXT), nie ueber Bildanhaenge (ATT),
+# und blockieren konservativ: ein Treffer reicht, keine Content-Heuristik
+# versucht "false positive vermeiden" zu optimieren.
+CONTENT_SECRET_PATTERNS = (
+    r"-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----",
+    r"\bsk-[A-Za-z0-9]{20,}\b",                       # OpenAI/Anthropic-Stil
+    r"\bgh[pousr]_[A-Za-z0-9]{20,}\b",                 # GitHub-Token
+    r"\bAKIA[0-9A-Z]{16}\b",                           # AWS Access Key ID
+    r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b",               # Slack-Token
+    r"(?i:\b(?:api[_-]?key|secret|passwort|password)\s*[:=]\s*['\"]?[A-Za-z0-9/_\-\.]{8,})",
+)
+import re as _re
+_CONTENT_SECRET_RE = _re.compile("|".join(CONTENT_SECRET_PATTERNS))
+
 
 def log(msg):
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
@@ -25,8 +42,22 @@ def log(msg):
         f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
 
 
+def contains_secret(path):
+    """Konservativer Inhaltsscan fuer Textdateien (S11). Liest nie mehr als
+    MAXSIZE; ein Lesefehler blockiert NICHT (fail-open fuer IO-Fehler waere
+    hier vertretbar, da scan() ohnehin per Namen/Groesse filtert -- aber wir
+    melden es, statt es zu verschlucken)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read(MAXSIZE)
+    except OSError:
+        return False
+    return bool(_CONTENT_SECRET_RE.search(text))
+
+
 def scan():
     out = {}
+    skipped_secret = []
     for root, dirs, files in os.walk(VAULT):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for n in files:
@@ -40,7 +71,14 @@ def scan():
                 continue
             if st.st_size > MAXSIZE or (low.endswith(ATT) and st.st_size > ATT_MAX):
                 continue
-            out[os.path.relpath(p, VAULT).replace("\\", "/")] = [int(st.st_mtime), st.st_size]
+            rel = os.path.relpath(p, VAULT).replace("\\", "/")
+            if low.endswith(EXT) and contains_secret(p):
+                skipped_secret.append(rel)
+                continue
+            out[rel] = [int(st.st_mtime), st.st_size]
+    if skipped_secret:
+        log(f"Inhalts-Secret-Filter (S11): {len(skipped_secret)} Datei(en) NICHT gesendet: "
+            + ", ".join(skipped_secret[:20]))
     return out
 
 
@@ -55,31 +93,60 @@ def ssh_out(cmd):
 
 
 def master_on():
+    """Prueft ob der Server die fuehrende Kopie ist (server-master-Flag).
+
+    Drei-Zustands-Rueckgabe (Sicherheitsluecke 1, 2026-10-20):
+    - True: Flag existiert definitiv.
+    - False: Flag existiert definitiv NICHT (Verbindung stand, kein Flag).
+    - None: UNBEKANNT (Verbindungsfehler -- Flag-Status konnte nicht
+      ermittelt werden). Der Aufrufer MUSS dann abbrechen, NICHT in den
+      Mirror-Modus zurueckfallen (sonst werden veraenderte Serverdateien
+      still ueberschrieben -- der Grund fuer diese Luecke).
+    """
     try:
-        return ssh_out(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip() == "1"
+        out = ssh_out(f"[ -f '{FLAG}' ] && echo 1 || echo 0").strip()
+        return {"0": False, "1": True}.get(out)
     except Exception:
-        return False
+        return None  # UNBEKANNT, nicht False (Verbindungsfehler != Flag fehlt).
 
 
 def server_listing():
     out = {}
-    for line in ssh_out(f"[ -d '{DEST}' ] && find '{DEST}' -type f -printf '%P\\t%T@\\t%s\\n' || true").splitlines():
-        try:
-            p, t, s = line.split("\t")
-            out[p] = (int(float(t)), int(s))
-        except ValueError:
-            pass
+    # Do not mask find/permission failures as a successful partial listing.
+    for line in ssh_out(f"if [ -d '{DEST}' ]; then find '{DEST}' -type f -printf '%P\\t%T@\\t%s\\n'; else exit 1; fi").splitlines():
+        p, t, s = line.split("\t")
+        if (not p or p in out or "\\" in p or ":" in p
+                or any(part in ("", ".", "..") for part in p.split("/"))
+                or any(ord(c) < 32 for c in p)):
+            raise ValueError("Invalid or duplicate listing path")
+        mt, size = int(float(t)), int(s)
+        if size < 0:
+            raise ValueError("Negative listing size")
+        out[p] = (mt, size)
     return out
 
 
 def divert(todo, old, srv):
     """Hauptkopie-Modus: Textnotizen, die auf dem Server seit dem letzten Abgleich geaendert wurden, werden hier NICHT ueberschrieben.
+    Sicherheitsluecke 2 (2026-10-20): eine Datei die auf dem Server existiert
+    aber NICHT im alten STATE steht (neu/unbekannt), wird ebenfalls NICHT
+    ueberschrieben -- sie geht nach Review als '(PC-Änderung)', damit die
+    Serverfassung erhalten bleibt. Vorher: wurde die Serverfassung still
+    ueberschrieben, weil `changed_on_server` nur Dateien schuetzte die im
+    STATE bekannt waren.
     Rueckgabe: (normal senden, als Kopie in 00 Inbox/Review auf den Server legen)."""
     send, copies = [], []
     for k in todo:
         s, b = srv.get(k), old.get(k)
+        # Geaendert auf dem Server seit letztem STATE?
         changed_on_server = bool(s and b and not (s[0] <= b[0] + 2 and s[1] == b[1]))
-        (copies if changed_on_server and k.lower().endswith(EXT) else send).append(k)
+        # NEU (Luecke 2): existiert auf dem Server, ist aber NICHT im STATE
+        # (unbekannte neue Datei) -> ebenfalls schuetzen, nicht ueberschreiben.
+        new_on_both_sides = bool(s and not b)
+        if (changed_on_server or new_on_both_sides) and k.lower().endswith(EXT):
+            copies.append(k)
+        else:
+            send.append(k)
     return send, copies
 
 
@@ -87,18 +154,29 @@ def main():
     full = "--full" in sys.argv
     dry = "--dry" in sys.argv
     try:
-        old = {} if full else json.load(open(STATE, encoding="utf-8"))
+        with open(STATE, encoding="utf-8") as fh:
+            old = json.load(fh)
     except Exception:
         old = {}
     cur = scan()
-    todo = [k for k, v in cur.items() if old.get(k) != v]
+    todo = [k for k, v in cur.items() if full or old.get(k) != v]
     copies = []
-    if todo and not dry and master_on():
-        try:
-            todo, copies = divert(todo, old, server_listing())
-        except Exception as e:
-            log(f"Hauptkopie-Pruefung fehlgeschlagen, nichts gesendet: {e}")
+    if todo and not dry:
+        master = master_on()
+        if master is None:
+            # SICHERHEITSLUECKE 1 (2026-10-20): Verbindungsfehler bei der
+            # Flag-Pruefung -> UNBEKANNT, nicht False. Frueher wurde still in
+            # den Mirror-Modus zurueckgefallen und veraenderte Serverdateien
+            # wurden ueberschrieben. Jetzt: hart abbrechen, nichts gesendet.
+            log("Hauptkopie-Pruefung fehlgeschlagen (Verbindungsfehler), NICHTS gesendet: Flag-Status unbekannt, kein Mirror-Modus-Fallback.")
+            print("FEHLER: server-master-Flag konnte nicht geprueft werden (Verbindungsfehler). Abbruch, nichts gesendet.")
             return 1
+        if master:
+            try:
+                todo, copies = divert(todo, old, server_listing())
+            except Exception as e:
+                log(f"Hauptkopie-Pruefung fehlgeschlagen, nichts gesendet: {e}")
+                return 1
     print(f"{len(cur)} Dateien, {len(todo)} neu/geaendert, {len(copies)} als PC-Aenderung nach Review")
     if dry or not (todo or copies):
         if not (todo or copies):
@@ -124,7 +202,16 @@ def main():
     if rc != 0:
         log(f"FEHLER ssh/tar rc={rc}: {err[:200]}")
         return 1
-    json.dump(cur, open(STATE, "w", encoding="utf-8"))
+    # Review copies did not update the original remote path. Keep its old
+    # baseline (also in --full), never acknowledge the unsent local edit.
+    synced = dict(cur)
+    for k in copies:
+        if k in old:
+            synced[k] = old[k]
+        else:
+            synced.pop(k, None)
+    with open(STATE, "w", encoding="utf-8") as state_file:
+        json.dump(synced, state_file)
     log(f"OK {len(todo)} Dateien uebertragen (gesamt {len(cur)})")
     # Wochen-Snapshot, 4 behalten
     wk = time.strftime("%G-W%V")
