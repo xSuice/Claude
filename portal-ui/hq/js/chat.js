@@ -555,6 +555,14 @@ export async function renderChat(root, me) {
     '<label>Modell<select name="model"><option value="auto">Auto</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +
     (me.admin ? '<label class="cdep" title="Wenn aus, spielt der Root-Dienst keine Anforderung von Claude ein"><input type="checkbox" id="cdep" disabled> Auto-Einspielung erlauben (nur Admin)</label><label class="cdep" title="Wenn an, führt der Root-Dienst Sudo-Skripte aus, die Claude ablegt. Nur zum Arbeiten setzen, danach wieder aus."><input type="checkbox" id="csudo" disabled> Sudo-Skripte erlauben (Root, nur Admin)</label>' : '') +
     '<div class="cslash" id="cslash" hidden></div><div class="cin"><textarea name="prompt" rows="2" placeholder="Frag JARVIS … (/hilfe zeigt Befehle, Bilder und Dateien per 📎, Einfügen oder hineinziehen)"></textarea><input type="file" id="cfile" multiple hidden><input type="file" id="cpic" accept="image/*" multiple hidden><button class="btn ghost" type="button" id="cpicb" title="Mehrere Bilder aus der Galerie wählen (bis 10 Stück)">🖼</button><button class="btn ghost" type="button" id="cattach" title="Dateien anhängen (bis 10 Stück, je 25 MB)">📎</button><button class="btn ghost" type="button" id="cmic" title="Spracheingabe" hidden>🎤</button><button class="btn" id="csend">Senden</button></div></form></div>';
+  // Mobil: Optionen (Ordner/Rechte/Modell/Admin-Schalter) einklappen, damit das Eingabefeld bei offener Tastatur sichtbar bleibt
+  { const form = $('#cf'), opts = form && form.querySelector('.copts');
+    if (opts) {
+      const fold = document.createElement('details'); fold.className = 'copt-fold';
+      const sm = document.createElement('summary'); sm.textContent = 'Optionen (Ordner · Rechte · Modell)'; fold.appendChild(sm);
+      opts.before(fold); fold.appendChild(opts); form.querySelectorAll('label.cdep').forEach(l => fold.appendChild(l));
+      fold.open = !matchMedia('(max-width: 720px), (max-height: 500px)').matches;
+    } }
   claudeRender();
   jobsWatch();
   const dep = $('#cdep');

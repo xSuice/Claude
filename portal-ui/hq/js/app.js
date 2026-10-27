@@ -227,7 +227,7 @@ function mountTabbar() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('nav-open')) { closeSheet(); const m = $('#tab-more'); if (m) m.focus(); } });
   // Bildschirmtastatur: Tab-Leiste ausblenden, solange ein Eingabefeld fokussiert ist (Eingabefeld bleibt sichtbar)
   const isField = t => t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
-  document.addEventListener('focusin', e => { if (isField(e.target) && matchMedia('(max-width: 720px)').matches) document.body.classList.add('kb'); });
+  document.addEventListener('focusin', e => { if (isField(e.target) && matchMedia('(max-width: 720px), (max-height: 500px)').matches) document.body.classList.add('kb'); });
   document.addEventListener('focusout', () => { setTimeout(() => { if (!isField(document.activeElement)) document.body.classList.remove('kb'); }, 50); });
 }
 

@@ -30,3 +30,6 @@ Empfehlung (Hypothese bis Hörtest): Piper Thorsten high als lokale Standardstim
 
 ## C. Spracharchitektur (Vorschlag, nichts installiert)
 Mikrofon (Push-to-talk, Browser) → Browser-STT (Einwilligung vorhanden) oder lokales faster-whisper → Textauftrag im bestehenden Chat/HQ → gespeicherter Auftrag → Rückmeldung per TTS (Piper-Command). Wakeword optional und bisher nur im Einzelmodus belegt. Kein LiveKit/Pipecat: kein nachgewiesener Zusatzbedarf. Kritische Aktionen nur mit Bestätigung; Sprach-Freitext bleibt lesend.
+
+## Nachtrag: M-01 behoben (27.10.)
+Chat-Optionen (Ordner/Rechte/Modell + Admin-Schalter) sind auf Mobil und bei Fensterhöhe ≤ 500 px in ein Einklapp-Element „Optionen“ (44 px) gefasst, bei offener Tastatur ausgeblendet; auf Desktop offen wie bisher. Gemessen (Emulation): Fensterhöhe 420 → Eingabefeld 317–381 sichtbar, 320 → 192–256, Querformat mit Fokus (Höhe 200) → 118–180; Desktop unverändert; axe 0 Verstöße (zu/offen). Grenze: Querformat 844×390 ohne Fokus liegt das Feld weiter unter dem Rand (Seite scrollbar); reale Bildschirmtastatur (VisualViewport) weiter nicht an echtem Gerät geprüft. Backups `*.bak-vor-m01`.
