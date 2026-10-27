@@ -1,0 +1,4 @@
+openWakeWord v0.5.1 (https://github.com/dscripka/openWakeWord) – Code: Apache-2.0.
+Die vortrainierten Modelle (melspectrogram.onnx, embedding_model.onnx, hey_jarvis_v0.1.onnx) stehen unter
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0): nur nicht-kommerzieller Eigenbetrieb (MA-HOME privat).
+Quelle: GitHub-Release v0.5.1. SHA-256 siehe ../SHA256SUMS.

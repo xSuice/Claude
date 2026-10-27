@@ -1,0 +1,213 @@
+[
+ {
+  "repo": "ricky0123/vad",
+  "url": "https://github.com/ricky0123/vad",
+  "license": "NOASSERTION",
+  "stars": 2072,
+  "pushed": "2026-09-12",
+  "archived": false,
+  "desc": "Voice activity detector (VAD) for the browser with a simple API"
+ },
+ {
+  "repo": "dnavarrom/openwakeword_wasm",
+  "url": "https://github.com/dnavarrom/openwakeword_wasm",
+  "license": null,
+  "stars": 8,
+  "pushed": "2025-11-23",
+  "archived": false,
+  "desc": "Small browser-first wrapper around the OpenWakeWord models using onnxruntime-web. It exposes a WakeWordEngine "
+ },
+ {
+  "repo": "dscripka/openWakeWord",
+  "url": "https://github.com/dscripka/openWakeWord",
+  "license": "Apache-2.0",
+  "stars": 2887,
+  "pushed": "2025-12-30",
+  "archived": false,
+  "desc": "An open-source audio wake word (or phrase) detection framework with a focus on performance and simplicity."
+ },
+ {
+  "repo": "pipecat-ai/smart-turn",
+  "url": "https://github.com/pipecat-ai/smart-turn",
+  "license": "BSD-2-Clause",
+  "stars": 1637,
+  "pushed": "2026-01-29",
+  "archived": false,
+  "desc": ""
+ },
+ {
+  "repo": "rhasspy/wyoming-satellite",
+  "url": "https://github.com/rhasspy/wyoming-satellite",
+  "license": "MIT",
+  "stars": 1239,
+  "pushed": "2026-01-24",
+  "archived": true,
+  "desc": "Remote voice satellite using Wyoming protocol"
+ },
+ {
+  "repo": "jxlarrea/voice-satellite-card-integration",
+  "url": "https://github.com/jxlarrea/voice-satellite-card-integration",
+  "license": "AGPL-3.0",
+  "stars": 908,
+  "pushed": "2026-09-25",
+  "archived": false,
+  "desc": "Voice Satellite turns any tablet, phone, or browser into a hands-free voice assistant for Home Assistant"
+ },
+ {
+  "repo": "livekit/components-js",
+  "url": "https://github.com/livekit/components-js",
+  "license": "Apache-2.0",
+  "stars": 470,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "Official open source React components and examples for building with LiveKit."
+ },
+ {
+  "repo": "pipecat-ai/voice-ui-kit",
+  "url": "https://github.com/pipecat-ai/voice-ui-kit",
+  "license": "BSD-2-Clause",
+  "stars": 419,
+  "pushed": "2026-10-26",
+  "archived": false,
+  "desc": "Components, hooks and template apps for building React voice AI applications quickly. Designed to support and "
+ },
+ {
+  "repo": "assistant-ui/assistant-ui",
+  "url": "https://github.com/assistant-ui/assistant-ui",
+  "license": "MIT",
+  "stars": 12782,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "Typescript/React Library for AI Chat 💬🚀"
+ },
+ {
+  "repo": "CopilotKit/CopilotKit",
+  "url": "https://github.com/CopilotKit/CopilotKit",
+  "license": "MIT",
+  "stars": 38280,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "The Frontend Stack for Agents & Generative UI. React, Angular, Mobile, Slack, and more.  Makers of the AG-UI P"
+ },
+ {
+  "repo": "LibreChat-AI/LibreChat",
+  "url": "https://github.com/LibreChat-AI/LibreChat",
+  "license": "MIT",
+  "stars": 46387,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "Enhanced ChatGPT Clone: Features Agents, MCP, Skills, DeepSeek, Anthropic, AWS, OpenAI, Responses API, Azure, "
+ },
+ {
+  "repo": "lobehub/lobehub",
+  "url": "https://github.com/lobehub/lobehub",
+  "license": "NOASSERTION",
+  "stars": 83533,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "🤯 LobeHub is your Chief Agent Operator, organizing your agents into 7×24 operations by hiring, scheduling, and"
+ },
+ {
+  "repo": "gethomepage/homepage",
+  "url": "https://github.com/gethomepage/homepage",
+  "license": "GPL-3.0",
+  "stars": 33400,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "A highly customizable homepage (or startpage / application dashboard) with Docker and service API integrations"
+ },
+ {
+  "repo": "glanceapp/glance",
+  "url": "https://github.com/glanceapp/glance",
+  "license": "AGPL-3.0",
+  "stars": 37787,
+  "pushed": "2026-10-20",
+  "archived": false,
+  "desc": "A self-hosted dashboard that puts all your feeds in one place"
+ },
+ {
+  "repo": "homarr-labs/homarr",
+  "url": "https://github.com/homarr-labs/homarr",
+  "license": "Apache-2.0",
+  "stars": 5224,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "A modern and easy to use dashboard. 80+ integrations. 20K+ icons built in. Authentication out of the box. No Y"
+ },
+ {
+  "repo": "louislam/uptime-kuma",
+  "url": "https://github.com/louislam/uptime-kuma",
+  "license": "MIT",
+  "stars": 92995,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "A fancy self-hosted monitoring tool"
+ },
+ {
+  "repo": "langfuse/langfuse",
+  "url": "https://github.com/langfuse/langfuse",
+  "license": "NOASSERTION",
+  "stars": 36612,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "🪢 Open source agent evals & observability: Trace, evaluate, and improve LLM applications with one open platfor"
+ },
+ {
+  "repo": "letta-ai/letta",
+  "url": "https://github.com/letta-ai/letta",
+  "license": "Apache-2.0",
+  "stars": 25267,
+  "pushed": "2026-10-18",
+  "archived": false,
+  "desc": "Platform for stateful agents: AI with advanced memory that can learn and self-improve over time."
+ },
+ {
+  "repo": "n8n-io/n8n",
+  "url": "https://github.com/n8n-io/n8n",
+  "license": "NOASSERTION",
+  "stars": 208793,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "Fair-code workflow automation platform with native AI capabilities. Combine visual building with custom code, "
+ },
+ {
+  "repo": "tremorlabs/tremor",
+  "url": "https://github.com/tremorlabs/tremor",
+  "license": "Apache-2.0",
+  "stars": 3681,
+  "pushed": "2025-10-10",
+  "archived": false,
+  "desc": "Copy & Paste React components to build modern web applications. "
+ },
+ {
+  "repo": "shadcn-ui/ui",
+  "url": "https://github.com/shadcn-ui/ui",
+  "license": "MIT",
+  "stars": 126698,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "Composable, accessible components with thoughtful defaults. Build your own component library with code you can"
+ },
+ {
+  "repo": "clauderic/dnd-kit",
+  "url": "https://github.com/clauderic/dnd-kit",
+  "license": "MIT",
+  "stars": 17752,
+  "pushed": "2026-10-27",
+  "archived": false,
+  "desc": "The modern toolkit for building drag and drop interfaces"
+ },
+ {
+  "repo": "Couvbat/Jarvis",
+  "url": "https://github.com/Couvbat/Jarvis",
+  "license": "MIT",
+  "stars": 3,
+  "pushed": "2026-09-23",
+  "archived": false,
+  "desc": "A Local first, Privacy focused, Voice-to-Voice Assistant"
+ },
+ {
+  "repo": "micdrop-dev/micdrop",
+  "error": "HTTP Error 404: Not Found"
+ }
+]

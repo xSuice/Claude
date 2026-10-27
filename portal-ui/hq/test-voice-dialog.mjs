@@ -52,3 +52,29 @@ test('followup has a bounded recent conversation context and stop closes listeni
   b.m.stopAll();assert.notEqual(b.m.V.state,'listening');
  }finally{b.cleanup()}
 });
+
+test('spoken fillers in front of a follow-up still reach the local intent',async()=>{
+ const b=await boot();try{
+  assert.ok(b.m.answerLocal('und welche Aufgaben sind offen?'));
+  assert.ok(b.m.answerLocal('Also, wie ist die Lage?'));
+  assert.ok(b.m.answerLocal('Äh, gibt es Alarme?'));
+  assert.equal(b.m.answerLocal('und dann erzähl mir einen Witz'),null);
+ }finally{b.cleanup()}
+});
+test('whisper hallucinations on silence are recognised',async()=>{
+ const b=await boot();try{
+  for(const x of ['Copyright WDR 2020','Untertitel im Auftrag des ZDF, 2021','Untertitel der Amara.org-Community','Vielen Dank fürs Zuschauen!','...'])assert.ok(b.m.isHallucination(x),x);
+  for(const x of ['Wie spät ist es?','Welche Aufgaben sind offen?','Danke'])assert.equal(b.m.isHallucination(x),false,x);
+ }finally{b.cleanup()}
+});
+
+test('hasSpeech: only silence after the wakeword means wait for the question',async()=>{
+ const b=await boot();try{
+  const sr=16000, tone=(sec,a)=>Float32Array.from({length:Math.round(sr*sec)},(_,i)=>a*Math.sin(i/5));
+  const cat=(...xs)=>{const o=new Float32Array(xs.reduce((n,x)=>n+x.length,0));let k=0;for(const x of xs){o.set(x,k);k+=x.length}return o};
+  const ref=b.m.peakRms(tone(0.5,0.3));
+  assert.equal(b.m.hasSpeech(cat(tone(0.1,0.3),tone(0.9,0.001)),ref),false);   // Rest von „Jarvis“ + Nachlauf
+  assert.equal(b.m.hasSpeech(cat(tone(1.0,0.2),tone(0.9,0.001)),ref),true);    // echte Frage
+  assert.equal(b.m.hasSpeech(cat(tone(1.0,0.05),tone(0.9,0.001)),ref*0.2),true); // leise Stimme, leiser Massstab
+ }finally{b.cleanup()}
+});

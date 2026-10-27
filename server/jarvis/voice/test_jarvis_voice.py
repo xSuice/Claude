@@ -33,7 +33,13 @@ class VoiceProxyTests(unittest.TestCase):
         V.UPSTREAM = 'http://127.0.0.1:%d' % cls.srv.server_address[1]
         V._token = lambda: 'tok'
         app = Flask(__name__)
+        app.config['MAX_CONTENT_LENGTH'] = 128 * 1024   # wie portal.py
         cls.admin = {'v': True}
+
+        @app.post('/api/other')
+        def other():
+            from flask import request
+            return {'n': len(request.get_json()['audio_b64'])}
 
         @app.before_request
         def auth():
@@ -66,6 +72,19 @@ class VoiceProxyTests(unittest.TestCase):
         self.assertEqual(self.c.post('/api/voice/stt', json={'mime': 'audio/webm', 'audio_b64': '***'}).status_code, 400)
         big = base64.b64encode(b'x' * (V.MAX_AUDIO + 1)).decode()
         self.assertEqual(self.c.post('/api/voice/stt', json={'mime': 'audio/webm', 'audio_b64': big}).status_code, 413)
+
+    def test_stt_allows_wav_above_global_limit_only_on_this_route(self):
+        wav = b'RIFF' + b'\x00' * (400 * 1024)
+        body = {'mime': 'audio/wav', 'audio_b64': base64.b64encode(wav).decode()}
+        r = self.c.post('/api/voice/stt', json=body)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(SEEN['body'], wav)
+        self.assertEqual(SEEN['ctype'], 'audio/wav')
+        self.assertEqual(self.c.post('/api/other', json=body).status_code, 413)   # globale Grenze bleibt
+
+    def test_stt_route_limit_still_bounded(self):
+        big = base64.b64encode(b'x' * (V.MAX_AUDIO + 300 * 1024)).decode()
+        self.assertEqual(self.c.post('/api/voice/stt', json={'mime': 'audio/wav', 'audio_b64': big}).status_code, 413)
 
     def test_tts_validates_and_returns_audio(self):
         self.assertEqual(self.c.post('/api/voice/tts', json={'text': ''}).status_code, 400)

@@ -8,7 +8,7 @@ import { S, agentState, isFresh, shortName, refresh } from './store.js';
 import { ROSTER } from './roster.js';
 import { voiceAsk } from './chat.js';
 import { speechChunks } from './speech-text.js';
-import { LOCAL_VOICE, LocalEar, localHealth, playLocal, unlockAudio } from './localvoice.js';
+import { LOCAL_VOICE, LocalEar, localHealth, playLocal, unlockAudio, transcribeWav, stripWake } from './localvoice.js';
 
 const getSR = () => window.SpeechRecognition || window.webkitSpeechRecognition;
 export const WAKE = /\b(jarvis|dscharvis|dscharwis|dschavis|dschawis|jarwis|tscharvis|charvis|scharwis|jervis|jaris|javis|jarvi)\b/i;
@@ -18,7 +18,8 @@ export const V = {
   supported: !!getSR(), tts: 'speechSynthesis' in window,
   engine: getSR() ? 'browser' : 'none', localOk: false,   // engine: local (eigener PC) | browser | none
   enabled: false, state: 'off',            // off | wake | listening | thinking | speaking
-  interim: '', transcript: [], speakOn: true, level: 0, voiceName: '', err: '', go: null
+  interim: '', transcript: [], speakOn: true, level: 0, voiceName: '', err: '', go: null,
+  wakeMode: 'oww', engine2: 'aus', engErr: '', wakeScore: 0, wakeMax: 0, threshold: 0.4, loading: false   // oww = Wakeword-Modell im Browser, text = Fallback per Transkript
 };
 const listeners = new Set();
 const emit = () => listeners.forEach(f => { try { f(V); } catch (e) { console.error(e); } });
@@ -31,8 +32,13 @@ const NAV = { 'living hq': 'hq', 'hq': 'hq', 'command center': 'cc', 'kommandoze
   'dateien': 'files', 'terminal': 'term', 'system': 'status', 'vault': 'vault', 'einstellungen': 'einstellungen', 'sprache': 'voice' };
 const names = list => list.length <= 1 ? list.join('') : list.slice(0, -1).join(', ') + ' und ' + list[list.length - 1];
 
+/* Whisper erfindet auf (fast) stiller Aufnahme typische Untertitel-/Abspanntexte -> verwerfen statt beantworten */
+const HALLU = /^(?:copyright\b.*|untertitel\b.*|.*amara\.org.*|vielen dank fürs zu(?:schauen|hören)\W*|bis zum nächsten mal\W*|tschüss\W*|\W*)$/i;
+export const isHallucination = t => HALLU.test(String(t || '').trim());
+const FILLER = /^(?:(?:und|also|ähm|äh|öhm|hm|okay|ok|so|na|ja|gut|nun)\s+)+/;
+
 export function answerLocal(text) {
-  const t = text.toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
+  const t = text.toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim().replace(FILLER, '');
   const ids = ROSTER.map(r => r[0]);
   const st = ids.map(agentState);
   if (STOP.test(t) && t.split(' ').length <= 3) return { reply: '', action: 'cancel' };
@@ -134,19 +140,76 @@ async function handle(raw) {
 
 /* ---------- Spracherkennung ---------- */
 let ear = null, earMode = null;
-function earPause(p) { if (ear) ear.pause(p); }
+function earPause(p) { if (eng) eng.setVad(!p); else if (ear) ear.pause(p); }   // Engine: Wakeword bleibt fuer „Hey Jarvis“-Unterbrechung aktiv
 async function startEar(mode) {
   earMode = mode;
   await micOn();
   if (!stream) { V.err = 'Mikrofon-Zugriff verweigert. Bitte im Browser bzw. in den App-Berechtigungen erlauben.'; V.enabled = false; persist(); setState('off'); toast(V.err, 1); return; }
-  if (ear) return;
+  if (ear || eng) return;
+  if (V.wakeMode === 'oww') {
+    try { await startEngine(); return; }
+    catch (e) { V.engErr = String(e && e.message || e); V.engine2 = 'Fehler'; V.wakeMode = 'text'; console.warn('Wakeword-Engine', e); emit(); }
+  }
   ear = new LocalEar({ levelOf: null,
     onSpeech: () => { if (V.state === 'listening') clearTimeout(winT); },
     onText: txt => { const was = V.state; onFinal(txt); if (earMode === 'ptt' && !V.enabled && was === 'listening') stopEar(); emit(); },
     onError: e => { V.err = 'Lokale Spracherkennung: ' + e.message; emit(); } });
   try { await ear.start(stream); V.err = ''; emit(); } catch (e) { ear = null; V.err = e.message; emit(); }
 }
-function stopEar() { if (ear) { ear.stop(); ear = null; } }
+function stopEar() { if (ear) { ear.stop(); ear = null; } if (eng) { const e = eng; eng = null; e.close(); V.engine2 = 'aus'; emit(); } }
+
+/* ---------- Wakeword-Engine (openWakeWord „Hey Jarvis“ + Silero-VAD im Browser) ---------- */
+let eng = null, engMod = null, segAccept = false, segWake = false, segWakePos = null, scoreT = 0;
+const engBase = () => new URL('js/', document.baseURI).href;
+export const engineStats = () => eng ? eng.stats() : null;
+async function startEngine() {
+  V.loading = true; V.engine2 = 'lädt'; emit();
+  try {
+    if (!engMod) engMod = await import(engBase() + 'voice-engine.bundle.js');
+    eng = await engMod.createEngine({ base: engBase(), stream, threshold: V.threshold,
+      onWake: (score, pos) => {
+        V.wakeMax = Math.max(V.wakeMax, score);
+        if (V.state === 'thinking') return;
+        if (V.state === 'speaking') cancelSpeech();
+        segWake = true; segWakePos = pos; openWindow(8000);
+      },
+      onScore: sc => { V.wakeScore = sc; const now = performance.now(); if (now - scoreT > 200) { scoreT = now; emit(); } },
+      onSpeechStart: () => { segAccept = V.state === 'listening'; if (segAccept) clearTimeout(winT); },
+      onMisfire: () => { if (V.state === 'listening') openWindow(8000, false); },
+      onSpeechEnd: audio => {
+        const accept = segAccept || segWake, woke = segWake, wpos = segWakePos; segAccept = false; segWake = false; segWakePos = null;
+        if (!accept || V.state === 'speaking' || V.state === 'thinking') return;   // ohne Wakeword: nichts verlaesst den Browser
+        const ref = peakRms(audio);   // Lautstaerke des ganzen Segments (inkl. „Hey Jarvis“) als Massstab
+        if (woke && wpos !== null) audio = audio.subarray(Math.min(audio.length, Math.max(0, wpos - 6400)));   // „Hey Jarvis“ nicht an Whisper: Modell feuert gemessen 0,35–0,45 s nach Ende der Anrede
+        if (woke && !hasSpeech(audio, ref)) { openWindow(8000, false); return; }   // nur das Wakeword gesagt -> auf die Frage warten
+        const blob = engMod.encodeWav(audio);
+        setState('thinking');
+        transcribeWav(blob).then(t => {
+          const cmd = isHallucination(t) ? '' : woke ? stripWake(t, WAKE) : t.replace(WAKE, ' ').trim();
+          if (cmd.length < 2) { if (woke) openWindow(8000, false); else { setState(V.enabled ? 'wake' : 'off'); if (!V.enabled) stopEar(); } return; }   // nur „Hey Jarvis“ gesagt: Fenster fuer die Frage
+          setState('listening'); handle(cmd);
+          if (earMode === 'ptt' && !V.enabled) setTimeout(() => { if (V.state !== 'speaking' && V.state !== 'thinking') stopEar(); }, 0);
+        }).catch(e => { V.err = 'Lokale Spracherkennung: ' + e.message; setState(V.enabled ? 'wake' : 'off'); });
+      },
+      onError: e => { V.err = 'Sprach-Engine: ' + (e && e.message || e); emit(); } });
+    V.engine2 = 'bereit'; V.engErr = ''; V.err = '';
+  } finally { V.loading = false; emit(); }
+}
+/* Enthaelt das (nach dem Wakeword abgeschnittene) Segment noch Sprache? Das Segment endet mit ~0,9 s Stille (VAD-Nachlauf). */
+export function peakRms(audio, win = 512) {
+  let peak = 0;
+  for (let i = 0; i + win <= audio.length; i += win) { let q = 0; for (let j = i; j < i + win; j++) q += audio[j] * audio[j]; peak = Math.max(peak, Math.sqrt(q / win)); }
+  return peak;
+}
+export function hasSpeech(audio, ref, rate = 16000) {
+  const end = Math.max(0, audio.length - Math.round(rate * 0.85)), win = 512, thr = Math.max(0.006, (ref || 0.05) * 0.3);
+  if (end < rate * 0.25) return false;
+  let loud = 0;
+  for (let i = 0; i + win <= end; i += win) { let q = 0; for (let j = i; j < i + win; j++) q += audio[j] * audio[j]; if (Math.sqrt(q / win) > thr) loud++; }
+  return loud * win >= rate * 0.2;   // mind. 0,2 s Sprache nach dem Wakeword
+}
+export function setThreshold(t) { V.threshold = t; try { localStorage.setItem('hq-wake-thr', String(t)); } catch (e) { /* */ } if (eng) eng.setThreshold(t); emit(); }
+export function resetWakeMax() { V.wakeMax = 0; if (eng) eng.resetMax(); emit(); }
 let rec = null, restartT = null, winT = null, recMode = null, backoff = 400;
 function stopRec(clearWindow = true) { clearTimeout(restartT); if (clearWindow) clearTimeout(winT); if (rec) { rec.onend = null; rec.onerror = null; try { rec.abort(); } catch (e) { /* */ } rec = null; } }
 function openWindow(ms, cue = true) { setState('listening'); clearTimeout(winT); winT = setTimeout(() => { if (V.state === 'listening') setState(V.enabled ? 'wake' : 'off'); if (!V.enabled) stopEar(); }, ms || 8000); if (cue) beep(880, 90); }
@@ -235,10 +298,10 @@ const persist = () => { try { localStorage.setItem('hq-wake', V.enabled ? '1' : 
 export async function setWake(on) {
   if (on) {
     if (!V.supported) { V.err = 'Spracherkennung wird von diesem Browser nicht unterstützt (Chrome/Edge verwenden).'; emit(); toast(V.err, 1); return; }
-    const okKey = V.engine === 'local' ? 'hq-wake-ok-local' : 'hq-wake-ok';
+    const okKey = V.engine === 'local' ? 'hq-wake-ok-local2' : 'hq-wake-ok';
     let ok = false; try { ok = localStorage.getItem(okKey) === '1'; } catch (e) { /* */ }
     if (!ok && V.engine === 'local') {
-      if (!confirm('Wakeword „Jarvis“ einschalten?\n\nDas Mikrofon bleibt an. Sobald jemand spricht, geht der kurze Ausschnitt über dein Portal an den Sprachdienst auf deinem eigenen PC (Whisper, lokal) – nicht an Google oder andere Anbieter. Ausschnitte ohne „Jarvis“ werden verworfen und nicht gespeichert.')) return;
+      if (!confirm('Wakeword „Hey Jarvis“ einschalten?\n\nDas Mikrofon bleibt an. „Hey Jarvis“ wird direkt hier im Browser erkannt – bis dahin verlässt kein Ton dieses Gerät. Erst nach dem Wakeword (und im kurzen Gesprächsfenster danach) geht deine Frage über dein Portal an den Sprachdienst auf deinem eigenen PC (Whisper, lokal) – nicht an Google oder andere Anbieter.')) return;
       try { localStorage.setItem(okKey, '1'); } catch (e) { /* */ }
       ok = true;
     }
@@ -264,7 +327,7 @@ export const sayText = txt => { if (useLocalVoice()) unlockAudio(); return handl
 
 export function initVoice(go) {
   V.go = go;
-  try { V.voiceName = localStorage.getItem('hq-voice') || ''; V.speakOn = localStorage.getItem('hq-speak') !== '0'; } catch (e) { /* */ }
+  try { V.voiceName = localStorage.getItem('hq-voice') || ''; V.speakOn = localStorage.getItem('hq-speak') !== '0'; const th = parseFloat(localStorage.getItem('hq-wake-thr')); if (th >= 0.2 && th <= 0.9) V.threshold = th; } catch (e) { /* */ }
   if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => emit();
   // Auto-Wiederaufnahme nur, wenn frueher aktiviert UND Mikrofon-Berechtigung bereits erteilt ist (kein erneutes Prompten)
   let was = false; try { was = localStorage.getItem('hq-wake') === '1'; } catch (e) { /* */ }

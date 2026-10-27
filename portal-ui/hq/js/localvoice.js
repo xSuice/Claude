@@ -59,6 +59,22 @@ export async function transcribe(blob) {
   return String((d && d.text) || '').trim();
 }
 
+/* WAV (16 kHz PCM aus der Browser-Engine) -> eigener PC. Portal-Route erlaubt fuer STT bis 1,2 MB Audio (~37 s). */
+export const MAX_WAV = 1200 * 1024;
+export async function transcribeWav(blob) {
+  if (blob.size > MAX_WAV) throw new Error('Aufnahme zu lang');
+  const d = await api('/api/voice/stt', { body: { mime: 'audio/wav', audio_b64: await blobToBase64(blob) } });
+  return String((d && d.text) || '').trim();
+}
+
+/* Wakeword-Anrede vorne entfernen: „Hey Jarvis, wie spät …“ -> „wie spät …“. Nur in den ersten Wörtern suchen. */
+export function stripWake(text, wake) {
+  const t = String(text || '').trim(), m = t.match(wake);
+  if (m && m.index <= 24) return t.slice(m.index + m[0].length).replace(/^[\s,.:;!?-]+/, '').trim();
+  // Reststueck der Anrede, wenn das Audio direkt nach „Hey Jarvis“ abgeschnitten wurde („vis, wie spät …“)
+  return t.replace(/^(?:hey|hei|hej|he|ey|okay|ok)\b[\s,.!]*/i, '').replace(/^(?:a?r?vis|wis|vis)\b[\s,.!]*/i, '').trim();
+}
+
 export async function synthesize(text) {
   const r = await fetch('/api/voice/tts', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ text }) });
   if (!r.ok) throw new Error('Sprachausgabe ' + r.status);

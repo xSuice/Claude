@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Laedt die openWakeWord-Modelle (GitHub-Release v0.5.1) und prueft SHA-256. Modelle: CC BY-NC-SA 4.0 (nur privater Eigenbetrieb).
+set -euo pipefail
+mkdir -p models && cd models
+B=https://github.com/dscripka/openWakeWord/releases/download/v0.5.1
+for f in melspectrogram.onnx embedding_model.onnx hey_jarvis_v0.1.onnx; do [ -f "$f" ] || curl -fsSL -o "$f" "$B/$f"; done
+sha256sum -c - <<'SUMS'
+ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f  melspectrogram.onnx
+70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f  embedding_model.onnx
+94a13cfe60075b132f6a472e7e462e8123ee70861bc3fb58434a73712ee0d2cb  hey_jarvis_v0.1.onnx
+SUMS

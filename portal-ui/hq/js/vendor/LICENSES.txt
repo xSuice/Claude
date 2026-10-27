@@ -1,0 +1,5 @@
+Drittkomponenten der Browser-Sprach-Engine (MA-HOME HQ, js/voice-engine.bundle.js + js/vendor/):
+- onnxruntime-web 1.22.0 – MIT – https://github.com/microsoft/onnxruntime (ort-1.22.0/)
+- @ricky0123/vad-web 0.0.31 – ISC – https://github.com/ricky0123/vad (FrameProcessor, Silero-Klasse im Bundle)
+- Silero VAD v5 Modell – MIT – https://github.com/snakers4/silero-vad (vad-0.0.31/silero_vad_v5.onnx)
+- openWakeWord 0.5.1 – Code Apache-2.0, Modelle CC BY-NC-SA 4.0 – https://github.com/dscripka/openWakeWord (oww-0.5.1/, siehe NOTICE.txt)

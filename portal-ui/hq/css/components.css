@@ -302,6 +302,13 @@ body::after {
 .voice-ctl { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 8px 0; }
 .voice-opt { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; font-size: var(--fs-small); color: var(--text-muted); margin: 8px 0; }
 .voice-opt select { max-width: 220px; }
+.voice-opt input[type=range] { width: 110px; vertical-align: middle; }
+.voice-meter { display: grid; gap: 4px; justify-items: center; font-size: var(--fs-small); color: var(--text-muted); margin: 6px auto 2px; width: min(320px, 90%); }
+.voice-meter .vm-bar { position: relative; width: 100%; height: 8px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden; }
+.voice-meter .vm-bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--cyan, #35c4d8); transition: width .15s linear; }
+.voice-meter .vm-bar b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--crimson-soft, #ff5470); }
+.voice-diag { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-small); }
+.voice-diag .vd-ok { color: #3ddc97; font-weight: 700; } .voice-diag .vd-bad { color: var(--crimson-soft, #ff5470); font-weight: 700; } .voice-diag .vd-n { color: var(--text-muted); }
 .voice-text { display: flex; gap: 8px; margin-top: 10px; }
 .voice-text input { flex: 1; }
 .voice-log { margin: 0; padding: 0; list-style: none; max-height: 340px; overflow-y: auto; }

@@ -7,7 +7,9 @@ from flask import Blueprint, Response, abort, g, jsonify, request
 voice_bp = Blueprint('jarvis_voice', __name__)
 UPSTREAM = 'http://127.0.0.1:18790'
 TOKEN_FILE = '/home/andrew/.config/ma-jarvis/voice-token'
-MAX_AUDIO = 90 * 1024  # base64 in JSON under the portal-wide 128 KiB body limit; opus 24 kbit/s ≈ 30 s
+MAX_AUDIO = 1200 * 1024  # 16 kHz PCM16 WAV from the browser engine ≈ 37 s (opus ≈ minutes)
+# Only this route may exceed the portal-wide 128 KiB body limit (Flask >= 3.1 per-request limit); base64 + JSON overhead included.
+STT_BODY_LIMIT = MAX_AUDIO * 4 // 3 + 4096
 AUDIO = ('audio/webm', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/mpeg', 'audio/aac')
 
 
@@ -48,8 +50,9 @@ def voice_health():
 
 @voice_bp.route('/api/voice/stt', methods=['POST'])
 def voice_stt():
-    """JSON body {mime, audio_b64} – portal.py only admits JSON POSTs (CSRF rule), body limit 128 KiB."""
+    """JSON body {mime, audio_b64} – portal.py only admits JSON POSTs (CSRF rule); route limit STT_BODY_LIMIT."""
     _admin()
+    request.max_content_length = STT_BODY_LIMIT
     payload = request.get_json(silent=True) or {}
     ctype = str(payload.get('mime') or '').split(';', 1)[0].strip().lower()
     if ctype not in AUDIO:

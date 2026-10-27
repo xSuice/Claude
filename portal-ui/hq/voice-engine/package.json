@@ -1,0 +1,11 @@
+{
+ "name": "ma-voice-engine",
+ "private": true,
+ "version": "1.0.0",
+ "type": "module",
+ "dependencies": {
+  "@ricky0123/vad-web": "0.0.31",
+  "esbuild": "0.25.12",
+  "onnxruntime-web": "1.22.0"
+ }
+}
