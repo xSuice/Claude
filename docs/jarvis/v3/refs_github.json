@@ -1,0 +1,162 @@
+{
+ "checked": "2026-10-27",
+ "repos": [
+  {
+   "repo": "dscripka/openWakeWord",
+   "url": "https://github.com/dscripka/openWakeWord",
+   "license": "Apache-2.0",
+   "stars": 2887,
+   "pushed": "2025-12-30",
+   "archived": false,
+   "desc": "An open-source audio wake word (or phrase) detection framework with a focus on performance"
+  },
+  {
+   "repo": "SYSTRAN/faster-whisper",
+   "url": "https://github.com/SYSTRAN/faster-whisper",
+   "license": "MIT",
+   "stars": 26210,
+   "pushed": "2026-10-25",
+   "archived": false,
+   "desc": "Faster Whisper transcription with CTranslate2"
+  },
+  {
+   "repo": "rhasspy/piper",
+   "url": "https://github.com/rhasspy/piper",
+   "license": "MIT",
+   "stars": 11315,
+   "pushed": "2025-08-26",
+   "archived": true,
+   "desc": "A fast, local neural text to speech system"
+  },
+  {
+   "repo": "OHF-Voice/piper1-gpl",
+   "url": "https://github.com/OHF-Voice/piper1-gpl",
+   "license": "GPL-3.0",
+   "stars": 6047,
+   "pushed": "2026-10-25",
+   "archived": false,
+   "desc": "Fast and local neural text-to-speech engine"
+  },
+  {
+   "repo": "rhasspy/wyoming",
+   "error": "Moved Permanently"
+  },
+  {
+   "repo": "home-assistant/core",
+   "url": "https://github.com/home-assistant/core",
+   "license": "Apache-2.0",
+   "stars": 91769,
+   "pushed": "2026-10-27",
+   "archived": false,
+   "desc": ":house_with_garden: Open source home automation that puts local control and privacy first."
+  },
+  {
+   "repo": "NousResearch/hermes-agent",
+   "url": "https://github.com/NousResearch/hermes-agent",
+   "license": "MIT",
+   "stars": 257580,
+   "pushed": "2026-10-27",
+   "archived": false,
+   "desc": "The agent that grows with you"
+  },
+  {
+   "repo": "modelcontextprotocol/modelcontextprotocol",
+   "url": "https://github.com/modelcontextprotocol/modelcontextprotocol",
+   "license": "NOASSERTION",
+   "stars": 9541,
+   "pushed": "2026-10-26",
+   "archived": false,
+   "desc": "Specification and documentation for the Model Context Protocol"
+  },
+  {
+   "repo": "temporalio/temporal",
+   "url": "https://github.com/temporalio/temporal",
+   "license": "MIT",
+   "stars": 24015,
+   "pushed": "2026-10-27",
+   "archived": false,
+   "desc": "Temporal service"
+  },
+  {
+   "repo": "obsidianmd/obsidian-releases",
+   "url": "https://github.com/obsidianmd/obsidian-releases",
+   "license": null,
+   "stars": 22661,
+   "pushed": "2026-10-27",
+   "archived": false,
+   "desc": "Community plugins list, theme list, and releases of Obsidian."
+  },
+  {
+   "repo": "google/gvisor",
+   "url": "https://github.com/google/gvisor",
+   "license": "Apache-2.0",
+   "stars": 19791,
+   "pushed": "2026-10-27",
+   "archived": false,
+   "desc": "Application Kernel for Containers"
+  },
+  {
+   "repo": "openai/whisper",
+   "url": "https://github.com/openai/whisper",
+   "license": "MIT",
+   "stars": 111376,
+   "pushed": "2026-08-31",
+   "archived": false,
+   "desc": "Robust Speech Recognition via Large-Scale Weak Supervision"
+  },
+  {
+   "repo": "ggml-org/whisper.cpp",
+   "url": "https://github.com/ggml-org/whisper.cpp",
+   "license": "MIT",
+   "stars": 54701,
+   "pushed": "2026-10-19",
+   "archived": false,
+   "desc": "Port of OpenAI's Whisper model in C/C++"
+  },
+  {
+   "repo": "mem0ai/mem0",
+   "url": "https://github.com/mem0ai/mem0",
+   "license": "Apache-2.0",
+   "stars": 67904,
+   "pushed": "2026-10-26",
+   "archived": false,
+   "desc": "The Memory Layer for AI Agents - Drop-in memory infrastructure for AI agents and apps. Con"
+  },
+  {
+   "repo": "langchain-ai/langgraph",
+   "url": "https://github.com/langchain-ai/langgraph",
+   "license": "MIT",
+   "stars": 43982,
+   "pushed": "2026-10-27",
+   "archived": false,
+   "desc": "Build resilient agents."
+  },
+  {
+   "repo": "OWASP/www-project-top-10-for-large-language-model-applications",
+   "url": "https://github.com/OWASP/www-project-top-10-for-large-language-model-applications",
+   "license": "NOASSERTION",
+   "stars": 1468,
+   "pushed": "2026-08-05",
+   "archived": false,
+   "desc": "OWASP Top 10 for Large Language Model Apps (Part of the GenAI Security Project)"
+  },
+  {
+   "repo": "microsoft/playwright-mcp",
+   "url": "https://github.com/microsoft/playwright-mcp",
+   "license": "Apache-2.0",
+   "stars": 38697,
+   "pushed": "2026-10-22",
+   "archived": false,
+   "desc": "Playwright MCP server"
+  },
+  {
+   "repo": "dbos-inc/dbos-transact-py",
+   "url": "https://github.com/dbos-inc/dbos-transact-py",
+   "license": "MIT",
+   "stars": 1651,
+   "pushed": "2026-10-26",
+   "archived": false,
+   "desc": "Database-Backed Durable Python Workflows"
+  }
+ ]
+}
