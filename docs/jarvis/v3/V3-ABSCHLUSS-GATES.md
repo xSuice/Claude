@@ -81,3 +81,16 @@ Ein Diagnoseversuch zur AppContainer-Anlage (0x80070005) blieb ohne Freigabe-Ant
 
 ## Nachtrag: AppContainer-Diagnose (Worker-Sandbox)
 Direkter Aufruf `CreateAppContainerProfile` mit frischem Namen (Testprofil, bei Erfolg sofort gelöscht): **HRESULT 0x80070005 (Zugriff verweigert) reproduziert**, unabhängig vom Sandbox-Code. Kontext: normaler Benutzer (nicht Administrator), mittlere Integrität (S-1-16-8192), Prozess nicht in einem Job-Objekt, `%LOCALAPPDATA%\Packages` vorhanden, Dienst AppIDSvc läuft, AppXSvc gestoppt (bedarfsgesteuert), auf dem Gerät besteht eine MDM-/Appx-Richtlinie (Registrierungsschlüssel `Policies\Microsoft\Windows\Appx` vorhanden). Eine Ursache ist damit **nicht bewiesen**; die Anlage wird auf dieser Maschine verweigert. Weitere Diagnose (z. B. Process Monitor, Richtlinien ändern) bräuchte Administratorrechte bzw. ändert Systemrichtlinien und wurde nicht versucht. Folge: kein Worker-Start, keine unsandboxed Alternative.
+
+
+## Nachtrag: Router-Ende-zu-Ende und Modellkosten (27.10., Sessionlimit des Anbieters wieder aufgehoben)
+Echte Aufrufe über `POST /api/claude` (Modus lesen, Ordner notizen, Prompt „Antworte nur mit OK.“), je Aufruf `bridge_model` und `result` aus dem Stream gelesen. Skript: `scripts/verification-v3/router_probe.py`.
+
+| Aufruf | bridge_model | Antwort | Kosten (Listenpreis-Äquivalent, laut CLI) | Cache |
+|---|---|---|---|---|
+| ohne Modellangabe (Router) | haiku | OK | 0,00032 USD | read 32.168, create 0 |
+| haiku erzwungen | haiku | OK | 0,00032 USD | read 32.168, create 0 |
+| sonnet erzwungen, kalter Cache | sonnet | OK | 0,0858 USD | create 21.175, read 10.170 |
+| sonnet erzwungen, warmer Cache | sonnet | OK | 0,00318 USD | read 31.345, create 0 |
+
+Ergebnis: Der Router wählt für die Bestätigung tatsächlich Haiku, und die Antwort kommt an (der frühere Befund „nur Auswahl belegt, Antwort blockiert“ ist damit geschlossen). Bei warmem Cache kostet Sonnet für dieselbe Aufgabe rund das Zehnfache von Haiku (0,00318 gegenüber 0,00032 USD); bei kaltem Cache rund das 265-Fache, weil ca. 21.000 Cache-Schreib-Token anfallen. Auffällig: Jeder Aufruf bringt schon ca. 31.000 Token Grundkontext mit (Hooks/Systemkontext des Claude-CLI), selbst für eine Zwei-Wort-Aufgabe. Das ist der größte Hebel für Kontextkosten, wurde aber nicht verändert. Die USD-Werte sind Listenpreis-Äquivalente der CLI, keine Rechnung. Stichprobe von 4 Aufrufen plus 1 Sonnet-Warmlauf, keine statistische Aussage über reale Aufgabenmischungen.
