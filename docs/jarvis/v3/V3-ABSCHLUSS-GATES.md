@@ -61,3 +61,19 @@ Gesamt 1466 DM-Aufrufe in 270 Ketten, Median 2. Spitze am 24.10. mit 644 DMs. Da
 
 ## Nachtrag: Gateway-Transportfix aktiv
 Gateway-Prozess seit 27.10. 12:31 (PID 32052), jünger als `run_notifications.py` (05:32). Gegenprobe mit einzeiligem 3,6-kB-JSON: Abschlussmeldung enthielt den Tail inkl. Endmarke statt „showing last 0 chars“. Das Gate „Transportfix aktiv“ gilt damit als erfüllt.
+
+
+## Nachtrag: Skill-Funktionsprüfung (isolierte Test-Umgebung, 27.10.)
+Neue venv unter dem Scratch-Ordner (Hermes-Umgebung unverändert); installiert: python-docx, openpyxl, python-pptx, pypdf, reportlab, pdfplumber, pypdfium2, pytest. Die in den Skills mitgelieferten End-to-End-Tests wurden ausgeführt:
+
+| Skill | Ergebnis |
+|---|---|
+| docx | 29 bestanden |
+| xlsx | 11 bestanden, 1 übersprungen (Grund nicht untersucht) |
+| powerpoint | 21 bestanden |
+| pdf | 21 bestanden (erster Lauf 1 Fehler: `pdfplumber` fehlte, Exit 2 = fehlende Abhängigkeit; nach Installation grün) |
+| maps | Live-Abruf: Geocoding „Brandenburger Tor, Berlin“ und Reverse-Geocoding liefern plausible OSM-Daten |
+
+Nur diese vier Skills haben mitgelieferte Tests; die übrigen rund 54 aktiven Skills sind weiterhin nur per Metadaten/Syntax geprüft. Die vier Dokument-Skills brauchen in der produktiven Hermes-Umgebung die genannten Pakete, sonst schlagen sie mit Exit 2 fehl.
+
+Ein Diagnoseversuch zur AppContainer-Anlage (0x80070005) blieb ohne Freigabe-Antwort im Genehmigungs-Timeout und wurde nicht ausgeführt und nicht umgangen.
