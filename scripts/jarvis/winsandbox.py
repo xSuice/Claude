@@ -29,6 +29,9 @@ INTERNET_CLIENT_SID = 'S-1-15-3-1'
 # Win32-App-Isolation capability with list/traverse/read-attributes on volume roots (C:\ has an ACE for it).
 # Without it every Java File.createTempFile fails (GetVolumeInformation on C:\ -> access denied), i.e. jar and Gradle.
 VOLUME_ROOT_CAP = 'isolatedWin32-volumeRootMinimal'
+# Only Windows builds with Win32 app isolation accept this capability; others reject CreateProcess with
+# ERROR_INVALID_PARAMETER (87). Detected once per process; the sandbox then runs without it (stricter, not looser).
+USE_VOLUME_CAP = True
 ROOT = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'ma-jarvis' / 'pcwork'
 
 if os.name == 'nt':
@@ -256,6 +259,10 @@ def base_env(work: Path, extra: dict | None = None) -> dict:
     return env
 
 
+class _RetryWithoutVolumeCap(Exception):
+    pass
+
+
 class Sandbox:
     def __init__(self):
         if os.name != 'nt':
@@ -263,6 +270,14 @@ class Sandbox:
         self.sid = container_sid()
 
     def run(self, argv: list[str], work: Path, limits: Limits | None = None, env: dict | None = None) -> Result:
+        global USE_VOLUME_CAP
+        try:
+            return self._run(argv, work, limits, env)
+        except _RetryWithoutVolumeCap:
+            USE_VOLUME_CAP = False
+            return self._run(argv, work, limits, env)
+
+    def _run(self, argv: list[str], work: Path, limits: Limits | None = None, env: dict | None = None) -> Result:
         lim = limits or Limits()
         work = Path(work).resolve()
         exe = shutil.which(argv[0], path=(env or base_env(work))['PATH']) or argv[0]
@@ -275,7 +290,7 @@ class Sandbox:
         _check(h_in not in (None, INVALID), 'CreateFile NUL')
         job = pi = None
         cont = _sid_from_string(self.sid)
-        cap_sids = [_sid_from_string(capability_sid(VOLUME_ROOT_CAP))]
+        cap_sids = [_sid_from_string(capability_sid(VOLUME_ROOT_CAP))] if USE_VOLUME_CAP else []
         if lim.network:
             cap_sids.append(_sid_from_string(INTERNET_CLIENT_SID))
         try:
@@ -300,8 +315,8 @@ class Sandbox:
                    'SetInformationJobObject ui')
 
             # --- attribute list: AppContainer + only our two std handles are inheritable
-            caps = (SID_AND_ATTRIBUTES * len(cap_sids))(*[SID_AND_ATTRIBUTES(c.value, SE_GROUP_ENABLED) for c in cap_sids])
-            sc = SECURITY_CAPABILITIES(cont.value, caps, len(cap_sids), 0)
+            caps = (SID_AND_ATTRIBUTES * max(1, len(cap_sids)))(*[SID_AND_ATTRIBUTES(c.value, SE_GROUP_ENABLED) for c in cap_sids])
+            sc = SECURITY_CAPABILITIES(cont.value, caps if cap_sids else None, len(cap_sids), 0)
             handles = (wt.HANDLE * 2)(h_out, h_in)
             size = ctypes.c_size_t()
             k32.InitializeProcThreadAttributeList(None, 2, 0, ctypes.byref(size))
@@ -327,6 +342,8 @@ class Sandbox:
             err = ctypes.get_last_error()
             k32.DeleteProcThreadAttributeList(attr)
             if not ok:
+                if err == 87 and USE_VOLUME_CAP:
+                    raise _RetryWithoutVolumeCap()
                 raise ctypes.WinError(err, f'CreateProcess {argv[0]}')
             if not k32.AssignProcessToJobObject(job, pi.hProcess):
                 err = ctypes.get_last_error()
@@ -375,7 +392,7 @@ class Sandbox:
                       timed_out=timed_out, seconds=round(secs, 2),
                       peak_mem_mb=round(info.PeakJobMemoryUsed / 1048576, 1), processes=acc.TotalProcesses,
                       info={'container_sid': self.sid,
-                            'capabilities': [VOLUME_ROOT_CAP] + (['internetClient'] if lim.network else []),
+                            'capabilities': ([VOLUME_ROOT_CAP] if USE_VOLUME_CAP else []) + (['internetClient'] if lim.network else []),
                             'network': lim.network, 'mem_mb': lim.mem_mb, 'procs': lim.procs,
                             'cpu_pct': lim.cpu_pct, 'timeout_s': lim.timeout_s})
 

@@ -39,8 +39,8 @@ export function renderVoice(root, ctx) {
     '<li><b>„Welche Aufgaben sind offen?“</b></li><li><b>„Öffne Living HQ“</b> · Command Center · Chat · Aufgaben …</li><li><b>„Jarvis stopp“</b> – Ausgabe unterbrechen</li>' +
     '<li>Alles andere → JARVIS (Haiku, <b>nur lesend</b>)</li></ul></div>' +
     '<div class="holo danger" style="margin-top:16px"><h2 class="holo-title">Datenschutz &amp; Grenzen</h2><p class="muted" style="margin:0;font-size:var(--fs-small)">' +
-    'Die Spracherkennung des Browsers (Chrome/Edge) sendet Audio an den Browser-Anbieter – nicht lokal. Im Wake-Modus läuft das dauerhaft, deshalb nur mit deiner Bestätigung. Nicht-Wakeword-Äußerungen werden verworfen und nicht gespeichert. ' +
-    'Auf Handys beenden manche Browser die Dauer-Erkennung bei gesperrtem Bildschirm. Eine lokale Variante (Whisper/Piper) ist als Phase B vorgesehen.</p>' +
+    'Wenn dein PC an ist, erkennt und spricht JARVIS lokal: Aufnahmen gehen über dein Portal nur an den Sprachdienst auf deinem PC (Whisper und Piper), nicht an Google. Ist der PC aus, nutzt das Portal die Browser-Spracherkennung (Chrome/Edge), die Audio an den Browser-Anbieter sendet – im Wake-Modus dauerhaft, deshalb nur mit deiner Bestätigung. Im bestätigten Wake-Modus hört JARVIS nach einer Antwort bis zu zwölf Sekunden auf eine Folgefrage, ohne dass du erneut „Jarvis“ sagen musst. Sonstige Äußerungen außerhalb dieses Gesprächsfensters werden ohne Wakeword verworfen und nicht im Portaltranskript gespeichert. ' +
+    'Auf Handys beenden manche Browser die Dauer-Erkennung bei gesperrtem Bildschirm.</p>' +
     '<p id="vcap" class="faint" style="margin:8px 0 0;font-size:var(--fs-small)"></p></div></div></div>';
 
   const cv = $('#vorb', root), cx = cv.getContext('2d'), t0 = performance.now();
@@ -86,10 +86,11 @@ export function renderVoice(root, ctx) {
     $('#vwake', root).textContent = V.enabled ? 'Wakeword aus' : 'Wakeword „Jarvis“ an';
     $('#vspk', root).checked = V.speakOn;
     const vs = voices(), sel = $('#vvoice', root);
-    if (sel.options.length !== vs.length + 1) { sel.innerHTML = '<option value="">Automatisch (beste deutsche Stimme)</option>' + vs.map(v => '<option>' + esc(v.name) + '</option>').join(''); }
+    const want = vs.length + 1 + (V.localOk ? 1 : 0);
+    if (sel.options.length !== want) { sel.innerHTML = '<option value="">Automatisch (' + (V.localOk ? 'JARVIS-Stimme, lokal' : 'beste deutsche Stimme') + ')</option>' + (V.localOk ? '<option value="jarvis-local">JARVIS – Thorsten (lokal, eigener PC)</option>' : '') + vs.map(v => '<option>' + esc(v.name) + '</option>').join(''); }
     sel.value = V.voiceName || '';
     $('#vlog', root).innerHTML = V.transcript.length ? V.transcript.slice().reverse().map(m => '<li class="' + m.r + '"><span class="who">' + (m.r === 'u' ? 'Du' : 'JARVIS') + '</span><span>' + esc(m.t) + '</span>' + (m.src ? '<span class="src">' + esc(m.src) + '</span>' : '') + '</li>').join('') : '<li class="faint">Noch nichts gesagt. Klick auf „Jetzt sprechen“ oder tippe unten eine Frage.</li>';
-    $('#vcap', root).textContent = 'Spracherkennung: ' + (V.supported ? 'verfügbar' : 'NICHT verfügbar in diesem Browser') + ' · Sprachausgabe: ' + (V.tts ? voices().length + ' deutsche Stimme(n)' : 'nicht verfügbar');
+    $('#vcap', root).textContent = 'Spracherkennung: ' + (V.engine === 'local' ? 'lokal auf deinem PC (Whisper)' : V.supported ? 'Browser-Dienst' : 'NICHT verfügbar') + ' · Sprachausgabe: ' + (V.localOk ? 'JARVIS-Stimme lokal + ' : '') + (('speechSynthesis' in window) ? voices().length + ' Browserstimme(n)' : 'keine Browserstimme');
   }
 
   $('#vtalk', root).onclick = () => talkOnce();

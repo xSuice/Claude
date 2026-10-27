@@ -104,8 +104,19 @@
       "imports": [],
       "format": "esm"
     },
+    "js/localvoice.js": {
+      "bytes": 8466,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        }
+      ],
+      "format": "esm"
+    },
     "js/voice.js": {
-      "bytes": 16264,
+      "bytes": 20495,
       "imports": [
         {
           "path": "js/api.js",
@@ -131,12 +142,17 @@
           "path": "js/speech-text.js",
           "kind": "import-statement",
           "original": "./speech-text.js"
+        },
+        {
+          "path": "js/localvoice.js",
+          "kind": "import-statement",
+          "original": "./localvoice.js"
         }
       ],
       "format": "esm"
     },
     "js/voiceui.js": {
-      "bytes": 8923,
+      "bytes": 9662,
       "imports": [
         {
           "path": "js/api.js",
@@ -274,13 +290,16 @@
           "bytesInOutput": 1093
         },
         "js/voiceui.js": {
-          "bytesInOutput": 6961
+          "bytesInOutput": 7554
         },
         "js/voice.js": {
-          "bytesInOutput": 10000
+          "bytesInOutput": 12851
         },
         "js/speech-text.js": {
           "bytesInOutput": 554
+        },
+        "js/localvoice.js": {
+          "bytesInOutput": 4559
         },
         "js/port.js": {
           "bytesInOutput": 49904
@@ -289,7 +308,7 @@
           "bytesInOutput": 19255
         }
       },
-      "bytes": 180005
+      "bytes": 188008
     }
   }
 }

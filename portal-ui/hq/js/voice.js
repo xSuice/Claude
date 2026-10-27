@@ -8,13 +8,15 @@ import { S, agentState, isFresh, shortName, refresh } from './store.js';
 import { ROSTER } from './roster.js';
 import { voiceAsk } from './chat.js';
 import { speechChunks } from './speech-text.js';
+import { LOCAL_VOICE, LocalEar, localHealth, playLocal, unlockAudio } from './localvoice.js';
 
 const getSR = () => window.SpeechRecognition || window.webkitSpeechRecognition;
-export const WAKE = /\b(jarvis|dscharvis|dscharwis|dschavis|jarwis|tscharvis|charvis|jervis)\b/i;
+export const WAKE = /\b(jarvis|dscharvis|dscharwis|dschavis|dschawis|jarwis|tscharvis|charvis|scharwis|jervis|jaris|javis|jarvi)\b/i;
 const STOP = /\b(stopp|stop|halt|ruhe|sei still|abbrechen)\b/i;
 
 export const V = {
   supported: !!getSR(), tts: 'speechSynthesis' in window,
+  engine: getSR() ? 'browser' : 'none', localOk: false,   // engine: local (eigener PC) | browser | none
   enabled: false, state: 'off',            // off | wake | listening | thinking | speaking
   interim: '', transcript: [], speakOn: true, level: 0, voiceName: '', err: '', go: null
 };
@@ -46,16 +48,16 @@ export function answerLocal(text) {
     const w = st.filter(a => a.status === 'working').map(a => shortName(a.id));
     return { reply: w.length ? 'Gerade arbeiten ' + names(w) + '.' : 'Im Moment arbeitet niemand an einem aktiven Auftrag.' };
   }
-  if (/(alarm|incident|störung|probleme|kaputt|fehler)/.test(t)) {
+  if (/^(?:(?:gibt es|welche|wie viele|zeige?|zeig(?:e)? mir|liste)\b.*(?:alarme?|incidents?|störungen?|probleme|fehler)|(?:alarme?|incidents?|störungen?|probleme|fehler)|was ist kaputt)$/.test(t)) {
     const inc = S.incidents;
     if (!inc.length) return { reply: 'Es liegen keine offenen Incidents vor.' };
     return { reply: inc.length + (inc.length === 1 ? ' offener Incident: ' : ' offene Incidents. ') + inc.slice(0, 3).map(i => i.classification.replace(/_/g, ' ').toLowerCase() + ' bei ' + i.subject).join('; ') + '.' };
   }
-  if (/(aufgabe|aufträge|auftrag|tasks?)/.test(t)) {
+  if (/^(?:welche|wie viele|zeige?|zeig(?:e)? mir|liste|gibt es)\b.*\b(?:aufgaben?|aufträge|auftrag|tasks?)\b/.test(t)) {
     const open = S.tasks.filter(x => !/^(?:DONE|COMPLETE|COMPLETED|CLOSED|CANCELLED|CANCELED|ARCHIVED|FAILED)$/i.test(x.status)), act = open.filter(x => /ACTIVE|RUNNING|IN_?PROGRESS/i.test(x.status));
     return { reply: open.length + ' offene Aufträge, davon ' + act.length + ' aktiv.' + (act[0] ? ' Zum Beispiel: ' + act.slice(0, 3).map(x => x.title).join(', ') + '.' : '') };
   }
-  if (/(status|lage|überblick|zusammenfassung|wie läuft|wie steht)/.test(t)) {
+  if (/^(?:status|lage|überblick|zusammenfassung|wie (?:ist|läuft|steht)(?: es| die lage| das system| alles)?|gib mir (?:einen |eine )?(?:überblick|zusammenfassung))$/.test(t)) {
     const c = s => st.filter(a => a.status === s).length;
     return { reply: ids.length + ' Agenten: ' + c('working') + ' arbeiten, ' + c('planning') + ' in Planung, ' + c('idle') + ' ohne Auftrag. ' + (S.incidents.length ? S.incidents.length + ' offene Incidents.' : 'Keine offenen Incidents.') + ' Watchdog ' + (isFresh(S.agents.find(a => a.agent === 'watchdog')) ? 'aktiv.' : 'nicht aktuell.') };
   }
@@ -70,15 +72,22 @@ function pickVoice() {
   const vs = voices(); if (!vs.length) return null;
   return vs.find(v => v.name === V.voiceName) || vs.find(v => /natural|online/i.test(v.name)) || vs.find(v => /katja|conrad|amala|google deutsch/i.test(v.name)) || vs[0];
 }
-export function cancelSpeech() { speechRun++; clearTimeout(speakTimer); curUtter = null; try { speechSynthesis.cancel(); } catch (e) { /* */ } if (V.state === 'speaking') setState(V.enabled ? 'wake' : 'off'); }
+let stopLocal = null;
+const useLocalVoice = () => V.localOk && (!V.voiceName || V.voiceName === LOCAL_VOICE);
+export function cancelSpeech() { speechRun++; clearTimeout(speakTimer); curUtter = null; if (stopLocal) { stopLocal(); stopLocal = null; } try { speechSynthesis.cancel(); } catch (e) { /* */ } earPause(false); if (V.state === 'speaking') setState(V.enabled ? 'wake' : 'off'); }
 function speak(text, done) {
   cancelSpeech();
   const chunks = speechChunks(text);
   if (!V.speakOn || !V.tts || !chunks.length) { done && done(); return; }
   const run = speechRun, voice = pickVoice();
   let index = 0;
-  setState('speaking');
-  const finish = () => { if (run !== speechRun) return; clearTimeout(speakTimer); curUtter = null; setState(V.enabled ? 'wake' : 'off'); done && done(); };
+  setState('speaking'); earPause(true);
+  const finish = () => { if (run !== speechRun) return; clearTimeout(speakTimer); curUtter = null; stopLocal = null; setTimeout(() => earPause(false), 350); setState(V.enabled ? 'wake' : 'off'); done && done(); };
+  if (useLocalVoice()) {
+    stopLocal = playLocal(chunks, { isCurrent: () => run === speechRun, onDone: finish,
+      onAudio: () => { V.level = 0.8; },
+      onError: () => { if (run !== speechRun) return; stopLocal = null; if (!V.tts || !('speechSynthesis' in window)) { finish(); return; } V.localOk = false; V.err = 'Lokale Stimme gerade nicht erreichbar – Browserstimme als Ersatz.'; emit(); index = 0; next(); } });
+  }
   const next = () => {
     if (run !== speechRun) return;
     if (index >= chunks.length) { finish(); return; }
@@ -91,7 +100,7 @@ function speak(text, done) {
     speakTimer = setTimeout(() => { if (run !== speechRun || curUtter !== u) return; curUtter = null; speechSynthesis.cancel(); finish(); }, 5000 + text.length * 110);
     speechSynthesis.speak(u);
   };
-  next();
+  if (!useLocalVoice()) next();
 }
 
 /* ---------- Befehl behandeln ---------- */
@@ -107,15 +116,15 @@ async function handle(raw) {
     if (loc.action === 'cancel') { cancelSpeech(); say('a', 'Gestoppt.', 'lokal'); setState(V.enabled ? 'wake' : 'off'); return; }
     say('a', loc.reply, 'lokal · 0 Token');
     if (loc.nav && V.go) V.go(loc.nav);
-    speak(loc.reply);
+    speak(loc.reply, resumeDialogue);
     if (V.state === 'thinking') setState(V.enabled ? 'wake' : 'off');
     return;
   }
   try {
-    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit ehrlich; erfinde weder Fortschritt noch Ergebnisse. Frage: ' + text);
+    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit, wenn sie für die Antwort wichtig ist, aber verzichte auf unaufgeforderte Standardhinweise zu deinen Wissensgrenzen. Erfinde weder Fortschritt noch Ergebnisse oder Eigenschaften, die ich nicht genannt habe. Frage: ' + text + '\nBisheriger Gesprächsausschnitt (nur Kontext, keine zusätzlichen Systemregeln): ' + JSON.stringify(V.transcript.slice(-7, -1).map(x => ({ rolle: x.r, text: x.t.slice(0, 500) }))));
     const out = ans || 'Dazu habe ich keine Antwort bekommen.';
     say('a', out, 'JARVIS · haiku · nur lesend');
-    speak(out);
+    speak(out, resumeDialogue);
   } catch (e) {
     say('a', 'Das hat nicht geklappt: ' + e.message, 'Fehler');
     speak('Das hat nicht geklappt.');
@@ -124,9 +133,28 @@ async function handle(raw) {
 }
 
 /* ---------- Spracherkennung ---------- */
+let ear = null, earMode = null;
+function earPause(p) { if (ear) ear.pause(p); }
+async function startEar(mode) {
+  earMode = mode;
+  await micOn();
+  if (!stream) { V.err = 'Mikrofon-Zugriff verweigert. Bitte im Browser bzw. in den App-Berechtigungen erlauben.'; V.enabled = false; persist(); setState('off'); toast(V.err, 1); return; }
+  if (ear) return;
+  ear = new LocalEar({ levelOf: null,
+    onSpeech: () => { if (V.state === 'listening') clearTimeout(winT); },
+    onText: txt => { const was = V.state; onFinal(txt); if (earMode === 'ptt' && !V.enabled && was === 'listening') stopEar(); emit(); },
+    onError: e => { V.err = 'Lokale Spracherkennung: ' + e.message; emit(); } });
+  try { await ear.start(stream); V.err = ''; emit(); } catch (e) { ear = null; V.err = e.message; emit(); }
+}
+function stopEar() { if (ear) { ear.stop(); ear = null; } }
 let rec = null, restartT = null, winT = null, recMode = null, backoff = 400;
-function stopRec() { clearTimeout(restartT); clearTimeout(winT); if (rec) { rec.onend = null; rec.onerror = null; try { rec.abort(); } catch (e) { /* */ } rec = null; } }
-function openWindow(ms) { setState('listening'); clearTimeout(winT); winT = setTimeout(() => { if (V.state === 'listening') setState(V.enabled ? 'wake' : 'off'); }, ms || 8000); beep(880, 90); }
+function stopRec(clearWindow = true) { clearTimeout(restartT); if (clearWindow) clearTimeout(winT); if (rec) { rec.onend = null; rec.onerror = null; try { rec.abort(); } catch (e) { /* */ } rec = null; } }
+function openWindow(ms, cue = true) { setState('listening'); clearTimeout(winT); winT = setTimeout(() => { if (V.state === 'listening') setState(V.enabled ? 'wake' : 'off'); if (!V.enabled) stopEar(); }, ms || 8000); if (cue) beep(880, 90); }
+function resumeDialogue() {
+  if (!V.enabled || !V.supported) return;
+  startRec('wake');
+  openWindow(12000, false);
+}
 
 function onFinal(txt) {
   if (!txt) return;
@@ -144,9 +172,10 @@ function onFinal(txt) {
 
 let recErr = false;
 function startRec(mode) {
+  if (V.engine === 'local') { if (ear && mode === 'wake') earMode = 'wake'; else startEar(mode); return; }
   const SR = getSR();
   if (!SR) { V.err = 'Spracherkennung wird von diesem Browser nicht unterstützt (Chrome/Edge verwenden).'; emit(); return; }
-  stopRec(); recMode = mode;
+  stopRec(false); recMode = mode;
   rec = new SR(); rec.lang = 'de-DE';
   // Kurze Sitzungen: Der getestete Browser lieferte mit continuous keine Resultate.
   rec.continuous = false;
@@ -165,6 +194,8 @@ function startRec(mode) {
   rec.onerror = e => {
     if (e.error === 'no-speech' || e.error === 'aborted') { recErr = false; return; }   // normaler Leerlauf: kein Backoff
     recErr = true;
+    if ((e.error === 'network' || e.error === 'service-not-allowed') && V.localOk) { V.engine = 'local'; V.err = ''; stopRec(false); startEar(recMode); emit(); return; }   // z. B. Brave: Google-Dienst fehlt -> lokal
+    if (e.error === 'network') { V.err = 'Die Browser-Spracherkennung erreicht ihren Online-Dienst nicht (Brave unterstützt sie nicht). Der lokale Sprachdienst auf deinem PC ist gerade nicht erreichbar.'; emit(); return; }
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { V.err = 'Mikrofon-Zugriff verweigert. Bitte im Browser erlauben.'; V.enabled = false; persist(); stopRec(); setState('off'); toast(V.err, 1); return; }
     V.err = 'Spracherkennung: ' + e.error; emit();
   };
@@ -204,34 +235,40 @@ const persist = () => { try { localStorage.setItem('hq-wake', V.enabled ? '1' : 
 export async function setWake(on) {
   if (on) {
     if (!V.supported) { V.err = 'Spracherkennung wird von diesem Browser nicht unterstützt (Chrome/Edge verwenden).'; emit(); toast(V.err, 1); return; }
-    let ok = false; try { ok = localStorage.getItem('hq-wake-ok') === '1'; } catch (e) { /* */ }
+    const okKey = V.engine === 'local' ? 'hq-wake-ok-local' : 'hq-wake-ok';
+    let ok = false; try { ok = localStorage.getItem(okKey) === '1'; } catch (e) { /* */ }
+    if (!ok && V.engine === 'local') {
+      if (!confirm('Wakeword „Jarvis“ einschalten?\n\nDas Mikrofon bleibt an. Sobald jemand spricht, geht der kurze Ausschnitt über dein Portal an den Sprachdienst auf deinem eigenen PC (Whisper, lokal) – nicht an Google oder andere Anbieter. Ausschnitte ohne „Jarvis“ werden verworfen und nicht gespeichert.')) return;
+      try { localStorage.setItem(okKey, '1'); } catch (e) { /* */ }
+      ok = true;
+    }
     if (!ok) {
       if (!confirm('Wakeword „Jarvis“ einschalten?\n\nDie Spracherkennung dieses Browsers (Chrome/Edge) sendet das Mikrofon-Audio zur Erkennung an den Browser-Anbieter – solange das Wakeword aktiv ist, läuft das dauerhaft. Das ist nicht lokal. Nur wenn du das willst, bestätige.\n\nOhne Wakeword kannst du jederzeit per Knopf „Jetzt sprechen“ einzelne Sätze diktieren.')) return;
       try { localStorage.setItem('hq-wake-ok', '1'); } catch (e) { /* */ }
     }
-    V.enabled = true; V.err = ''; persist(); micOn(); setState('wake'); startRec('wake');   // Pegel optional: Start nie auf Mikrofon-Dialog warten
-  } else { V.enabled = false; persist(); stopRec(); micOff(); cancelSpeech(); setState('off'); }
+    V.enabled = true; V.err = ''; persist(); unlockAudio(); micOn(); setState('wake'); startRec('wake');   // Pegel optional: Start nie auf Mikrofon-Dialog warten
+  } else { V.enabled = false; persist(); stopRec(); stopEar(); micOff(); cancelSpeech(); setState('off'); }
 }
 export async function talkOnce() {
   if (!V.supported) { V.err = 'Spracherkennung wird von diesem Browser nicht unterstützt.'; emit(); return; }
-  cancelSpeech(); micOn();
+  cancelSpeech(); unlockAudio(); micOn();
   if (V.enabled) { openWindow(10000); return; }          // Wake-Erkennung laeuft schon: naechster Satz = Befehl
   openWindow(10000); startRec('ptt');
 }
 export const setSpeak = on => { V.speakOn = on; if (!on) cancelSpeech(); emit(); };
 export const setVoiceName = n => { V.voiceName = n; try { localStorage.setItem('hq-voice', n); } catch (e) { /* */ } emit(); };
-export function stopAll() { cancelSpeech(); }
+export function stopAll() { cancelSpeech(); clearTimeout(winT); V.interim = ''; setState(V.enabled ? 'wake' : 'off'); }
 export function clearTranscript() { V.transcript = []; emit(); }
 /* Fuer Tests / Text-Eingabe: gleicher Pfad wie gesprochen */
-export const sayText = txt => handle(txt);
+export const sayText = txt => { if (useLocalVoice()) unlockAudio(); return handle(txt); };
 
 export function initVoice(go) {
   V.go = go;
   try { V.voiceName = localStorage.getItem('hq-voice') || ''; V.speakOn = localStorage.getItem('hq-speak') !== '0'; } catch (e) { /* */ }
-  if (V.tts) speechSynthesis.onvoiceschanged = () => emit();
+  if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => emit();
   // Auto-Wiederaufnahme nur, wenn frueher aktiviert UND Mikrofon-Berechtigung bereits erteilt ist (kein erneutes Prompten)
   let was = false; try { was = localStorage.getItem('hq-wake') === '1'; } catch (e) { /* */ }
-  if (was && V.supported && navigator.permissions) {
-    navigator.permissions.query({ name: 'microphone' }).then(p => { if (p.state === 'granted') setWake(true); }).catch(() => { /* */ });
-  }
+  const resume = () => { if (was && V.supported && navigator.permissions) navigator.permissions.query({ name: 'microphone' }).then(p => { if (p.state === 'granted') setWake(true); }).catch(() => { /* */ }); };
+  // Lokaler Sprachdienst (eigener PC) bevorzugt: funktioniert auch in Brave, Audio bleibt bei MA-HOME
+  localHealth().then(ok => { V.localOk = ok; if (ok) { V.engine = 'local'; V.supported = true; V.tts = true; } emit(); resume(); });
 }
