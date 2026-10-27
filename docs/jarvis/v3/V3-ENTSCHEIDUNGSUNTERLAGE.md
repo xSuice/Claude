@@ -92,8 +92,19 @@ Empfehlung: D-01 jetzt, D-02/D-03 erst nach Klärung der Abo-Bedingungen und E-0
 
 ---
 
+## Designvarianten zur Abnahme (U-06, Entwurf erstellt 27.10.)
+Datei: `design-varianten.html` (Generator `make_design_variants.py`) – drei Richtungen, je Hauptansicht, Aufträge/Agenten, Mobil; **alle Inhalte Beispieldaten**. Kontrast rechnerisch geprüft (alle Hauptfarben ≥ 4,5:1).
+
+| ID | Richtung | Kern | Stärke | Preis |
+|---|---|---|---|---|
+| U-06A | Headquarters Slate (live) | Schiefer, Cyan, Crimson-Alarm | läuft schon, ruhig, dicht | wenig Wiedererkennung |
+| U-06B | Arc Reactor | tiefes Blau, Ring-Kern, Gold-Zweitakzent | stärkste Iron-Man-Anmutung | mehr Dekor (nur bei erlaubter Bewegung animiert) |
+| U-06C | Quiet Console (hell) | Papier-Hell, Petrol | beste Lesbarkeit draußen/Handy, geringste Last | wenig „JARVIS“-Gefühl; Dunkelmodus = Ableitung von A |
+
+Empfehlung: **A behalten und B als Theme-Option ergänzen** (nur Token-Wechsel in `tokens.css`, kein Neubau), C als Hell-Modus für Mobil. Aufwand B/C als Theme: ca. 0,5–1 Tag je Theme inkl. Kontrast- und axe-Prüfung. Abnahme: Auswahl per ID (z. B. „U-06B als Theme“). Nichts davon ist umgesetzt.
+
 ## Fehlt noch (Transparenz zu deinem Auftrag)
-- Designvarianten: es existiert **ein** umgesetztes Konzept (`PORTAL-REDESIGN-KONZEPT-20261027.md`, live). Der Auftrag sah 2–3 Varianten vor Abnahme vor; das wurde nicht erneut aufgelegt. Wenn du Varianten willst: separater Auftrag (ID U-06).
-- Referenzsammlung: `V3-REFERENZEN.md` (nur dokumentiert, nichts getestet; Kreativ-/Mission-Control-/Computersteuerungs-Referenzen offen).
+- Designvarianten: jetzt als Entwurf vorhanden (siehe Abschnitt U-06); Auswahl steht aus.
+- Referenzsammlung: `V3-REFERENZEN.md` + `V3-REFERENZEN-ERGAENZUNG.md` (nur dokumentiert, nichts getestet; Manga-Spezialwerkzeuge und Dauerbetrieb-Erfahrungsberichte bleiben ungeprüft). Neuer Vorschlag N-01 (ntfy-Meldungen) in der Ergänzung.
 
 Jarvis: Phase C-Vorbereitung, GO unter Auflagen für den belegten Umfang – wichtigster Befund: Windows-Worker-Sandbox lässt sich auf diesem PC nicht anlegen – Entscheidung nötig: E-01 (Admin-Diagnose/Richtlinie) und S-02 (Schlüsselrotation).

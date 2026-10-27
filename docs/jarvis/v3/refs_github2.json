@@ -1,0 +1,171 @@
+[
+ [
+  "Comfy-Org/ComfyUI",
+  "https://github.com/Comfy-Org/ComfyUI",
+  "GPL-3.0",
+  143474,
+  "2026-10-27",
+  false,
+  "The most powerful and modular diffusion model GUI, api and backend wit"
+ ],
+ [
+  "ahujasid/blender-mcp",
+  "Moved Permanently"
+ ],
+ [
+  "FabricMC/fabric",
+  "Moved Permanently"
+ ],
+ [
+  "neoforged/NeoForge",
+  "https://github.com/neoforged/NeoForge",
+  "LGPL-2.1",
+  2118,
+  "2026-10-26",
+  false,
+  "A modding API for Minecraft: Java Edition, based on Forge"
+ ],
+ [
+  "binwiederhall/ntfy",
+  "Not Found"
+ ],
+ [
+  "trycua/cua",
+  "https://github.com/trycua/cua",
+  "MIT",
+  31076,
+  "2026-10-27",
+  false,
+  "Scale computer-use 2.0 with open-source drivers, cross-OS sandboxes, a"
+ ],
+ [
+  "microsoft/UFO",
+  "https://github.com/microsoft/UFO",
+  "MIT",
+  10099,
+  "2026-10-23",
+  false,
+  "UFO³: Weaving the Digital Agent Galaxy"
+ ],
+ [
+  "browser-use/browser-use",
+  "https://github.com/browser-use/browser-use",
+  "MIT",
+  119273,
+  "2026-10-27",
+  false,
+  "Open-source Python library for AI browser agents, plus Browser Use Clo"
+ ],
+ [
+  "Jeomon/Windows-Use",
+  "https://github.com/Jeomon/Windows-Use",
+  "MIT",
+  477,
+  "2026-09-23",
+  false,
+  "An AI Agent that interacts with Windows OS at GUI level."
+ ],
+ [
+  "smolboon/mission-control",
+  "https://github.com/smolboon/mission-control",
+  "MIT",
+  7,
+  "2026-03-05",
+  false,
+  "The open-source dashboard for AI agent orchestration. Manage agent fle"
+ ],
+ [
+  "langfuse/langfuse",
+  "https://github.com/langfuse/langfuse",
+  "NOASSERTION",
+  36589,
+  "2026-10-27",
+  false,
+  "🪢 Open source agent evals & observability: Trace, evaluate, and improv"
+ ],
+ [
+  "Arize-ai/phoenix",
+  "https://github.com/Arize-ai/phoenix",
+  "NOASSERTION",
+  12022,
+  "2026-10-27",
+  false,
+  "AI Observability & Evaluation"
+ ],
+ [
+  "ianwieds/awesome-agent-observability",
+  "https://github.com/ianwieds/awesome-agent-observability",
+  "CC0-1.0",
+  1,
+  "2026-10-27",
+  false,
+  "Tracing, monitoring, cost tracking and debugging for AI agents and LLM"
+ ],
+ [
+  "radix-ui/primitives",
+  "https://github.com/radix-ui/primitives",
+  "MIT",
+  19437,
+  "2026-10-14",
+  false,
+  "Radix Primitives is an open-source UI component library for building h"
+ ],
+ [
+  "blender/blender",
+  "https://github.com/blender/blender",
+  "NOASSERTION",
+  21327,
+  "2026-10-27",
+  false,
+  "Official mirror of Blender"
+ ],
+ [
+  "remotion-dev/remotion",
+  "https://github.com/remotion-dev/remotion",
+  "NOASSERTION",
+  68100,
+  "2026-10-27",
+  false,
+  "🎥      Make videos programmatically with React"
+ ],
+ [
+  "Stability-AI/stable-audio-tools",
+  "https://github.com/Stability-AI/stable-audio-tools",
+  "MIT",
+  3893,
+  "2026-10-24",
+  false,
+  "Generative models for conditional audio generation"
+ ],
+ [
+  "OpenInterpreter/open-interpreter",
+  "Moved Permanently"
+ ],
+ [
+  "ahujasid/blender-mcp",
+  "https://github.com/ahujasid/mcp-for-blender",
+  "MIT",
+  32478,
+  "2026-10-24",
+  false,
+  "Community plugin to control Blender 3D with any LLM of your choice. No"
+ ],
+ [
+  "FabricMC/fabric",
+  "https://github.com/FabricMC/fabric-api",
+  "Apache-2.0",
+  3203,
+  "2026-10-24",
+  false,
+  "Essential hooks for modding with Fabric."
+ ],
+ [
+  "OpenInterpreter/open-interpreter",
+  "https://github.com/openinterpreter/openinterpreter",
+  "Apache-2.0",
+  68693,
+  "2026-10-11",
+  false,
+  "A coding agent for open models like Kimi K3 and GLM 5.3"
+ ]
+]
