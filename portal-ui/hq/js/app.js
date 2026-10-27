@@ -89,6 +89,8 @@ function activate(view) {
   current = view;
   if (!location.hash.startsWith('#/' + view)) { try { history.replaceState(null, '', location.pathname + '#/' + view); } catch (e) { /* */ } }   // Parameter (?p=…) bleiben erhalten
   $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  $$('#tabbar [data-tab]').forEach(b => { const on = b.dataset.tab === view; b.classList.toggle('active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  closeSheet();
   $('#view-title').textContent = label(view);
   const host = $('#view');
   try { closeViewer(); } catch (e) { /* kein Viewer offen */ }
@@ -200,14 +202,49 @@ function wireSwatches() {
   });
 }
 
+/* --- Mobile Schnellnavigation (<= 720 px): untere Tab-Leiste mit 4 Zielen + "Mehr" (öffnet das vollständige Menü als Vollbild-Blatt) --- */
+function closeSheet() {
+  document.body.classList.remove('nav-open');
+  const m = $('#tab-more'); if (m) m.setAttribute('aria-expanded', 'false');
+}
+function toggleSheet() {
+  const open = !document.body.classList.contains('nav-open');
+  document.body.classList.toggle('nav-open', open);
+  const m = $('#tab-more'); if (m) m.setAttribute('aria-expanded', String(open));
+  if (open) { const f = $('#nav .nav-item'); if (f) f.focus(); }
+}
+function mountTabbar() {
+  const tb = document.createElement('nav');
+  tb.id = 'tabbar'; tb.setAttribute('aria-label', 'Schnellnavigation');
+  const items = [['dashboard', '⌂', 'Zentrale'], ['chat', '✎', 'Chat'], ['tasks', '☑', 'Aufgaben'], ['hq', '◈', 'Agenten']];
+  tb.innerHTML = items.map(([v, i, l]) => '<button type="button" data-tab="' + v + '"><span class="ti" aria-hidden="true">' + i + '</span><span class="tl">' + l + '</span></button>').join('') +
+    '<button type="button" id="tab-more" aria-expanded="false" aria-controls="nav"><span class="ti" aria-hidden="true">☰</span><span class="tl">Mehr</span></button>';
+  document.body.appendChild(tb);
+  tb.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'tab-more') toggleSheet(); else activate(b.dataset.tab);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('nav-open')) { closeSheet(); const m = $('#tab-more'); if (m) m.focus(); } });
+  // Bildschirmtastatur: Tab-Leiste ausblenden, solange ein Eingabefeld fokussiert ist (Eingabefeld bleibt sichtbar)
+  const isField = t => t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+  document.addEventListener('focusin', e => { if (isField(e.target) && matchMedia('(max-width: 720px)').matches) document.body.classList.add('kb'); });
+  document.addEventListener('focusout', () => { setTimeout(() => { if (!isField(document.activeElement)) document.body.classList.remove('kb'); }, 50); });
+}
+
 /* --- Boot --- */
 (async function boot() {
   wirePalette();
   wireSwatches();
   renderNav();
+  mountTabbar();
   mountVoiceButton($('.topbar'), go);
   initVoice(v => go(v));
   try { me = await api('/api/me'); setMe(me); } catch (e) { /* Gast: Admin-Schalter bleiben aus */ }
+  // Teilen-Menue (PWA share_target, GET /?title=&text=&url=): geteilter Text/Link landet als Entwurf im Chat
+  try {
+    const sp = new URLSearchParams(location.search), shared = ['title', 'text', 'url'].map(k => sp.get(k)).filter(Boolean).join('\n');
+    if (shared) { sessionStorage.setItem('ma-claude-draft', shared.slice(0, 4000)); history.replaceState(null, '', location.pathname + '#/chat'); }
+  } catch (e) { /* ohne Speicher */ }
   routeFromHash();
   window.addEventListener('hashchange', routeFromHash);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { /* PWA optional */ });
