@@ -1,0 +1,14 @@
+{
+  "started": 1793098015.025771,
+  "initial_sha256": "2c4389007037c6c2463d888eafffd8685a2319fa6e948447e65ece122e397078",
+  "backup": "/opt/ma-home/portal.py.bak-vor-rollback-probe",
+  "tests": {
+    "classic_root": true,
+    "classic_auth": true,
+    "hq_restored": true,
+    "auth_restored": true,
+    "source_identical": true,
+    "bundle_served": true
+  },
+  "finished": 1793098020.9009376
+}

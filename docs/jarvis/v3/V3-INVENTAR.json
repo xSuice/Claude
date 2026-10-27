@@ -1,0 +1,387 @@
+{
+  "mcp_by_profile": [
+    {
+      "profile": "default",
+      "mcp_names": [
+        "canva",
+        "dropbox",
+        "hugging_face"
+      ]
+    },
+    {
+      "profile": "jarvis-architecture",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-brain",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-cloud-dev",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-context",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-core",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-dependencies",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-design",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-integrator",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-observability",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-planner",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-portal",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-qa",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-recovery",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-research",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-router",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-security",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-server-fix",
+      "mcp_names": []
+    },
+    {
+      "profile": "jarvis-worker",
+      "mcp_names": []
+    },
+    {
+      "profile": "kimi-supervisor",
+      "mcp_names": []
+    }
+  ],
+  "config_parse_errors": [],
+  "active_profile_skills": [
+    {
+      "path": "skills\\ma-home-jarvis-ops\\SKILL.md",
+      "name": "ma-home-jarvis-ops",
+      "description_present": true
+    },
+    {
+      "path": "skills\\web\\blocked-page-recovery\\SKILL.md",
+      "name": "blocked-page-recovery",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\codebase-inspection\\SKILL.md",
+      "name": "codebase-inspection",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\dogfood\\SKILL.md",
+      "name": "dogfood",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\github\\SKILL.md",
+      "name": "github",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\hermes-agent-skill-authoring\\SKILL.md",
+      "name": "hermes-agent-skill-authoring",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\inspecting-hermes-desktop-dom\\SKILL.md",
+      "name": "inspecting-hermes-desktop-dom",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\node-inspect-debugger\\SKILL.md",
+      "name": "node-inspect-debugger",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\python-debugpy\\SKILL.md",
+      "name": "python-debugpy",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\requesting-code-review\\SKILL.md",
+      "name": "requesting-code-review",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\simplify-code\\SKILL.md",
+      "name": "simplify-code",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\spike\\SKILL.md",
+      "name": "spike",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\systematic-debugging\\SKILL.md",
+      "name": "systematic-debugging",
+      "description_present": true
+    },
+    {
+      "path": "skills\\software-development\\test-driven-development\\SKILL.md",
+      "name": "test-driven-development",
+      "description_present": true
+    },
+    {
+      "path": "skills\\social-media\\xurl\\SKILL.md",
+      "name": "xurl",
+      "description_present": true
+    },
+    {
+      "path": "skills\\research\\arxiv\\SKILL.md",
+      "name": "arxiv",
+      "description_present": true
+    },
+    {
+      "path": "skills\\research\\competitor-news-monitor\\SKILL.md",
+      "name": "competitor-news-monitor",
+      "description_present": true
+    },
+    {
+      "path": "skills\\research\\grounded-citations\\SKILL.md",
+      "name": "grounded-citations",
+      "description_present": true
+    },
+    {
+      "path": "skills\\research\\llm-wiki\\SKILL.md",
+      "name": "llm-wiki",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\airtable\\SKILL.md",
+      "name": "airtable",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\box\\SKILL.md",
+      "name": "box",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\document-to-action-items\\SKILL.md",
+      "name": "document-to-action-items",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\docx\\SKILL.md",
+      "name": "docx",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\google-workspace\\SKILL.md",
+      "name": "google-workspace",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\maps\\SKILL.md",
+      "name": "maps",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\meeting-action-items\\SKILL.md",
+      "name": "meeting-action-items",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\notion\\SKILL.md",
+      "name": "notion",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\pdf\\SKILL.md",
+      "name": "pdf",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\powerpoint\\SKILL.md",
+      "name": "powerpoint",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\product-price-monitor\\SKILL.md",
+      "name": "product-price-monitor",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\teams-meeting-pipeline\\SKILL.md",
+      "name": "teams-meeting-pipeline",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\weekly-review-planning\\SKILL.md",
+      "name": "weekly-review-planning",
+      "description_present": true
+    },
+    {
+      "path": "skills\\productivity\\xlsx\\SKILL.md",
+      "name": "xlsx",
+      "description_present": true
+    },
+    {
+      "path": "skills\\note-taking\\obsidian\\SKILL.md",
+      "name": "obsidian",
+      "description_present": true
+    },
+    {
+      "path": "skills\\media\\gif-search\\SKILL.md",
+      "name": "gif-search",
+      "description_present": true
+    },
+    {
+      "path": "skills\\media\\songsee\\SKILL.md",
+      "name": "songsee",
+      "description_present": true
+    },
+    {
+      "path": "skills\\media\\youtube-content\\SKILL.md",
+      "name": "youtube-content",
+      "description_present": true
+    },
+    {
+      "path": "skills\\email\\email-inbox-triage\\SKILL.md",
+      "name": "email-inbox-triage",
+      "description_present": true
+    },
+    {
+      "path": "skills\\email\\himalaya\\SKILL.md",
+      "name": "himalaya",
+      "description_present": true
+    },
+    {
+      "path": "skills\\devops\\sdlc-review\\SKILL.md",
+      "name": "sdlc-review",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\architecture-diagram\\SKILL.md",
+      "name": "architecture-diagram",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\ascii-video\\SKILL.md",
+      "name": "ascii-video",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\baoyu-infographic\\SKILL.md",
+      "name": "baoyu-infographic",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\claude-design\\SKILL.md",
+      "name": "claude-design",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\design-md\\SKILL.md",
+      "name": "design-md",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\humanizer\\SKILL.md",
+      "name": "humanizer",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\manim-video\\SKILL.md",
+      "name": "manim-video",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\p5js\\SKILL.md",
+      "name": "p5js",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\popular-web-designs\\SKILL.md",
+      "name": "popular-web-designs",
+      "description_present": true
+    },
+    {
+      "path": "skills\\creative\\songwriting-and-ai-music\\SKILL.md",
+      "name": "songwriting-and-ai-music",
+      "description_present": true
+    },
+    {
+      "path": "skills\\autonomous-ai-agents\\claude-code\\SKILL.md",
+      "name": "claude-code",
+      "description_present": true
+    },
+    {
+      "path": "skills\\autonomous-ai-agents\\codex\\SKILL.md",
+      "name": "codex",
+      "description_present": true
+    },
+    {
+      "path": "skills\\autonomous-ai-agents\\computer-use\\SKILL.md",
+      "name": "computer-use",
+      "description_present": true
+    },
+    {
+      "path": "skills\\autonomous-ai-agents\\hermes-agent\\SKILL.md",
+      "name": "hermes-agent",
+      "description_present": true
+    },
+    {
+      "path": "skills\\autonomous-ai-agents\\opencode\\SKILL.md",
+      "name": "opencode",
+      "description_present": true
+    },
+    {
+      "path": "skills\\apple\\apple-notes\\SKILL.md",
+      "name": "apple-notes",
+      "description_present": true
+    },
+    {
+      "path": "skills\\apple\\apple-reminders\\SKILL.md",
+      "name": "apple-reminders",
+      "description_present": true
+    },
+    {
+      "path": "skills\\apple\\findmy\\SKILL.md",
+      "name": "findmy",
+      "description_present": true
+    },
+    {
+      "path": "skills\\apple\\imessage\\SKILL.md",
+      "name": "imessage",
+      "description_present": true
+    }
+  ],
+  "scope": "Filesystem metadata only, not function tests; excludes hosted connectors"
+}

@@ -1,0 +1,10 @@
+{
+  "implementation": "Existing MA-Server scripts/jarvis/winsandbox.py",
+  "scope": "Local sandbox qualification; no worker enabled",
+  "status": "BLOCKED",
+  "stage": "CreateAppContainerProfile via winsandbox.container_sid",
+  "error": "OSError: AppContainer-Profil nicht verfügbar (HRESULT 0x80070005)",
+  "sandbox_process_started": false,
+  "qualification_passed": false,
+  "note": "No privilege escalation, alternate unsandboxed execution, or ACL widening attempted. Worker policy unit tests separately passed 74 tests; those do not prove sandbox execution."
+}

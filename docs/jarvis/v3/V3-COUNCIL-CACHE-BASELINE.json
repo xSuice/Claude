@@ -1,0 +1,258 @@
+{
+  "observed_unix": 1793098357.0655324,
+  "scope": "Lifetime persisted-session counters. No inferred cost/savings; DM completion counts do NOT establish council rounds or delivery. Read-only original DBs.",
+  "profiles": [
+    {
+      "profile": "jarvis-architecture",
+      "sessions": 9,
+      "input_tokens_lifetime": 14807231,
+      "output_tokens_lifetime": 649147,
+      "cache_read_tokens_lifetime": 5212160,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 396,
+      "dm_completion_records": 125,
+      "dm_completion_statuses": {
+        "queued": 106,
+        "unknown": 14,
+        "ambiguous": 5
+      }
+    },
+    {
+      "profile": "jarvis-brain",
+      "sessions": 4,
+      "input_tokens_lifetime": 3390975,
+      "output_tokens_lifetime": 169269,
+      "cache_read_tokens_lifetime": 3882112,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 130,
+      "dm_completion_records": 13,
+      "dm_completion_statuses": {
+        "unknown": 3,
+        "queued": 10
+      }
+    },
+    {
+      "profile": "jarvis-cloud-dev",
+      "sessions": 384,
+      "input_tokens_lifetime": 168591429,
+      "output_tokens_lifetime": 8078096,
+      "cache_read_tokens_lifetime": 1266056629,
+      "cache_write_tokens_lifetime": 20490235,
+      "api_call_count_lifetime": 11233,
+      "dm_completion_records": 705,
+      "dm_completion_statuses": {
+        "queued": 685,
+        "error": 5,
+        "ambiguous": 15
+      }
+    },
+    {
+      "profile": "jarvis-context",
+      "sessions": 3,
+      "input_tokens_lifetime": 551150,
+      "output_tokens_lifetime": 21858,
+      "cache_read_tokens_lifetime": 0,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 14,
+      "dm_completion_records": 1,
+      "dm_completion_statuses": {
+        "queued": 1
+      }
+    },
+    {
+      "profile": "jarvis-core",
+      "sessions": 8,
+      "input_tokens_lifetime": 40515456,
+      "output_tokens_lifetime": 1118162,
+      "cache_read_tokens_lifetime": 217885,
+      "cache_write_tokens_lifetime": 64707,
+      "api_call_count_lifetime": 913,
+      "dm_completion_records": 108,
+      "dm_completion_statuses": {
+        "unknown": 5,
+        "queued": 91,
+        "ambiguous": 11,
+        "error": 1
+      }
+    },
+    {
+      "profile": "jarvis-dependencies",
+      "sessions": 4,
+      "input_tokens_lifetime": 41542,
+      "output_tokens_lifetime": 1061,
+      "cache_read_tokens_lifetime": 0,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 3,
+      "dm_completion_records": 0,
+      "dm_completion_statuses": {}
+    },
+    {
+      "profile": "jarvis-design",
+      "sessions": 5,
+      "input_tokens_lifetime": 5695250,
+      "output_tokens_lifetime": 845476,
+      "cache_read_tokens_lifetime": 341817418,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 1283,
+      "dm_completion_records": 41,
+      "dm_completion_statuses": {
+        "queued": 38,
+        "unknown": 3
+      }
+    },
+    {
+      "profile": "jarvis-integrator",
+      "sessions": 3,
+      "input_tokens_lifetime": 3060267,
+      "output_tokens_lifetime": 116846,
+      "cache_read_tokens_lifetime": 0,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 71,
+      "dm_completion_records": 8,
+      "dm_completion_statuses": {
+        "queued": 8
+      }
+    },
+    {
+      "profile": "jarvis-observability",
+      "sessions": 4,
+      "input_tokens_lifetime": 38240,
+      "output_tokens_lifetime": 264,
+      "cache_read_tokens_lifetime": 0,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 3,
+      "dm_completion_records": 1,
+      "dm_completion_statuses": {
+        "queued": 1
+      }
+    },
+    {
+      "profile": "jarvis-planner",
+      "sessions": 3,
+      "input_tokens_lifetime": 28756243,
+      "output_tokens_lifetime": 851096,
+      "cache_read_tokens_lifetime": 0,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 613,
+      "dm_completion_records": 169,
+      "dm_completion_statuses": {
+        "queued": 165,
+        "error": 4
+      }
+    },
+    {
+      "profile": "jarvis-portal",
+      "sessions": 6,
+      "input_tokens_lifetime": 13143001,
+      "output_tokens_lifetime": 497888,
+      "cache_read_tokens_lifetime": 17530240,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 432,
+      "dm_completion_records": 86,
+      "dm_completion_statuses": {
+        "queued": 73,
+        "unknown": 3,
+        "error": 1,
+        "ambiguous": 9
+      }
+    },
+    {
+      "profile": "jarvis-qa",
+      "sessions": 34,
+      "input_tokens_lifetime": 15153409,
+      "output_tokens_lifetime": 702139,
+      "cache_read_tokens_lifetime": 25270184,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 586,
+      "dm_completion_records": 61,
+      "dm_completion_statuses": {
+        "queued": 58,
+        "unknown": 1,
+        "error": 2
+      }
+    },
+    {
+      "profile": "jarvis-recovery",
+      "sessions": 4,
+      "input_tokens_lifetime": 568024,
+      "output_tokens_lifetime": 5957,
+      "cache_read_tokens_lifetime": 0,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 22,
+      "dm_completion_records": 4,
+      "dm_completion_statuses": {
+        "queued": 4
+      }
+    },
+    {
+      "profile": "jarvis-research",
+      "sessions": 5,
+      "input_tokens_lifetime": 68570,
+      "output_tokens_lifetime": 345,
+      "cache_read_tokens_lifetime": 0,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 4,
+      "dm_completion_records": 0,
+      "dm_completion_statuses": {}
+    },
+    {
+      "profile": "jarvis-router",
+      "sessions": 12,
+      "input_tokens_lifetime": 10753311,
+      "output_tokens_lifetime": 289075,
+      "cache_read_tokens_lifetime": 927168,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 262,
+      "dm_completion_records": 22,
+      "dm_completion_statuses": {
+        "queued": 21,
+        "error": 1
+      }
+    },
+    {
+      "profile": "jarvis-security",
+      "sessions": 16,
+      "input_tokens_lifetime": 10094290,
+      "output_tokens_lifetime": 627066,
+      "cache_read_tokens_lifetime": 6956001,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 336,
+      "dm_completion_records": 75,
+      "dm_completion_statuses": {
+        "queued": 55,
+        "unknown": 13,
+        "error": 1,
+        "ambiguous": 6
+      }
+    },
+    {
+      "profile": "jarvis-server-fix",
+      "sessions": 5,
+      "input_tokens_lifetime": 6442181,
+      "output_tokens_lifetime": 320977,
+      "cache_read_tokens_lifetime": 16980992,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 260,
+      "dm_completion_records": 41,
+      "dm_completion_statuses": {
+        "queued": 37,
+        "unknown": 2,
+        "error": 2
+      }
+    },
+    {
+      "profile": "jarvis-worker",
+      "sessions": 12,
+      "input_tokens_lifetime": 3187294,
+      "output_tokens_lifetime": 82948,
+      "cache_read_tokens_lifetime": 8143026,
+      "cache_write_tokens_lifetime": 0,
+      "api_call_count_lifetime": 152,
+      "dm_completion_records": 22,
+      "dm_completion_statuses": {
+        "queued": 22
+      }
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,368 @@
+{
+  "scope": "Metadata, explicit local references and Python AST only; does not prove external-service functionality",
+  "skills": [
+    {
+      "skill": "ma-home-jarvis-ops\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "web\\blocked-page-recovery\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 1,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\codebase-inspection\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\dogfood\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\github\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 1,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\hermes-agent-skill-authoring\\SKILL.md",
+      "unresolved_path_mentions": [
+        "scripts/run_tests.sh"
+      ],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\inspecting-hermes-desktop-dom\\SKILL.md",
+      "unresolved_path_mentions": [
+        "scripts/eval.mjs",
+        "scripts/perf/lib/cdp.mjs"
+      ],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\node-inspect-debugger\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\python-debugpy\\SKILL.md",
+      "unresolved_path_mentions": [
+        "scripts/run_tests.sh"
+      ],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\requesting-code-review\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\simplify-code\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\spike\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\systematic-debugging\\SKILL.md",
+      "unresolved_path_mentions": [
+        "scripts/repro_bug.py"
+      ],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "software-development\\test-driven-development\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "social-media\\xurl\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "research\\arxiv\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 1,
+      "python_errors": []
+    },
+    {
+      "skill": "research\\competitor-news-monitor\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "research\\grounded-citations\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 2,
+      "python_errors": []
+    },
+    {
+      "skill": "research\\llm-wiki\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\airtable\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\box\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\document-to-action-items\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\docx\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 8,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\google-workspace\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 4,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\maps\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 1,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\meeting-action-items\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\notion\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\pdf\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 15,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\powerpoint\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 5,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\product-price-monitor\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\teams-meeting-pipeline\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\weekly-review-planning\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "productivity\\xlsx\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 7,
+      "python_errors": []
+    },
+    {
+      "skill": "note-taking\\obsidian\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "media\\gif-search\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "media\\songsee\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "media\\youtube-content\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 1,
+      "python_errors": []
+    },
+    {
+      "skill": "email\\email-inbox-triage\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "email\\himalaya\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "devops\\sdlc-review\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\architecture-diagram\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\ascii-video\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\baoyu-infographic\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\claude-design\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\design-md\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\humanizer\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\manim-video\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\p5js\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\popular-web-designs\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "creative\\songwriting-and-ai-music\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "autonomous-ai-agents\\claude-code\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "autonomous-ai-agents\\codex\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "autonomous-ai-agents\\computer-use\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "autonomous-ai-agents\\hermes-agent\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "autonomous-ai-agents\\opencode\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "apple\\apple-notes\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "apple\\apple-reminders\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "apple\\findmy\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    },
+    {
+      "skill": "apple\\imessage\\SKILL.md",
+      "unresolved_path_mentions": [],
+      "python_checked": 0,
+      "python_errors": []
+    }
+  ]
+}
