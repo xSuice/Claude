@@ -127,12 +127,17 @@ def job_worker(job, meta, settings):
         # Copy generated files out of the container without following links.
         pub = ROOT / 'previews' / meta['user'] / meta['id']
         pub.mkdir(mode=0o750)
-        os.chown(pub, uid, uid)
+        # PREVIEW-GRP-FIX (2026-10-27): laeuft das Portal als extra_uid (andrew, Mitglied der Gruppe web_gid), muessen
+        # Vorschau-Ordner/-Seiten fuer diese Gruppe lesbar sein; sonst PermissionError -> HTTP 500. Ohne extra_uids: altes Verhalten.
+        pgid = settings['web_gid'] if settings.get('extra_uids') and 'web_gid' in settings else uid
+        pmode_dir, pmode_file = (0o750, 0o640) if pgid != uid else (0o750, 0o600)
+        os.chown(pub, uid, pgid)
+        os.chmod(pub, pmode_dir)
         for n in range(1, pages+1):
             target = pub / ('page-%d.jpg' % n)
             safe_copy(out / target.name, target, maximum=5*1024*1024)
-            os.chown(target, uid, uid)
-            os.chmod(target, 0o600)
+            os.chown(target, uid, pgid)
+            os.chmod(target, pmode_file)
         checked = job / 'document.pdf'
         safe_copy(out / 'document.pdf', checked)
         os.chown(checked, uid, uid)

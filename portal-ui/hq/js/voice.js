@@ -134,11 +134,16 @@ function onFinal(txt) {
   if (cmd.length > 2) handle(cmd); else openWindow();
 }
 
+let recErr = false;
 function startRec(mode) {
   const SR = getSR();
   if (!SR) { V.err = 'Spracherkennung wird von diesem Browser nicht unterstützt (Chrome/Edge verwenden).'; emit(); return; }
   stopRec(); recMode = mode;
-  rec = new SR(); rec.lang = 'de-DE'; rec.continuous = mode === 'wake'; rec.interimResults = true; rec.maxAlternatives = 1;
+  rec = new SR(); rec.lang = 'de-DE';
+  // Kurze Sitzungen: Der getestete Browser lieferte mit continuous keine Resultate.
+  rec.continuous = false;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
   rec.onresult = ev => {
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const r = ev.results[i], txt = String(r[0].transcript || '').trim();
@@ -150,13 +155,18 @@ function startRec(mode) {
     }
   };
   rec.onerror = e => {
-    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    if (e.error === 'no-speech' || e.error === 'aborted') { recErr = false; return; }   // normaler Leerlauf: kein Backoff
+    recErr = true;
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { V.err = 'Mikrofon-Zugriff verweigert. Bitte im Browser erlauben.'; V.enabled = false; persist(); stopRec(); setState('off'); toast(V.err, 1); return; }
     V.err = 'Spracherkennung: ' + e.error; emit();
   };
   rec.onend = () => {
     rec = null;
-    if (recMode === 'wake' && V.enabled) { restartT = setTimeout(() => startRec('wake'), backoff); backoff = Math.min(8000, backoff * 1.6); }   // Chrome beendet continuous nach Pausen
+    if (recMode === 'wake' && V.enabled) {
+      const d = recErr ? backoff : 120;            // Leerlauf/Ergebnis: fast sofort neu (Luecke minimal), echter Fehler: wachsender Abstand
+      if (recErr) backoff = Math.min(8000, backoff * 1.6); else backoff = 400;
+      recErr = false; restartT = setTimeout(() => startRec('wake'), d);
+    }
     else if (V.state === 'listening') setState(V.enabled ? 'wake' : 'off');
   };
   try { rec.start(); } catch (e) { /* laeuft bereits */ }
