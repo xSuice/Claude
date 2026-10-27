@@ -13,6 +13,7 @@ Zuerst alle **P0/P1**, danach U-01 und U-02; P3 nur einzeln und nach Basisabnahm
 ## P0 – Sicherheit, Datenverlust, gefährliche Doppelaktionen
 
 ### S-01 Schutz der Portal→Host-Agent-Freigabe gegen Neuprovisionierung
+- **STATUS: UMGESETZT 27.10. (Owner „ja mache alles“), belegt in `V3-ABSCHLUSS-GATES.md`.**
 - **Problem:** `ma-home printer-detect` (und Standard-Provisionierung) schreibt `host.json` neu und entfernt `extra_uids/extra_gid`; danach `/api/status`, Preview und Jobs wieder HTTP 500.
 - **Lösung:** `host_config()` in `manage.py` so ändern, dass vorhandene `extra_*`-Felder übernommen werden, plus Test und Abbruch bei Verlust.
 - **Nutzen:** Verhindert stillen Rückfall eines produktiven Fixes. **Umfang:** 1 Datei, 1 Test. **Aufwand:** ~1 h. **Risiken:** Berührt Provisionierungscode; Agent-Neustart nötig. **Abhängigkeiten:** keine. **Abnahme:** Provisionierung im Trockenlauf behält die Felder; Drei-Wege-Probe (andrew/ma-web erlaubt, nobody verweigert). **Rollback:** Backup `manage.py.bak-…`.
@@ -36,6 +37,7 @@ Zuerst alle **P0/P1**, danach U-01 und U-02; P3 nur einzeln und nach Basisabnahm
 - **Lösung:** Zähler im Chatnetz/`message_agent`-Pfad pro Agentenpaar+Thema, bei Überschreitung Eskalation an JARVIS statt weiterer DM. **Aufwand:** 3–5 h. **Risiken:** Fehlalarme bei legitimen langen Arbeiten. **Abnahme:** Testkette bricht bei Schwellwert kontrolliert ab. **Rollback:** Schalter aus.
 
 ### E-04 `kimi-supervisor` im Chat-Bus-Roster
+- **STATUS: UMGESETZT 27.10., Mention bis Receiver zugestellt (`delivered target=kimi-supervisor`).**
 - **Problem:** Mentions an `@kimi-supervisor` werden nicht extrahiert (`mentions: []`). **Lösung:** Eintrag im Roster in `chat_bus_backend.py`. **Aufwand:** 30 min + Portal-Neustart. **Abnahme:** Mention erzeugt Zustellung (Voraussetzung für D-02).
 
 ---
@@ -46,12 +48,14 @@ Zuerst alle **P0/P1**, danach U-01 und U-02; P3 nur einzeln und nach Basisabnahm
 - **Problem:** Browser-Spracherkennung sendet Audio an den Anbieter; Dauermodus unzuverlässig. **Lösung:** openWakeWord + faster-whisper (+ Piper-Nachfolger für Ausgabe) auf dem PC, Anbindung an das vorhandene Voice-Modul. **Referenzen:** `V3-REFERENZEN.md`. **Aufwand:** 1–2 Tage. **Ressourcen:** GPU-VRAM (Gaming-Vorrang beachten). **Risiken:** GPL-3.0 bei Piper-Nachfolger; Modellgröße vs. 6 GB; Genauigkeit für „Jarvis“ unbekannt. **Abnahme:** akustischer Test mit echter Stimme, ≥ 9/10 Erkennungen, 0 Cloud-Audio. **Rollback:** Browser-Modus bleibt.
 
 ### U-02 Router-Restquoten im Command Center
+- **STATUS: NICHT UMGESETZT.** Ein Probe-Zugriff auf `council_decisions` (PG, über `db_adapter`) lief in den Timeout; Datenquelle nicht bestätigt, daher keine Anbindung.
 - **Problem:** keine Datenquelle. **Lösung:** Evidence-Router-Ledger (liegt auf dem Server) per lesendem Endpunkt anbinden, analog zur Telemetrie. **Aufwand:** 2–3 h. **Risiko:** Portal-Neustart. **Abnahme:** Anzeige gegen Rohdaten verglichen.
 
 ### U-03 Funktionstests für die übrigen Skills
 - **Status:** 4 Dokument-Skills + maps getestet, ca. 54 nur statisch. **Lösung:** pro Skill ein kleiner harmloser Test (Konten/Daten von dir nötig bei Mail, Kalender, Notion, Airtable, Google). **Aufwand:** 0,5 Tage + deine Zugänge.
 
 ### U-04 Pakete für Dokument-Skills in der Hermes-Umgebung
+- **STATUS: UMGESETZT, abweichend:** Hermes-Umgebung hat kein pip und blieb unverändert; eigene Umgebung `%LOCALAPPDATA%\hermes\skill-env`, 82 Tests grün.
 - **Problem:** `docx/openpyxl/pptx/pypdf/reportlab/pdfplumber` fehlen dort; Skills enden mit Exit 2. **Lösung:** Installation in der Hermes-Umgebung (oder eigene Skill-Umgebung). **Risiko:** Änderung der Hermes-Umgebung — daher deine Freigabe. **Abnahme:** die vier Skill-Testläufe (82 Tests) laufen dort grün.
 
 ### U-05 Portal-Barrierefreiheit gegen WCAG 2.2 prüfen
