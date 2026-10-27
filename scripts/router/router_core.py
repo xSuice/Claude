@@ -60,6 +60,8 @@ def classify(prompt, mode=None, has_images=False):
     if _any(p, DEBUG):
         return 'sonnet', 'debugging'
     safe = not _any(p, NOT_HAIKU) and not has_images and len(p) <= 300
+    if safe and mode in (*MODES_READ, None) and re.fullmatch(r'antworte nur mit (?:ok|ja|nein|bereit)[.!]?', p):
+        return 'haiku', 'exact_ack_read_only'
     if safe and _any(p, SIMPLE):
         return 'haiku', 'clearly_simple_read_only'
     if safe and len(p) < 160 and (mode in MODES_READ or mode is None) and p.endswith('?'):

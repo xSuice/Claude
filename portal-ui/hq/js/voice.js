@@ -51,7 +51,7 @@ export function answerLocal(text) {
     return { reply: inc.length + (inc.length === 1 ? ' offener Incident: ' : ' offene Incidents. ') + inc.slice(0, 3).map(i => i.classification.replace(/_/g, ' ').toLowerCase() + ' bei ' + i.subject).join('; ') + '.' };
   }
   if (/(aufgabe|aufträge|auftrag|tasks?)/.test(t)) {
-    const open = S.tasks.filter(x => !/DONE|COMPLETE|CLOSED/i.test(x.status)), act = open.filter(x => /ACTIVE|RUNNING|IN_?PROGRESS/i.test(x.status));
+    const open = S.tasks.filter(x => !/^(?:DONE|COMPLETE|COMPLETED|CLOSED|CANCELLED|CANCELED|ARCHIVED|FAILED)$/i.test(x.status)), act = open.filter(x => /ACTIVE|RUNNING|IN_?PROGRESS/i.test(x.status));
     return { reply: open.length + ' offene Aufträge, davon ' + act.length + ' aktiv.' + (act[0] ? ' Zum Beispiel: ' + act.slice(0, 3).map(x => x.title).join(', ') + '.' : '') };
   }
   if (/(status|lage|überblick|zusammenfassung|wie läuft|wie steht)/.test(t)) {

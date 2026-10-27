@@ -92,7 +92,7 @@ export function subscribe(fn) {
 }
 
 /* Gemeinsame Zustandsableitung je Agent (Voice nutzt sie; HQ/CC haben identische Regeln) */
-const RE_WORK = /ACTIVE|RUNNING|IN_?PROGRESS|WORKING/i, RE_PLAN = /PLANNING|INBOX|PENDING|QUEUED|READY/i, RE_DONE = /DONE|COMPLETE|CLOSED/i;
+const RE_WORK = /ACTIVE|RUNNING|IN_?PROGRESS|WORKING/i, RE_PLAN = /PLANNING|INBOX|PENDING|QUEUED|READY/i, RE_DONE = /^(?:DONE|COMPLETE|COMPLETED|CLOSED|CANCELLED|CANCELED|ARCHIVED|FAILED)$/i;
 export function agentState(id) {
   const tasks = S.tasks.filter(t => t.assigned_to === id), open = tasks.filter(t => !RE_DONE.test(t.status));
   const tmap = Object.fromEntries(S.tasks.map(t => [t.task_id, t]));

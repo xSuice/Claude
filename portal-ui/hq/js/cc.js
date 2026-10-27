@@ -5,11 +5,12 @@ import { esc, api, cop, fmtBytes, fmtUp, fmtTok } from './api.js';
 import { subscribe, S, isFresh, shortName } from './store.js';
 import { ROSTER, SYSTEM, ROOMS } from './roster.js';
 import { SLASH_CMDS, SLASH_SKILLS } from './chat.js';
+import { renderLedger } from './ledger-view.js';
 
 let stopFn = null;
 export function leaveCC() { if (stopFn) { stopFn(); stopFn = null; } }
 
-const RE_WORK = /ACTIVE|RUNNING|IN_?PROGRESS|WORKING/i, RE_PLAN = /PLANNING|INBOX|PENDING|QUEUED|READY/i, RE_DONE = /DONE|COMPLETE|CLOSED/i;
+const RE_WORK = /ACTIVE|RUNNING|IN_?PROGRESS|WORKING/i, RE_PLAN = /PLANNING|INBOX|PENDING|QUEUED|READY/i, RE_DONE = /^(?:DONE|COMPLETE|COMPLETED|CLOSED|CANCELLED|CANCELED|ARCHIVED|FAILED)$/i;
 const pct = (a, b) => b ? Math.max(0, Math.min(100, Math.round(a / b * 100))) : 0;
 const bar = (p, hot) => '<div class="ccbar' + (hot || p >= 85 ? ' hot' : '') + '"><i style="width:' + p + '%"></i></div>';
 const ago = iso => { const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000); return s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : s < 172800 ? Math.round(s / 3600) + ' Std' : Math.round(s / 86400) + ' Tg'; };
@@ -131,7 +132,7 @@ export function renderCC(root, ctx) {
   }
 
   function na() {
-    $id('ccna').innerHTML = '<h2 class="holo-title">Noch nicht angebunden<span class="sub">Für diese Felder existiert aktuell keine API – sie werden nicht simuliert</span></h2><div class="grid cols3">' +
+    $id('ccna').innerHTML = renderLedger(X.ledger) + '<h2 class="holo-title">Noch nicht angebunden<span class="sub">Für diese Felder existiert aktuell keine API – sie werden nicht simuliert</span></h2><div class="grid cols3">' +
       NA('Modelle & Router-Quoten', 'Evidence-Router-Ledger liegt auf dem Server (router/), hat aber keinen Portal-Endpunkt.') +
       NA('GPU & Worker-Telemetrie', 'Worker/GPU laufen auf dem Windows-PC; es gibt keinen Telemetrie-Eingang in das Portal.') +
       NA('Logs', 'Kein Log-Endpunkt im Portal; Terminal-Ansicht bleibt der Zugriffsweg.') + '</div>';
@@ -145,6 +146,7 @@ export function renderCC(root, ctx) {
     const get = async (k, fn) => { try { X[k] = await fn(); delete X.errs[k]; } catch (e) { X.errs[k] = e.message; } };
     await Promise.all([
       get('status', () => api('/api/status')),
+      get('ledger', async () => { const r = await api('/api/jarvis', { body: { cmd: 'usage' } }); if (!r.ok) throw new Error('Ledger nicht verfügbar'); return r.data; }),
       get('usage', () => cop('usage', {})),
       get('conn', () => cop('connectors', {})),
       get('sched', () => cop('sched_list', {})),

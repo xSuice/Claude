@@ -10,7 +10,7 @@ export function leaveHQ() { if (stopFn) { stopFn(); stopFn = null; } }
 
 const RE_WORK = /ACTIVE|RUNNING|IN_?PROGRESS|WORKING/i;
 const RE_PLAN = /PLANNING|INBOX|PENDING|QUEUED|READY/i;
-const RE_DONE = /DONE|COMPLETE|CLOSED/i;
+const RE_DONE = /^(?:DONE|COMPLETE|COMPLETED|CLOSED|CANCELLED|CANCELED|ARCHIVED|FAILED)$/i;
 const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; };
 const hhmmss = t => new Date(t).toLocaleTimeString('de-DE');
 const ago = iso => { const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000); return s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : s < 172800 ? Math.round(s / 3600) + ' Std' : Math.round(s / 86400) + ' Tg'; };
