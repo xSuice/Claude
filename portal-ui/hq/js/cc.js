@@ -137,7 +137,8 @@ export function renderCC(root, ctx) {
       NA('Logs', 'Kein Log-Endpunkt im Portal; Terminal-Ansicht bleibt der Zugriffsweg.') + '</div>';
   }
 
-  const paint = () => { kpis(); agents(); tasks(); incidents(); jobs(); tokens(); server(); conn(); auto(); skills(); history(); na(); };
+  let active = true;
+  const paint = () => { if (!active || !root.querySelector('#cckpi')) return; kpis(); agents(); tasks(); incidents(); jobs(); tokens(); server(); conn(); auto(); skills(); history(); na(); };
 
   /* ---- Zusatzquellen (30 s) ---- */
   async function slow() {
@@ -157,5 +158,5 @@ export function renderCC(root, ctx) {
   const unsub = subscribe(() => paint());
   paint(); slow();
   const t30 = setInterval(() => { if (!document.hidden) slow(); }, 30000);
-  stopFn = () => { clearInterval(t30); unsub(); };
+  stopFn = () => { active = false; clearInterval(t30); unsub(); };
 }

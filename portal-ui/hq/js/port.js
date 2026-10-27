@@ -582,9 +582,12 @@ async function musik() {
   async function browse(r) {
     rel = r; crumb();
     $('#mlist').innerHTML = '<div class="empty">Lädt …</div>'; $('#mact').innerHTML = '';
+    const listNode = $('#mlist');
+    const stillHere = () => listNode && listNode.isConnected && $('#mlist') === listNode;
     let d;
     try { d = await api('/api/files?path=' + encodeURIComponent(MUS_ROOT + (rel ? '/' + rel : ''))); }
-    catch (er) { $('#mlist').innerHTML = '<div class="empty">Noch keine Musik. Lege Musikdateien (mp3, m4a, flac, ogg, wav, opus) im Server-Ordner <code>/srv/ma-home/library/media/musik</code> ab, zum Beispiel über den Eingang oder die Dateien-Ansicht.</div>'; return; }
+    catch (er) { if (!stillHere()) return; $('#mlist').innerHTML = '<div class="empty">Noch keine Musik. Lege Musikdateien (mp3, m4a, flac, ogg, wav, opus) im Server-Ordner <code>/srv/ma-home/library/media/musik</code> ab, zum Beispiel über den Eingang oder die Dateien-Ansicht.</div>'; return; }
+    if (!stillHere()) return;
     const dirs = d.entries.filter(e => e.directory), files = d.entries.filter(e => !e.directory && MUS_EXT.test(e.name));
     const base = rel ? rel + '/' : '';
     $('#mlist').innerHTML = (dirs.length || files.length) ? dirs.map(e => '<div class="row" data-d="' + esc(base + e.name) + '"><div class="ic c2">' + ico('files') + '</div><div class="grow"><b>' + esc(e.name) + '</b><span>Ordner</span></div></div>').join('') +

@@ -64,5 +64,9 @@ code = PRE + "\n" + body + POST
 A = "  const w = e.target.closest('.wl'); if (!w) return;\n  try { const g = await loadGraph();"
 assert code.count(A) == 1, 'globaler Wikilink-Handler nicht gefunden'
 code = code.replace(A, "  const w = e.target.closest('.wl'); if (!w || w.closest('#vread')) return;   // Vault-Leser navigiert selbst\n  try { const g = await loadGraph();")
+# Preserve the navigation lifecycle guard in regenerated music views.
+code = code.replace("    let d;\n    try { d = await api('/api/files?path='", "    const listNode = $('#mlist');\n    const stillHere = () => listNode && listNode.isConnected && $('#mlist') === listNode;\n    let d;\n    try { d = await api('/api/files?path='")
+code = code.replace("catch (er) { $('#mlist').innerHTML", "catch (er) { if (!stillHere()) return; $('#mlist').innerHTML")
+code = code.replace("    const dirs = d.entries.filter(e => e.directory), files =", "    if (!stillHere()) return;\n    const dirs = d.entries.filter(e => e.directory), files =")
 OUT.write_text(code, encoding="utf-8", newline="\n")
 print("geschrieben:", OUT, len(code), "Zeichen,", code.count("\n"), "Zeilen; jarvis endet bei Altzeile", end_j)
