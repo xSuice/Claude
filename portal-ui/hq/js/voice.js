@@ -93,8 +93,9 @@ async function handle(raw) {
   if (text.length < 2) { setState(V.enabled ? 'wake' : 'off'); return; }
   say('u', text);
   setState('thinking');
-  await refresh();                      // nie auf veraltetem/leerem Store antworten
+  const fresh = await refresh();        // nie still auf veraltetem/leerem Store antworten
   const loc = answerLocal(text);
+  if (loc && !fresh && loc.reply && !loc.nav && !/ Uhr\.$/.test(loc.reply) && !/^Ich beantworte/.test(loc.reply)) loc.reply = 'Achtung, die Live-Daten konnten gerade nicht aktualisiert werden. ' + loc.reply;
   if (loc) {
     if (loc.action === 'cancel') { cancelSpeech(); say('a', 'Gestoppt.', 'lokal'); setState(V.enabled ? 'wake' : 'off'); return; }
     say('a', loc.reply, 'lokal · 0 Token');

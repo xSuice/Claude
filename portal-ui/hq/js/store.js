@@ -28,6 +28,9 @@ async function getJson(path) {
   return r.json();
 }
 
+// Completion is not success: preserve the original state, classify exactly.
+const eventSeverity = status => /^(?:DONE|COMPLETE|COMPLETED)$/i.test(String(status || '')) ? 'ok' : /^(?:FAILED|ERROR)$/i.test(String(status || '')) ? 'warn' : 'info';
+
 function diff(old, cur) {
   const ev = [];
   const push = (type, agent, text, sev) => ev.push({ t: Date.now(), type, agent: agent || null, text, sev: sev || 'info' });
@@ -36,7 +39,7 @@ function diff(old, cur) {
   for (const t of cur.tasks) {
     const o = ot[t.task_id], who = shortName(t.assigned_to);
     if (!o) { push('task_new', t.assigned_to, 'Neuer Auftrag ' + t.task_id + (who ? ' → ' + who : '') + ': ' + t.title, 'info'); continue; }
-    if (o.status !== t.status) push('task_status', t.assigned_to, t.task_id + ': ' + o.status + ' → ' + t.status + (who ? ' (' + who + ')' : ''), /DONE/i.test(t.status) ? 'ok' : 'info');
+    if (o.status !== t.status) push('task_status', t.assigned_to, t.task_id + ': ' + o.status + ' → ' + t.status + (who ? ' (' + who + ')' : ''), eventSeverity(t.status));
     else if (o.assigned_to !== t.assigned_to) push('task_assign', t.assigned_to, t.task_id + ' neu zugewiesen: ' + shortName(o.assigned_to) + ' → ' + (who || '—'), 'info');
   }
   const oi = new Set(old.incidents.map(i => i.incident_id)), ci = new Set(cur.incidents.map(i => i.incident_id));
@@ -50,13 +53,18 @@ function diff(old, cur) {
     if (o && !isFresh(o) && isFresh(a)) push('agent_back', a.agent, 'Heartbeat wieder aktuell: ' + a.agent, 'ok');
   }
   const oj = new Set((old.engine.recent || []).map(j => j.id)), oact = new Set((old.engine.active || []).map(j => j.id || JSON.stringify(j)));
-  for (const j of cur.engine.recent || []) if (!oj.has(j.id)) push('job_done', 'jarvis-core', 'Engine-Job ' + j.id + ' ' + j.state + ' (' + (j.tokens_new || 0) + ' Token)', 'ok');
+  for (const j of cur.engine.recent || []) if (!oj.has(j.id)) push('job_done', 'jarvis-core', 'Engine-Job ' + j.id + ' ' + j.state + ' (' + (j.tokens_new || 0) + ' Token)', eventSeverity(j.state));
   for (const j of cur.engine.active || []) if (!oact.has(j.id || JSON.stringify(j))) push('job_start', 'jarvis-core', 'Engine-Job gestartet: ' + (j.id || '?'), 'info');
   return ev;
 }
 
-async function poll() {
-  if (busy) return;
+let inflight = null;
+function poll() {
+  if (inflight) return inflight;
+  inflight = doPoll().finally(() => { inflight = null; });
+  return inflight;
+}
+async function doPoll() {
   busy = true;
   try {
     const [ag, tk] = await Promise.all([getJson('/api/jarvis/agents'), getJson('/api/jarvis/tasks')]);
@@ -74,11 +82,14 @@ async function poll() {
       try { sessionStorage.setItem('hq-events', JSON.stringify(S.events)); } catch (e) { /* */ }
     }
     emit(fresh);
+    busy = false;
+    return true;
   } catch (e) {
     S.error = e.message; S.ts = Date.now();
     emit([]);
+    busy = false;
+    return false;
   }
-  busy = false;
 }
 
 function emit(fresh) { subs.forEach(fn => { try { fn(S, fresh); } catch (e) { console.error(e); } }); }
@@ -102,13 +113,12 @@ export function agentState(id) {
   return { id, status, tasks, open, incidents, hb, alert: incidents.length > 0 || !!(hb && !isFresh(hb)) };
 }
 
-/* Einmalig frische Daten holen (fuer Sprachantworten ausserhalb von HQ/CC): wartet auf den ersten Emit, max. 6 s */
-export function refresh() {
-  return new Promise(res => {
-    let un = null, done = false;
-    const fin = () => { if (done) return; done = true; res(); queueMicrotask(() => { if (un) un(); }); };
-    un = subscribe(() => fin());
-    if (done && un) un();
-    setTimeout(fin, 6000);
-  });
+/* Einmalig FRISCHE Daten holen (Sprachantworten ausserhalb von HQ/CC): erzwingt einen Poll (gleichzeitige Aufrufe teilen ihn),
+   liefert true nur bei erfolgreichem Abruf, false bei Fehler oder Timeout (max. 6 s) – nie stillschweigend veraltete Daten als frisch. */
+export async function refresh() {
+  const un = subscribe(() => {});
+  let timer = null;
+  try {
+    return await Promise.race([poll(), new Promise(res => { timer = setTimeout(() => res(false), 6000); })]);
+  } finally { clearTimeout(timer); un(); }
 }

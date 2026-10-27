@@ -1,0 +1,282 @@
+{
+  "inputs": {
+    "js/api.js": {
+      "bytes": 5473,
+      "imports": [],
+      "format": "esm"
+    },
+    "js/viewer.js": {
+      "bytes": 9531,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/chat.js": {
+      "bytes": 49027,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/viewer.js",
+          "kind": "import-statement",
+          "original": "./viewer.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/store.js": {
+      "bytes": 7159,
+      "imports": [],
+      "format": "esm"
+    },
+    "js/roster.js": {
+      "bytes": 3318,
+      "imports": [],
+      "format": "esm"
+    },
+    "js/hq.js": {
+      "bytes": 18241,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/store.js",
+          "kind": "import-statement",
+          "original": "./store.js"
+        },
+        {
+          "path": "js/roster.js",
+          "kind": "import-statement",
+          "original": "./roster.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/ledger-view.js": {
+      "bytes": 1470,
+      "imports": [],
+      "format": "esm"
+    },
+    "js/cc.js": {
+      "bytes": 16058,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/store.js",
+          "kind": "import-statement",
+          "original": "./store.js"
+        },
+        {
+          "path": "js/roster.js",
+          "kind": "import-statement",
+          "original": "./roster.js"
+        },
+        {
+          "path": "js/chat.js",
+          "kind": "import-statement",
+          "original": "./chat.js"
+        },
+        {
+          "path": "js/ledger-view.js",
+          "kind": "import-statement",
+          "original": "./ledger-view.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/voice.js": {
+      "bytes": 15595,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/store.js",
+          "kind": "import-statement",
+          "original": "./store.js"
+        },
+        {
+          "path": "js/roster.js",
+          "kind": "import-statement",
+          "original": "./roster.js"
+        },
+        {
+          "path": "js/chat.js",
+          "kind": "import-statement",
+          "original": "./chat.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/voiceui.js": {
+      "bytes": 8923,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/voice.js",
+          "kind": "import-statement",
+          "original": "./voice.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/port.js": {
+      "bytes": 67860,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/viewer.js",
+          "kind": "import-statement",
+          "original": "./viewer.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/views.js": {
+      "bytes": 25348,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/viewer.js",
+          "kind": "import-statement",
+          "original": "./viewer.js"
+        },
+        {
+          "path": "js/api.js",
+          "kind": "dynamic-import",
+          "original": "./api.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/app.js": {
+      "bytes": 13047,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/chat.js",
+          "kind": "import-statement",
+          "original": "./chat.js"
+        },
+        {
+          "path": "js/hq.js",
+          "kind": "import-statement",
+          "original": "./hq.js"
+        },
+        {
+          "path": "js/cc.js",
+          "kind": "import-statement",
+          "original": "./cc.js"
+        },
+        {
+          "path": "js/voiceui.js",
+          "kind": "import-statement",
+          "original": "./voiceui.js"
+        },
+        {
+          "path": "js/voice.js",
+          "kind": "import-statement",
+          "original": "./voice.js"
+        },
+        {
+          "path": "js/port.js",
+          "kind": "import-statement",
+          "original": "./port.js"
+        },
+        {
+          "path": "js/viewer.js",
+          "kind": "import-statement",
+          "original": "./viewer.js"
+        },
+        {
+          "path": "js/views.js",
+          "kind": "import-statement",
+          "original": "./views.js"
+        }
+      ],
+      "format": "esm"
+    }
+  },
+  "outputs": {
+    "js/app.bundle.js": {
+      "imports": [],
+      "exports": [],
+      "entryPoint": "js/app.js",
+      "inputs": {
+        "js/api.js": {
+          "bytesInOutput": 3999
+        },
+        "js/app.js": {
+          "bytesInOutput": 7912
+        },
+        "js/chat.js": {
+          "bytesInOutput": 36799
+        },
+        "js/viewer.js": {
+          "bytesInOutput": 6983
+        },
+        "js/hq.js": {
+          "bytesInOutput": 12466
+        },
+        "js/store.js": {
+          "bytesInOutput": 4196
+        },
+        "js/roster.js": {
+          "bytesInOutput": 1914
+        },
+        "js/cc.js": {
+          "bytesInOutput": 12498
+        },
+        "js/ledger-view.js": {
+          "bytesInOutput": 1093
+        },
+        "js/voiceui.js": {
+          "bytesInOutput": 6961
+        },
+        "js/voice.js": {
+          "bytesInOutput": 9646
+        },
+        "js/port.js": {
+          "bytesInOutput": 49901
+        },
+        "js/views.js": {
+          "bytesInOutput": 19255
+        }
+      },
+      "bytes": 173753
+    }
+  }
+}
