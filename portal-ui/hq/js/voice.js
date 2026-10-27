@@ -7,6 +7,7 @@ import { toast } from './api.js';
 import { S, agentState, isFresh, shortName, refresh } from './store.js';
 import { ROSTER } from './roster.js';
 import { voiceAsk } from './chat.js';
+import { speechChunks } from './speech-text.js';
 
 const getSR = () => window.SpeechRecognition || window.webkitSpeechRecognition;
 export const WAKE = /\b(jarvis|dscharvis|dscharwis|dschavis|jarwis|tscharvis|charvis|jervis)\b/i;
@@ -63,28 +64,34 @@ export function answerLocal(text) {
 }
 
 /* ---------- Sprachausgabe ---------- */
-let curUtter = null, speakTimer = null;
+let curUtter = null, speakTimer = null, speechRun = 0;
 export function voices() { return (speechSynthesis.getVoices() || []).filter(v => /^de/i.test(v.lang)); }
 function pickVoice() {
   const vs = voices(); if (!vs.length) return null;
   return vs.find(v => v.name === V.voiceName) || vs.find(v => /natural|online/i.test(v.name)) || vs.find(v => /katja|conrad|amala|google deutsch/i.test(v.name)) || vs[0];
 }
-export function cancelSpeech() { clearTimeout(speakTimer); try { speechSynthesis.cancel(); } catch (e) { /* */ } curUtter = null; if (V.state === 'speaking') setState(V.enabled ? 'wake' : 'off'); }
-function speakable(s) {
-  return String(s).replace(/```[\s\S]*?```/g, ' Codeblock. ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_`#>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 700);
-}
+export function cancelSpeech() { speechRun++; clearTimeout(speakTimer); curUtter = null; try { speechSynthesis.cancel(); } catch (e) { /* */ } if (V.state === 'speaking') setState(V.enabled ? 'wake' : 'off'); }
 function speak(text, done) {
-  const s = speakable(text);
-  if (!V.speakOn || !V.tts || !s) { done && done(); return; }
+  cancelSpeech();
+  const chunks = speechChunks(text);
+  if (!V.speakOn || !V.tts || !chunks.length) { done && done(); return; }
+  const run = speechRun, voice = pickVoice();
+  let index = 0;
   setState('speaking');
-  const u = new SpeechSynthesisUtterance(s); u.lang = 'de-DE'; u.rate = 1.02;
-  const v = pickVoice(); if (v) u.voice = v;
-  const fin = () => { if (curUtter !== u) return; clearTimeout(speakTimer); curUtter = null; setState(V.enabled ? 'wake' : 'off'); done && done(); };
-  u.onend = fin; u.onerror = fin;
-  u.onboundary = () => { V.level = 0.9; };
-  curUtter = u;
-  speakTimer = setTimeout(fin, 2500 + s.length * 90);       // Sicherheitsnetz, falls onend ausbleibt
-  speechSynthesis.cancel(); speechSynthesis.speak(u);
+  const finish = () => { if (run !== speechRun) return; clearTimeout(speakTimer); curUtter = null; setState(V.enabled ? 'wake' : 'off'); done && done(); };
+  const next = () => {
+    if (run !== speechRun) return;
+    if (index >= chunks.length) { finish(); return; }
+    const text = chunks[index++], u = new SpeechSynthesisUtterance(text);
+    u.lang = 'de-DE'; u.rate = 1; if (voice) u.voice = voice;
+    curUtter = u;
+    u.onboundary = () => { V.level = 0.9; };
+    u.onend = () => { if (run !== speechRun || curUtter !== u) return; clearTimeout(speakTimer); curUtter = null; next(); };
+    u.onerror = () => { if (run !== speechRun || curUtter !== u) return; finish(); };
+    speakTimer = setTimeout(() => { if (run !== speechRun || curUtter !== u) return; curUtter = null; speechSynthesis.cancel(); finish(); }, 5000 + text.length * 110);
+    speechSynthesis.speak(u);
+  };
+  next();
 }
 
 /* ---------- Befehl behandeln ---------- */
@@ -105,7 +112,7 @@ async function handle(raw) {
     return;
   }
   try {
-    const ans = await voiceAsk('Beantworte kurz und gut sprechbar auf Deutsch (höchstens drei Sätze, kein Markdown, keine Aufzählung). Frage: ' + text);
+    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit ehrlich; erfinde weder Fortschritt noch Ergebnisse. Frage: ' + text);
     const out = ans || 'Dazu habe ich keine Antwort bekommen.';
     say('a', out, 'JARVIS · haiku · nur lesend');
     speak(out);

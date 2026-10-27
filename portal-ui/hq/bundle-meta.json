@@ -17,7 +17,7 @@
       "format": "esm"
     },
     "js/chat.js": {
-      "bytes": 49727,
+      "bytes": 50379,
       "imports": [
         {
           "path": "js/api.js",
@@ -99,8 +99,13 @@
       ],
       "format": "esm"
     },
+    "js/speech-text.js": {
+      "bytes": 1004,
+      "imports": [],
+      "format": "esm"
+    },
     "js/voice.js": {
-      "bytes": 15595,
+      "bytes": 16264,
       "imports": [
         {
           "path": "js/api.js",
@@ -121,6 +126,11 @@
           "path": "js/chat.js",
           "kind": "import-statement",
           "original": "./chat.js"
+        },
+        {
+          "path": "js/speech-text.js",
+          "kind": "import-statement",
+          "original": "./speech-text.js"
         }
       ],
       "format": "esm"
@@ -179,7 +189,7 @@
       "format": "esm"
     },
     "js/app.js": {
-      "bytes": 13047,
+      "bytes": 15677,
       "imports": [
         {
           "path": "js/api.js",
@@ -240,10 +250,10 @@
           "bytesInOutput": 3999
         },
         "js/app.js": {
-          "bytesInOutput": 7912
+          "bytesInOutput": 9631
         },
         "js/chat.js": {
-          "bytesInOutput": 36848
+          "bytesInOutput": 37242
         },
         "js/viewer.js": {
           "bytesInOutput": 6983
@@ -267,7 +277,10 @@
           "bytesInOutput": 6961
         },
         "js/voice.js": {
-          "bytesInOutput": 9646
+          "bytesInOutput": 10000
+        },
+        "js/speech-text.js": {
+          "bytesInOutput": 554
         },
         "js/port.js": {
           "bytesInOutput": 49904
@@ -276,7 +289,7 @@
           "bytesInOutput": 19255
         }
       },
-      "bytes": 176984
+      "bytes": 180005
     }
   }
 }
