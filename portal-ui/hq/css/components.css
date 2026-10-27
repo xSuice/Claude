@@ -320,3 +320,6 @@ body::after {
 #view .top > div:first-child { flex: 1 1 220px; min-width: 0; }
 #view .top .sub { color: var(--text-muted); font-size: var(--fs-small); overflow-wrap: anywhere; }
 #view .top .btn { white-space: nowrap; }
+
+/* A11Y: Mindest-Zielgroesse 24x24 (WCAG 2.5.8) */
+#mcrumb button { min-height: 24px; min-width: 24px; padding-block: 4px; }

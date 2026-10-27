@@ -69,7 +69,7 @@
       "format": "esm"
     },
     "js/cc.js": {
-      "bytes": 18487,
+      "bytes": 19826,
       "imports": [
         {
           "path": "js/api.js",
@@ -249,7 +249,7 @@
           "bytesInOutput": 6983
         },
         "js/hq.js": {
-          "bytesInOutput": 12466
+          "bytesInOutput": 12464
         },
         "js/store.js": {
           "bytesInOutput": 4196
@@ -258,7 +258,7 @@
           "bytesInOutput": 1914
         },
         "js/cc.js": {
-          "bytesInOutput": 14490
+          "bytesInOutput": 15679
         },
         "js/ledger-view.js": {
           "bytesInOutput": 1093
@@ -270,13 +270,13 @@
           "bytesInOutput": 9646
         },
         "js/port.js": {
-          "bytesInOutput": 49900
+          "bytesInOutput": 49904
         },
         "js/views.js": {
           "bytesInOutput": 19255
         }
       },
-      "bytes": 175793
+      "bytes": 176984
     }
   }
 }

@@ -33,6 +33,7 @@ Zuerst alle **P0/P1**, danach U-01 und U-02; P3 nur einzeln und nach Basisabnahm
 - **Abhängig von E-01.** Harmloser Testauftrag, Abbruch bei Spielstart, Offline-Verhalten. **Aufwand:** 2 h. **Abnahme:** Auftrag läuft, wird bei Spiel abgebrochen/pausiert, Ergebnis im Portal.
 
 ### E-03 Debattenbudget technisch durchsetzen
+- **STATUS: TEILWEISE (Warnanzeige umgesetzt, Erzwingung bewusst nicht).** CC zeigt Ketten über Budget; Sperre würde Hermes-Kern ändern.
 - **Problem:** Budget „3 Runden“ steht nur in SOUL.md. Messung: seit 26.10. noch 2 von 43 Ketten > 6 DMs, längste 17 (vorher 77).
 - **Lösung:** Zähler im Chatnetz/`message_agent`-Pfad pro Agentenpaar+Thema, bei Überschreitung Eskalation an JARVIS statt weiterer DM. **Aufwand:** 3–5 h. **Risiken:** Fehlalarme bei legitimen langen Arbeiten. **Abnahme:** Testkette bricht bei Schwellwert kontrolliert ab. **Rollback:** Schalter aus.
 

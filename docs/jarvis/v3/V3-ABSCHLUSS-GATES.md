@@ -116,3 +116,9 @@ Vorher (8 Ansichten): 58 Knoten Kontrastfehler (`--text-faint` #5A636F auf #1519
 
 ## Nachtrag: U-02 (Router-Restquoten)
 Die vermutete Datenquelle `council_decisions` (PG) ist **leer (0 Zeilen)**. Es werden dort keine Routing-Entscheidungen protokolliert, daher gibt es nichts anzubinden. Das Feld bleibt „nicht angebunden“.
+
+
+## Nachtrag: E-03 als Warnanzeige (statt Erzwingung) und Restfund Barrierefreiheit
+- **Council-Dialoge im Command Center (Warnung, keine Sperre):** Der PC-Reporter zählt alle 10 min (gecached) aus den Sitzungsdatenbanken der jarvis-Profile `message_agent`-Aufrufe der letzten 24 h (nur Absender, Ziel, Zeit; kein Nachrichtentext) und schickt `{dms, chains, longest, over_6}` mit der Telemetrie an den Server (Schema-Erweiterung `council`, TDD: 14 Tests grün, auch auf dem Server). Anzeige im CC: aktuell 34 DMs, 11 Ketten, längste 6, 0 über Budget (> 6). Technische Erzwingung wurde bewusst **nicht** gebaut (Eingriff in den Hermes-`message_agent`-Pfad würde bei Hermes-Updates verloren gehen und ist Kernänderung). Portal einmal neu gestartet (vorher busy=False, keine aktiven Jobs); Reporter ersetzt (gezielt nur die zwei pythonw-Prozesse, Backup `pc_telemetry.py.bak-vor-council-20261027`).
+- **Router-Feld:** Text im CC korrigiert: Entscheidungstabelle leer, keine Quelle.
+- **Barrierefreiheit:** letzter axe-Knoten (Musik-Breadcrumb unter 24×24 px) per CSS behoben. Nachmessung cc/musik/dashboard/chat: 0 Verstöße, kein horizontaler Überlauf. Bundle `d05672dd…6d44`, Server = lokal, Backups `…bak-vor-council`.

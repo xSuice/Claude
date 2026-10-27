@@ -26,14 +26,20 @@ def _num(v,lo,hi,name):
     return float(v) if isinstance(v,float) else v
 
 def validate_pc(d):
-    if not isinstance(d,dict) or set(d)-{'cpu_pct','ram_pct','gpu'}:raise ValueError('unknown fields')
-    out={'cpu_pct':_num(d.get('cpu_pct'),0,100,'cpu_pct'),'ram_pct':_num(d.get('ram_pct'),0,100,'ram_pct'),'gpu':None}
+    if not isinstance(d,dict) or set(d)-{'cpu_pct','ram_pct','gpu','council'}:raise ValueError('unknown fields')
+    out={'cpu_pct':_num(d.get('cpu_pct'),0,100,'cpu_pct'),'ram_pct':_num(d.get('ram_pct'),0,100,'ram_pct'),'gpu':None,'council':None}
     g=d.get('gpu')
     if g is not None:
         keys={'util_pct':(0,100),'temp_c':(0,150),'vram_used_mb':(0,1e6),'vram_total_mb':(1,1e6)}
         if not isinstance(g,dict) or set(g)!=set(keys):raise ValueError('gpu fields')
         out['gpu']={k:_num(g[k],*keys[k],k) for k in keys}
         if out['gpu']['vram_used_mb']>out['gpu']['vram_total_mb']:raise ValueError('vram')
+    c=d.get('council')
+    if c is not None:
+        keys={'window_h':(1,168),'dms':(0,100000),'chains':(0,100000),'longest':(0,100000),'over_6':(0,100000)}
+        if not isinstance(c,dict) or set(c)!=set(keys):raise ValueError('council fields')
+        out['council']={k:_num(c[k],*keys[k],k) for k in keys}
+        if out['council']['over_6']>out['council']['chains'] or out['council']['longest']>out['council']['dms']:raise ValueError('council consistency')
     return out
 
 def write_pc(path,data,now=None):
@@ -55,7 +61,7 @@ def read_pc(path,now=None):
     except FileNotFoundError:return {'state':'missing'}
     except (ValueError,OSError):return {'state':'invalid'}
     try:
-        age=now-float(rec['received']);v=validate_pc({k:rec.get(k) for k in ('cpu_pct','ram_pct','gpu')})
+        age=now-float(rec['received']);v=validate_pc({k:rec.get(k) for k in ('cpu_pct','ram_pct','gpu','council') if k in rec or k in ('cpu_pct','ram_pct')})
     except (KeyError,ValueError,TypeError):return {'state':'invalid'}
     return {'state':'fresh' if 0<=age<=STALE_S else 'stale','age_s':round(age),**v}
 

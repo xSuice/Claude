@@ -151,9 +151,19 @@ export function renderCC(root, ctx) {
     return '<div class="ccna ok"><b>Logs</b> – ' + esc(L.window) + '<ul class="hql">' + rows + '</ul><div class="faint">Zugangsdaten werden maskiert; höchstens 3 gekürzte Zeilen je Dienst.</div></div>';
   }
 
+  function councilPanel() {
+    const t = X.tele && X.tele.pc, c = t && t.council;
+    if (!t) return NA('Council-Dialoge', X.errs.tele || 'lädt …');
+    if (t.state !== 'fresh' || !c) return NA('Council-Dialoge', t.state !== 'fresh' ? 'PC-Reporter meldet nicht (Messwert ' + (t.state === 'stale' ? 'veraltet' : 'fehlt') + ').' : 'Reporter liefert keine Dialogzahlen.');
+    const warn = c.over_6 > 0;
+    return '<div class="ccna ' + (warn ? 'warn' : 'ok') + '"><b>Council-Dialoge</b> – letzte ' + c.window_h + ' h<div class="ccrow"><span>Nachrichten (message_agent)</span><span class="mono">' + c.dms + '</span></div><div class="ccrow"><span>Ketten</span><span class="mono">' + c.chains + '</span></div><div class="ccrow"><span>Längste Kette</span><span class="mono">' + c.longest + '</span></div>' +
+      '<div class="ccrow"><span>' + (warn ? '<span class="dot err"></span> ' : '<span class="dot ok"></span> ') + 'Ketten über Budget (&gt; 6)</span><span class="mono">' + c.over_6 + '</span></div>' +
+      '<div class="faint">Warnung, keine Sperre: Das Debattenbudget (3 Runden ≈ 6 Nachrichten) steht nur in den SOUL.md-Regeln. Gezählt werden gesendete Aufrufe je Agentenpaar (Pause &lt; 30 min = gleiche Kette), ohne Inhalte; kein Zustell- oder Qualitätsnachweis.</div></div>';
+  }
+
   function na() {
     $id('ccna').innerHTML = renderLedger(X.ledger) + '<h2 class="holo-title">Weitere Quellen<span class="sub">Angebunden nur, wo eine echte Datenquelle existiert – nichts wird simuliert</span></h2><div class="grid cols3">' +
-      NA('Modelle & Router-Quoten', 'Evidence-Router-Ledger liegt auf dem Server (router/), hat aber keinen Portal-Endpunkt.') + pcPanel() + logPanel() + '</div>';
+      NA('Modelle & Router-Quoten', 'Die Entscheidungstabelle des Evidence-Routers (council_decisions) ist leer – es gibt keine Quelle.') + pcPanel() + councilPanel() + logPanel() + '</div>';
   }
 
   let active = true;

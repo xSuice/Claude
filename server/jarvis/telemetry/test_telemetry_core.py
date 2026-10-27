@@ -47,4 +47,20 @@ class Journal(unittest.TestCase):
     def test_units_whitelist_only(self):
         self.assertEqual(T.safe_units(['ma-home-web','x;rm -rf /','../etc','jarvis-watchdog']),['ma-home-web','jarvis-watchdog'])
 
+
+class Council(unittest.TestCase):
+    good={'cpu_pct':1,'ram_pct':1,'gpu':None,'council':{'window_h':24,'dms':30,'chains':8,'longest':17,'over_6':2}}
+    def test_council_optional_and_accepted(self):
+        v=T.validate_pc(dict(self.good));self.assertEqual(v['council']['longest'],17)
+        d=dict(self.good);del d['council'];self.assertIsNone(T.validate_pc(d)['council'])
+    def test_council_rejects_bad_shapes(self):
+        for bad in ({**self.good['council'],'agent':'x'},{**self.good['council'],'longest':-1},{**self.good['council'],'over_6':99999},{'window_h':24}):
+            with self.assertRaises(ValueError,msg=str(bad)):T.validate_pc({**self.good,'council':bad})
+    def test_over6_cannot_exceed_chains(self):
+        with self.assertRaises(ValueError):T.validate_pc({**self.good,'council':{**self.good['council'],'over_6':9,'chains':8}})
+    def test_roundtrip_keeps_council(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=os.path.join(d,'pc.json');T.write_pc(p,T.validate_pc(dict(self.good)),now=1)
+            self.assertEqual(T.read_pc(p,now=2)['council']['dms'],30)
+
 if __name__=='__main__':unittest.main()
