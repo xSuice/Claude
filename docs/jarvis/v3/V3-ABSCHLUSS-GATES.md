@@ -77,3 +77,7 @@ Neue venv unter dem Scratch-Ordner (Hermes-Umgebung unverändert); installiert: 
 Nur diese vier Skills haben mitgelieferte Tests; die übrigen rund 54 aktiven Skills sind weiterhin nur per Metadaten/Syntax geprüft. Die vier Dokument-Skills brauchen in der produktiven Hermes-Umgebung die genannten Pakete, sonst schlagen sie mit Exit 2 fehl.
 
 Ein Diagnoseversuch zur AppContainer-Anlage (0x80070005) blieb ohne Freigabe-Antwort im Genehmigungs-Timeout und wurde nicht ausgeführt und nicht umgangen.
+
+
+## Nachtrag: AppContainer-Diagnose (Worker-Sandbox)
+Direkter Aufruf `CreateAppContainerProfile` mit frischem Namen (Testprofil, bei Erfolg sofort gelöscht): **HRESULT 0x80070005 (Zugriff verweigert) reproduziert**, unabhängig vom Sandbox-Code. Kontext: normaler Benutzer (nicht Administrator), mittlere Integrität (S-1-16-8192), Prozess nicht in einem Job-Objekt, `%LOCALAPPDATA%\Packages` vorhanden, Dienst AppIDSvc läuft, AppXSvc gestoppt (bedarfsgesteuert), auf dem Gerät besteht eine MDM-/Appx-Richtlinie (Registrierungsschlüssel `Policies\Microsoft\Windows\Appx` vorhanden). Eine Ursache ist damit **nicht bewiesen**; die Anlage wird auf dieser Maschine verweigert. Weitere Diagnose (z. B. Process Monitor, Richtlinien ändern) bräuchte Administratorrechte bzw. ändert Systemrichtlinien und wurde nicht versucht. Folge: kein Worker-Start, keine unsandboxed Alternative.
