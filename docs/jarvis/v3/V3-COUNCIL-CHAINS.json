@@ -1,0 +1,128 @@
+{
+  "split_note": "Chains starting before/after 2026-10-26 (A4-1 tool lockdown + A4-2 debate budget introduced 26.10.). Correlation, not proof of causation.",
+  "before_2026-10-26": {
+    "chains": 227,
+    "directed_dms": 1347,
+    "max": 77,
+    "over_6": 50,
+    "over_12": 27
+  },
+  "from_2026-10-26": {
+    "chains": 43,
+    "directed_dms": 119,
+    "max": 17,
+    "over_6": 2,
+    "over_12": 1
+  },
+  "scope": "Council DM-chain metrics, metadata only (sender, target, timestamp). No message text is read into output.\nChain = consecutive DMs between the same unordered agent pair with gaps <= GAP seconds.\nThis measures observed message_agent calls in persisted profile sessions; it does NOT prove delivery, topic, or quality.\nA 'round' is not directly observable; chain length (directed messages) is reported against the SOUL budget of 3 rounds (~6 messages).",
+  "observed": 1793099741.9696217,
+  "directed_dm_calls": 1466,
+  "chains": 270,
+  "chain_len": {
+    "median": 2.0,
+    "max": 77,
+    "over_6": 52,
+    "over_12": 28
+  },
+  "per_day": {
+    "2026-10-21": 180,
+    "2026-10-22": 191,
+    "2026-10-23": 164,
+    "2026-10-24": 644,
+    "2026-10-25": 168,
+    "2026-10-26": 89,
+    "2026-10-27": 30
+  },
+  "longest": [
+    {
+      "pair": [
+        "jarvis-architecture",
+        "jarvis-cloud-dev"
+      ],
+      "messages": 77,
+      "duration_min": 248.0,
+      "start": "2026-10-24 10:11"
+    },
+    {
+      "pair": [
+        "jarvis-cloud-dev",
+        "jarvis-core"
+      ],
+      "messages": 74,
+      "duration_min": 197.0,
+      "start": "2026-10-24 10:11"
+    },
+    {
+      "pair": [
+        "jarvis-cloud-dev",
+        "jarvis-security"
+      ],
+      "messages": 63,
+      "duration_min": 187.7,
+      "start": "2026-10-24 11:00"
+    },
+    {
+      "pair": [
+        "jarvis-cloud-dev",
+        "jarvis-portal"
+      ],
+      "messages": 51,
+      "duration_min": 155.8,
+      "start": "2026-10-24 11:01"
+    },
+    {
+      "pair": [
+        "jarvis-architecture",
+        "jarvis-security"
+      ],
+      "messages": 44,
+      "duration_min": 200.2,
+      "start": "2026-10-24 11:01"
+    },
+    {
+      "pair": [
+        "jarvis-cloud-dev",
+        "jarvis-design"
+      ],
+      "messages": 38,
+      "duration_min": 182.7,
+      "start": "2026-10-21 17:17"
+    },
+    {
+      "pair": [
+        "jarvis-core",
+        "jarvis-portal"
+      ],
+      "messages": 37,
+      "duration_min": 139.9,
+      "start": "2026-10-24 11:17"
+    },
+    {
+      "pair": [
+        "jarvis-architecture",
+        "jarvis-core"
+      ],
+      "messages": 28,
+      "duration_min": 141.1,
+      "start": "2026-10-24 11:10"
+    },
+    {
+      "pair": [
+        "jarvis-cloud-dev",
+        "jarvis-server-fix"
+      ],
+      "messages": 26,
+      "duration_min": 103.8,
+      "start": "2026-10-22 05:10"
+    },
+    {
+      "pair": [
+        "jarvis-cloud-dev",
+        "jarvis-security"
+      ],
+      "messages": 26,
+      "duration_min": 100.8,
+      "start": "2026-10-22 05:20"
+    }
+  ]
+}

@@ -46,3 +46,14 @@ Microsoft-Referenz für die rechtmäßigen Aktivierungsoptionen: https://support
 
 ## Zusätzlicher Sicherheitsbefund
 `ma-home printer-detect` ruft anschließend `host_config(st)` auf. Diese Provisionierung schreibt host.json neu und lässt die später ergänzten `extra_uids`/`extra_gid` weg. Blindes Ausführen würde die funktionierende Portal→Host-Agent-Verbindung wieder beschädigen. Deshalb wurde nur Netzwerk/CUPS gelesen, nicht neu provisioniert. Vor Einrichtung ist die Erhaltung dieser Freigabe zu sichern.
+
+
+## Nachtrag: Council-Dialogketten (read-only, nur Metadaten)
+Quelle: `scripts/verification-v3/council_chains.py` über die persistierten Sessions der 18 Profile; nur Absender, Ziel und Zeitstempel von `message_agent`-Aufrufen, kein Nachrichtentext. Eine Kette = aufeinanderfolgende DMs desselben Agentenpaars mit höchstens 30 min Abstand. Rohdaten: `V3-COUNCIL-CHAINS.json`.
+
+| Zeitraum | Ketten | DMs | längste Kette | Ketten > 6 DMs | > 12 DMs |
+|---|---|---|---|---|---|
+| bis 25.10. | 227 | 1347 | 77 | 50 | 27 |
+| ab 26.10. (A4-1 Toolsperre + A4-2 Debattenbudget) | 43 | 119 | 17 | 2 | 1 |
+
+Gesamt 1466 DM-Aufrufe in 270 Ketten, Median 2. Spitze am 24.10. mit 644 DMs. Das ist eine zeitliche Korrelation, kein Kausalitätsbeweis. Es sind gesendete Aufrufe, kein Zustellbeweis; Themen und Ergebnisqualität sind nicht erfasst. Das Debattenbudget (3 Runden, rund 6 DMs) ist nur per SOUL.md festgelegt, technisch nicht erzwungen: seit 26.10. überschreiten noch 2 Ketten es, die längste hat 17 DMs. Damit ist die Messquelle für Council-Runden vorhanden (r3 teilweise), die Themenzuordnung bleibt offen.
