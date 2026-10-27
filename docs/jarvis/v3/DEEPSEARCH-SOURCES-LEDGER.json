@@ -1,0 +1,251 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": 1,
+      "url": "https://contributors.home-assistant.io/core/internals/assist-pipelines",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 2,
+      "url": "https://docs.livekit.io/agents/logic/turns",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 3,
+      "url": "https://github.com/dscripka/openWakeWord",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 4,
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 5,
+      "url": "https://docs.langchain.com/oss/python/langgraph/persistence",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 6,
+      "url": "https://docs.langchain.com/oss/python/langgraph/interrupts",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 7,
+      "url": "https://docs.temporal.io/activity-execution",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 8,
+      "url": "https://temporal.io/blog/idempotency-and-durable-execution",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 9,
+      "url": "https://docs.mem0.ai/core-concepts/how-it-works",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 10,
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/security",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 11,
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/VirtualKeyboard_API",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 12,
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 13,
+      "url": "https://docs.pipecat.ai/pipecat/learn/speech-input",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 14,
+      "url": "https://github.com/OHF-voice/piper1-gpl",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 15,
+      "url": "https://opentelemetry.io/docs/concepts/signals",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 16,
+      "url": "https://genai.owasp.org/llmrisk/llm062025-excessive-agency",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 17,
+      "url": "https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 18,
+      "url": "https://docs.openwebui.com/features/chat-conversations/chat-features/voice-mode",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 19,
+      "url": "https://reactflow.dev/learn/advanced-use/performance",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 20,
+      "url": "https://docs.comfy.org/development/comfyui-server/comms_overview",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 21,
+      "url": "https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 22,
+      "url": "https://ui.shadcn.com/docs/theming",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 23,
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/reflow.html",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 24,
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 25,
+      "url": "https://api.github.com/repos/dscripka/openWakeWord",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 26,
+      "url": "https://api.github.com/repos/OHF-Voice/piper1-gpl",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 27,
+      "url": "https://api.github.com/repos/SYSTRAN/faster-whisper",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 28,
+      "url": "https://api.github.com/repos/livekit/agents",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 29,
+      "url": "https://api.github.com/repos/pipecat-ai/pipecat",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 30,
+      "url": "https://api.github.com/repos/langchain-ai/langgraph",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 31,
+      "url": "https://api.github.com/repos/temporalio/temporal",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 32,
+      "url": "https://api.github.com/repos/mem0ai/mem0",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 33,
+      "url": "https://api.github.com/repos/shadcn-ui/ui",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 34,
+      "url": "https://api.github.com/repos/xyflow/xyflow",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 35,
+      "url": "https://api.github.com/repos/open-webui/open-webui",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 36,
+      "url": "https://api.github.com/repos/comfyanonymous/ComfyUI",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 37,
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/security-considerations",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 38,
+      "url": "https://docs.litellm.ai/docs/routing",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 39,
+      "url": "https://elevenlabs.io/pricing",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 40,
+      "url": "https://raw.githubusercontent.com/dscripka/openWakeWord/main/README.md",
+      "title": "",
+      "accessed": "2026-10-27"
+    },
+    {
+      "id": 41,
+      "url": "https://raw.githubusercontent.com/open-webui/open-webui/main/LICENSE",
+      "title": "",
+      "accessed": "2026-10-27"
+    }
+  ]
+}
