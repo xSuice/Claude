@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""JARVIS -> ntfy push (N-01). Cron every 5 min. Read-only on JARVIS data; one write-only credential for ONE topic.
+"""JARVIS -> Signal push. Cron every 5 min. Reuses notification baseline; own account only.
 Usage: jarvis_notify.py [--dry-run] [--test]"""
-import base64,glob,json,os,sqlite3,sys,time,urllib.request,urllib.error
+import glob,json,os,sqlite3,sys,time
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 import notify_core as N
 HOME=os.path.expanduser('~')
 STATE=os.path.join(HOME,'.local/state/ma-jarvis/notify-state.json')
-CRED=os.path.join(HOME,'.config/ma-jarvis/ntfy-notify.cred')      # "user:password", 0600
 INC='/opt/jarvis/watchdog/state/open_incidents.json'
-URL='http://127.0.0.1:12586/andrew-jarvis'
 
 def load_state():
     try:return json.load(open(STATE))
@@ -30,9 +28,11 @@ def jobs():
         except Exception:pass
     return out
 def send(m):
-    user,pw=open(CRED).read().strip().split(':',1)
-    req=urllib.request.Request(URL,data=m['message'].encode(),method='POST',headers={'Title':m['title'].encode('utf-8','replace').decode('latin-1','replace'),'Priority':str(m['priority']),'Tags':m['tags'],'Authorization':'Basic '+base64.b64encode((user+':'+pw).encode()).decode()})
-    with urllib.request.urlopen(req,timeout=10) as r:return r.status
+    from signal_push import send as signal_send
+    path=os.path.join(HOME,'.local/share/ma-jarvis/signal/account/data/accounts.json')
+    accounts=json.load(open(path))['accounts']
+    if len(accounts)!=1:raise RuntimeError('Expected exactly one Signal account')
+    return signal_send(m,accounts[0]['number'])
 def main():
     a=sys.argv[1:]
     if '--test' in a:
