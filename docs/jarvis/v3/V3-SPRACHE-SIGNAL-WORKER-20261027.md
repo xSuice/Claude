@@ -45,6 +45,10 @@ Owner-Wahl **Thorsten emotional** ist umgesetzt für Portal (lokal) und Hermes-T
 
 **Installiert:** Temurin JDK 21.0.12.1 (Checksumme geprüft, benutzerlokal `%LOCALAPPDATA%\ma-jarvis\jdk-21`), Client `%LOCALAPPDATA%\ma-jarvis\client`, Freigabe `~/.claude/state/jarvis-pc.json` = nur `java.build`, **ohne Netz**. Autostart `JarvisPcWorker.vbs` (Log `%LOCALAPPDATA%\ma-jarvis\pc-worker.log`).
 
+**E2E-Nachweis:** Gradle 9.8.2 einmal checksum-verifiziert in `%LOCALAPPDATA%\ma-jarvis\gradle-home` geseedet (`seed_gradle.py`, Offline-Builds im Sandbox). Aufgabe „Hallo.java zu JAR kompilieren“ wurde vollständig durchlaufen: Server plant (haiku), PC-Worker baut **im Sandbox offline** (Spitze 116 MB, 2 Prozesse, <1 s), Server nimmt ab: **2/2 Ergebnisdateien bestanden die unabhängige Abnahme**, Job `j20261027-14c029` = ERLEDIGT (alles geprüft). Abgeholt nach `Documents\JARVIS-Ergebnisse\j20261027-14c029`; die JAR läuft lokal: Ausgabe „Hallo von JARVIS“.
+
+**Lehre für Pläne:** Die Abnahme prüft nur Dateien, die der Plan als `deliverables` nennt. Ein Plan, der die JAR „liefert“ ohne sie als Deliverable zu deklarieren, scheitert mit `0/1 ... unabhängige Abnahme`, obwohl der Build ok war (erster Lauf `j20261027-8351b5`).
+
 **Nebenbefund Sicherheit:** Das Profil `C:\Users\andre` erbt die Laufwerks-ACL („Benutzer: Lesen“, „Authentifizierte Benutzer: Ändern“). Andere lokale Konten können das Profil daher lesen bzw. ändern. Eine Reparatur des ganzen Profils ist eine eigene Owner-Entscheidung und wurde nicht durchgeführt.
 
 **Rückbau:** `icacls C:\ /remove *S-1-15-2-2463243902-2450264064-2423113111-2866411314-72383083-2064497059-1182243265` (Admin), `icacls %LOCALAPPDATA% /restore packages-acl-backup-20261027.txt`, `JarvisPcWorker.vbs` löschen, `jarvis-pc.json` löschen.
