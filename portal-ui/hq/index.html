@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<base href="/staging/">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0E1116">
+<title>MA-HOME HQ</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MA Home">
+<link rel="manifest" href="/assets/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="icon" href="/assets/icon-192.png">
+<link rel="stylesheet" href="css/legacy.css">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+<div class="hq-shell">
+
+  <aside class="hq-side">
+    <div class="brand">
+      <span class="brand-core" aria-hidden="true"></span>
+      <div>
+        <div class="brand-name">JARVIS HQ</div>
+        <div class="brand-sub">v2026-10-27</div>
+      </div>
+    </div>
+    <div id="nav" class="hq-nav" role="navigation" aria-label="Hauptmenü"></div>
+  </aside>
+
+  <main class="hq-main">
+    <div class="topbar">
+      <h1 id="view-title">Kommandozentrale</h1>
+      <button class="palette-trigger" id="palette-open" type="button">
+        <span>⌕&nbsp; Befehl oder Bereich …</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+    </div>
+
+    <!-- dynamische Views -->
+    <section id="view" aria-live="polite"></section>
+
+    <!-- statische Design-System-Ansicht -->
+    <section id="static-designsystem" hidden>
+      <div class="holo section">
+        <h2 class="holo-title">Farbtokens<span class="sub">Abgeleitet aus Crimson Zone (Cover/Map) + SMP-Miniaturwelt-Prinzip</span></h2>
+        <div class="grid cols4" id="swatches"></div>
+      </div>
+      <div class="grid cols2">
+        <div class="holo">
+          <h2 class="holo-title">Komponenten</h2>
+          <p class="row" style="flex-wrap:wrap">
+            <button class="btn primary">Deploy</button>
+            <button class="btn">Abbrechen</button>
+            <button class="btn ghost">Details</button>
+          </p>
+          <p class="row" style="flex-wrap:wrap; margin-top:10px">
+            <span class="chip cyan"><span class="dot ok"></span> Bereit</span>
+            <span class="chip crimson"><span class="dot err"></span> Fehler</span>
+            <span class="chip"><span class="dot warn"></span> Wartung</span>
+            <span class="chip"><span class="dot live"></span> Läuft</span>
+          </p>
+        </div>
+        <div class="holo danger">
+          <h2 class="holo-title">Danger-Panel<span class="sub">Crimson-Underglow — für Incidents und kritische Zonen</span></h2>
+          <p class="muted">Crimson ist reserviert für das, was wirklich Aufmerksamkeit verdient.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="palette-backdrop" id="palette">
+  <div class="palette" role="dialog" aria-label="Command Palette">
+    <input id="palette-input" type="text" placeholder="Bereich oder Befehl eingeben …" autocomplete="off">
+    <ul id="palette-list"></ul>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+<noscript>Diese Seite braucht JavaScript.</noscript>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

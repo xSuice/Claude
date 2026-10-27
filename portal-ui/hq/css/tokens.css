@@ -1,0 +1,81 @@
+/* ==========================================================================
+   MA-HOME HQ — Design Tokens v1 (2026-10-27)
+   Abgeleitet aus Originalmaterial: Crimson Zone (Cover/World-Map),
+   Eternal Bonds, Andrew-SMP-Miniaturwelt-Prinzip. Eigene Designsprache.
+   ========================================================================== */
+
+:root {
+  /* --- Basis: kühles Schiefer-Schwarz (nie rein schwarz, vgl. CZ-Cover) --- */
+  --bg-deep:      #0E1116;   /* App-Hintergrund */
+  --bg-panel:     #151920;   /* Karten, Panels */
+  --bg-elev:      #1C212B;   /* erhobene Flächen, Inputs */
+  --bg-hover:     #232A36;
+  --line:         rgba(255, 255, 255, .07);
+  --line-strong:  rgba(255, 255, 255, .14);
+
+  /* --- Primär-Akzent: Crimson (Resonanz) — nur für Gefahr/Aktives/CTA --- */
+  --crimson:      #FF2E4D;
+  --crimson-soft: #FF5470;
+  --crimson-deep: #8B1A2B;
+  --crimson-dark: #5C1220;
+  --crimson-glow: rgba(255, 46, 77, .45);
+
+  /* --- Sekundär-Akzent: Türkis (System/OK/Live) --- */
+  --cyan:         #35C4D8;
+  --cyan-bright:  #22D3EE;
+  --cyan-dim:     rgba(53, 196, 216, .16);
+  --cyan-glow:    rgba(53, 196, 216, .40);
+
+  /* --- Neutrale Erdtöne (Greige/Sand, vgl. CZ-Pergament) --- */
+  --greige:       #B8A892;
+  --sand:         #D9BFA8;
+
+  /* --- Text --- */
+  --text:         #E8E8E8;
+  --text-muted:   #8A93A0;
+  --text-faint:   #5A636F;
+
+  /* --- Status-Semantik --- */
+  --ok:           #4ADE80;
+  --warn:         #FBBF24;
+  --err:          var(--crimson);
+  --info:         var(--cyan);
+
+  /* --- Glow (Ember-Prinzip: Licht von unten/innen) --- */
+  --glow-crimson: 0 0 18px var(--crimson-glow);
+  --glow-cyan:    0 0 18px var(--cyan-glow);
+  --underglow:    0 6px 22px -6px var(--cyan-glow);   /* Signatur: Unterlicht */
+  --underglow-red: 0 6px 22px -6px var(--crimson-glow);
+
+  /* --- Geometrie --- */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 14px;
+  --gap:  16px;
+  --pad:  20px;
+
+  /* --- Typo (System-Stack, kein Webfont: offline, DSGVO, Performance) --- */
+  --font-display: "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --fs-kpi:   28px;
+  --fs-h1:   22px;
+  --fs-h2:   16px;
+  --fs-body: 14px;
+  --fs-small: 12px;
+  --fs-tiny:  10.5px;
+  --ls-wide:  .12em;   /* Uppercase-Labels */
+
+  /* --- Motion --- */
+  --t-fast: 150ms;
+  --t-med:  260ms;
+  --ease:   cubic-bezier(.33, 1, .68, 1);
+
+  /* --- Layer --- */
+  --z-palette: 90;
+  --z-drawer:  80;
+  --z-header:  40;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-fast: 0ms; --t-med: 0ms; }
+}
