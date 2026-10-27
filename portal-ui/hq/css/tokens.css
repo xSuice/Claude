@@ -79,3 +79,39 @@
 @media (prefers-reduced-motion: reduce) {
   :root { --t-fast: 0ms; --t-med: 0ms; }
 }
+
+
+/* ==========================================================================
+   Theme "Arc Reactor" (U-06B) – Opt-in per html[data-theme="arc"], Standard bleibt Slate.
+   Nur Token-Wechsel + wenig Dekor. Kontrast: Text 16,3:1, gedaempft 7,5:1, Akzent 11,8:1 (auf --bg-panel).
+   ========================================================================== */
+html[data-theme="arc"] {
+  --bg-deep:      #070B14;
+  --bg-panel:     #0D1626;
+  --bg-elev:      #13203A;
+  --bg-hover:     #1B2D4D;
+  --line:         rgba(143, 176, 222, .13);
+  --line-strong:  rgba(143, 176, 222, .26);
+  --cyan:         #5CE1FF;
+  --cyan-bright:  #8AECFF;
+  --cyan-dim:     rgba(92, 225, 255, .16);
+  --cyan-glow:    rgba(92, 225, 255, .45);
+  --gold:         #FFB547;
+  --warn:         #FFB547;
+  --text:         #EAF4FF;
+  --text-muted:   #93A9C6;
+  --text-faint:   #8CA2BF;
+  color-scheme: dark;
+}
+html[data-theme="arc"] body { background-image: radial-gradient(1200px 520px at 78% -8%, rgba(92, 225, 255, .10), transparent 60%); background-attachment: fixed; }
+html[data-theme="arc"] .brand-core { border-color: var(--gold); box-shadow: 0 0 14px rgba(255, 181, 71, .35), inset 0 0 8px rgba(92, 225, 255, .35); }
+html[data-theme="arc"] .holo { border-color: var(--line-strong); }
+@media (prefers-reduced-motion: no-preference) {
+  html[data-theme="arc"] .brand-core { animation: arc-pulse 6s ease-in-out infinite; }
+}
+@keyframes arc-pulse { 0%, 100% { box-shadow: 0 0 10px rgba(255, 181, 71, .25), inset 0 0 6px rgba(92, 225, 255, .3); } 50% { box-shadow: 0 0 18px rgba(255, 181, 71, .45), inset 0 0 10px rgba(92, 225, 255, .5); } }
+
+/* Theme-Umschalter in der Kopfzeile */
+.theme-toggle { margin-left: 8px; background: var(--bg-elev); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r-md); padding: 6px 10px; font: inherit; font-size: var(--fs-small); cursor: pointer; min-height: 32px; }
+.theme-toggle:hover { background: var(--bg-hover); }
+.theme-toggle:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }

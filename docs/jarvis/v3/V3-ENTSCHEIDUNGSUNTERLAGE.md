@@ -101,7 +101,7 @@ Datei: `design-varianten.html` (Generator `make_design_variants.py`) – drei Ri
 | U-06B | Arc Reactor | tiefes Blau, Ring-Kern, Gold-Zweitakzent | stärkste Iron-Man-Anmutung | mehr Dekor (nur bei erlaubter Bewegung animiert) |
 | U-06C | Quiet Console (hell) | Papier-Hell, Petrol | beste Lesbarkeit draußen/Handy, geringste Last | wenig „JARVIS“-Gefühl; Dunkelmodus = Ableitung von A |
 
-Empfehlung: **A behalten und B als Theme-Option ergänzen** (nur Token-Wechsel in `tokens.css`, kein Neubau), C als Hell-Modus für Mobil. Aufwand B/C als Theme: ca. 0,5–1 Tag je Theme inkl. Kontrast- und axe-Prüfung. Abnahme: Auswahl per ID (z. B. „U-06B als Theme“). Nichts davon ist umgesetzt.
+**STATUS: U-06B UMGESETZT 27.10. (Owner-Auswahl), als Opt-in-Theme mit Umschalter; Details V3-ABSCHLUSS-GATES.md.** Empfehlung war: **A behalten und B als Theme-Option ergänzen** (nur Token-Wechsel in `tokens.css`, kein Neubau), C als Hell-Modus für Mobil. Aufwand B/C als Theme: ca. 0,5–1 Tag je Theme inkl. Kontrast- und axe-Prüfung. Abnahme: Auswahl per ID (z. B. „U-06B als Theme“). Nichts davon ist umgesetzt.
 
 ## Fehlt noch (Transparenz zu deinem Auftrag)
 - Designvarianten: jetzt als Entwurf vorhanden (siehe Abschnitt U-06); Auswahl steht aus.

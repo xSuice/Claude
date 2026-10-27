@@ -50,4 +50,5 @@ Manga-/Comic-Werkzeuge im engeren Sinn (Panel-Layout, Schrift, Konsistenz von Fi
 
 ## Neuer Vorschlag aus der Recherche
 ### N-01 JARVIS-Ergebnisse und Incidents per ntfy aufs Handy (P2)
+- **STATUS: UMGESETZT 27.10. (Owner „mache alles“)**, siehe V3-ABSCHLUSS-GATES.md.
 - **Problem:** Ergebnisse/Incidents sind nur im Portal sichtbar. **Lösung:** Watchdog-Incident (offen > 2 h) und fertige Aufträge senden eine kurze ntfy-Nachricht (nur Titel/ID, keine Inhalte). **Nutzen:** Du erfährst es, ohne das Portal zu öffnen. **Umfang:** kleines Sendemodul + Thema + Test. **Aufwand:** ~2 h. **Kosten:** keine. **Risiken:** Nachrichten verlassen den Server nicht (eigener ntfy), Zugangsdaten über vorhandenes Verfahren. **Abnahme:** Testnachricht erscheint auf dem Handy, Incident-Simulation im Testthema. **Rollback:** Sender abschalten.
