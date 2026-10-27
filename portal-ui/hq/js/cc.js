@@ -56,14 +56,14 @@ export function renderCC(root, ctx) {
         (hb ? (isFresh(hb) ? '<span class="dot ok"></span> ' : '<span class="dot warn"></span> ') + ago(hb.last_heartbeat) : '<span class="faint">–</span>') + '</td><td>' + (inc ? '<span class="chip crimson">' + inc + '</span>' : '') + '</td></tr>';
     }).join('');
     $id('ccagents').innerHTML = '<h2 class="holo-title">Agenten &amp; Council<span class="sub">Raum = Schreibtisch-Zuordnung · Status aus Tasks · Heartbeat nur wo vorhanden</span></h2>' +
-      '<div class="ccscroll"><table class="table"><thead><tr><th>Agent</th><th>Raum</th><th>Status</th><th>Offen/Ges.</th><th>Heartbeat</th><th>⚠</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      '<div class="ccscroll" tabindex="0" role="region" aria-label="Tabelle, mit Pfeiltasten scrollbar"><table class="table"><thead><tr><th>Agent</th><th>Raum</th><th>Status</th><th>Offen/Ges.</th><th>Heartbeat</th><th>⚠</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   function tasks() {
     const order = t => RE_WORK.test(t.status) ? 0 : RE_PLAN.test(t.status) ? 1 : RE_DONE.test(t.status) ? 3 : 2;
     const list = S.tasks.slice().sort((a, b) => order(a) - order(b) || String(b.updated).localeCompare(String(a.updated)));
     $id('cctasks').innerHTML = '<h2 class="holo-title">Aufgaben &amp; Delegationen<span class="sub">/api/jarvis/tasks</span></h2>' +
-      '<div class="ccscroll"><table class="table"><thead><tr><th>Task</th><th>Zugewiesen</th><th>Status</th><th>Aktualisiert</th></tr></thead><tbody>' +
+      '<div class="ccscroll" tabindex="0" role="region" aria-label="Tabelle, mit Pfeiltasten scrollbar"><table class="table"><thead><tr><th>Task</th><th>Zugewiesen</th><th>Status</th><th>Aktualisiert</th></tr></thead><tbody>' +
       (list.map(t => '<tr><td><span class="mono">' + esc(t.task_id) + '</span><div class="faint">' + esc(trunc(t.title, 46)) + '</div></td><td>' + esc(shortName(t.assigned_to) || '–') + '</td><td><span class="chip ' + (RE_WORK.test(t.status) ? 'cyan' : '') + '">' + esc(t.status) + '</span></td><td class="mono">vor ' + ago(t.updated) + '</td></tr>').join('') || '<tr><td colspan="4" class="faint">Keine Tasks.</td></tr>') + '</tbody></table></div>';
   }
 
@@ -76,7 +76,7 @@ export function renderCC(root, ctx) {
     const sum = X.jobs.reduce((a, j) => a + (j.tokens_new || 0), 0), calls = X.jobs.reduce((a, j) => a + (j.claude_calls || 0), 0);
     $id('ccjobs').innerHTML = '<h2 class="holo-title">Engine-Jobs<span class="sub">/api/jarvis/jobs · ' + X.jobs.length + ' letzte · ' + fmtTok(sum) + ' neue Token · ' + calls + ' Claude-Aufrufe</span></h2>' +
       (S.engine.active.length ? '<p><span class="chip cyan"><span class="dot live"></span> ' + S.engine.active.length + ' aktiv</span></p>' : '') +
-      '<div class="ccscroll"><table class="table"><thead><tr><th>Job</th><th>Anfrage</th><th>Calls</th><th>Token</th><th>Ergebnis</th></tr></thead><tbody>' +
+      '<div class="ccscroll" tabindex="0" role="region" aria-label="Tabelle, mit Pfeiltasten scrollbar"><table class="table"><thead><tr><th>Job</th><th>Anfrage</th><th>Calls</th><th>Token</th><th>Ergebnis</th></tr></thead><tbody>' +
       (X.jobs.slice(0, 12).map(j => '<tr><td class="mono">' + esc(j.id.slice(-6)) + '<div class="faint">' + (j.finished ? hhmm(j.finished * 1000) : '') + '</div></td><td>' + esc(trunc(j.request, 40)) + '</td><td class="mono">' + (j.claude_calls ?? '–') + '</td><td class="mono">' + fmtTok(j.tokens_new || 0) + '</td><td><span class="chip ' + (j.verdict === 'done' ? 'cyan' : 'crimson') + '">' + esc(j.verdict || j.state) + '</span></td></tr>').join('') || '<tr><td colspan="5" class="faint">Keine Jobs.</td></tr>') + '</tbody></table></div>';
   }
 

@@ -549,7 +549,7 @@ async function slashRun(text, form) {
 export async function renderChat(root, me) {
   claudeLoad();
   root.innerHTML =
-    '<div class="cwrap"><button type="button" class="cjump" id="cjump" hidden>↓ Neueste</button><div class="ctok" id="ctok"></div><div class="cstat" id="cstat" hidden></div><div class="cses" id="cses" hidden></div><div class="cmsgs" id="cmsgs"></div><form class="cform" id="cf">' +
+    '<div class="cwrap"><button type="button" class="cjump" id="cjump" hidden>↓ Neueste</button><div class="ctok" id="ctok"></div><div class="cstat" id="cstat" hidden></div><div class="cses" id="cses" hidden></div><div class="cmsgs" id="cmsgs" tabindex="0" role="log" aria-label="Chatverlauf"></div><form class="cform" id="cf">' +
     '<div id="cimgs" class="cimgs"></div><div class="copts"><label>Ordner<select name="dir"><option value="auto">Auto</option><option value="notizen">Notizen</option><option value="bibliothek">Bibliothek</option><option value="maserver">MA-Server (Projekt)</option><option value="server">Server-Home</option></select></label>' +
     '<label>Rechte<select name="mode"><option value="auto">Auto</option><option value="lesen">Nur lesen</option><option value="plan">Nur planen (Plan-Modus)</option><option value="notizen">Notizen bearbeiten</option><option value="voll">Voll (wie am PC)</option><option value="voll_senden">Voll + Senden/Löschen (nur diese Nachricht)</option></select></label>' +
     '<label>Modell<select name="model"><option value="auto">Auto</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku (sparsam)</option><option value="opus">Opus</option></select></label></div>' +

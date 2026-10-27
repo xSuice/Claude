@@ -33,7 +33,7 @@
   /* --- Text --- */
   --text:         #E8E8E8;
   --text-muted:   #8A93A0;
-  --text-faint:   #5A636F;
+  --text-faint:   #858E9B; /* A11Y: >= 4.5:1 auf --bg/--card (WCAG 1.4.3) */
 
   /* --- Status-Semantik --- */
   --ok:           #4ADE80;

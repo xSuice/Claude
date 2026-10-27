@@ -19,7 +19,7 @@ Zuerst alle **P0/P1**, danach U-01 und U-02; P3 nur einzeln und nach Basisabnahm
 - **Nutzen:** Verhindert stillen Rückfall eines produktiven Fixes. **Umfang:** 1 Datei, 1 Test. **Aufwand:** ~1 h. **Risiken:** Berührt Provisionierungscode; Agent-Neustart nötig. **Abhängigkeiten:** keine. **Abnahme:** Provisionierung im Trockenlauf behält die Felder; Drei-Wege-Probe (andrew/ma-web erlaubt, nobody verweigert). **Rollback:** Backup `manage.py.bak-…`.
 
 ### S-02 Rotation des nexum-Schlüssels
-- **Status:** früher als Empfehlung festgehalten, hier **nicht neu geprüft**. **Problem:** Schlüssel war im Arbeitskontext sichtbar. **Lösung:** Neuen Schlüssel beim Anbieter erzeugen, in `~/.config/ma-jarvis/keys/` ersetzen, alten widerrufen. **Aufwand:** ~30 min, **braucht dich** (Anbieterkonto). **Risiko:** kurzzeitiger Ausfall des Fallbacks. **Abnahme:** Fallback-Job läuft mit neuem Schlüssel; alter wird abgewiesen. **Rollback:** alter Schlüssel nur bis zum Widerruf.
+- **Status:** Schlüssel liegt belegt an 19 Stellen (18 PC-`.env` + Server, identisch, Fingerabdruck geprüft; sonst nirgends). Rotation braucht dein Anbieterkonto. **Problem:** Schlüssel war im Arbeitskontext sichtbar. **Lösung:** Neuen Schlüssel beim Anbieter erzeugen, in `~/.config/ma-jarvis/keys/` ersetzen, alten widerrufen. **Aufwand:** ~30 min, **braucht dich** (Anbieterkonto). **Risiko:** kurzzeitiger Ausfall des Fallbacks. **Abnahme:** Fallback-Job läuft mit neuem Schlüssel; alter wird abgewiesen. **Rollback:** alter Schlüssel nur bis zum Widerruf.
 
 ---
 
@@ -48,7 +48,7 @@ Zuerst alle **P0/P1**, danach U-01 und U-02; P3 nur einzeln und nach Basisabnahm
 - **Problem:** Browser-Spracherkennung sendet Audio an den Anbieter; Dauermodus unzuverlässig. **Lösung:** openWakeWord + faster-whisper (+ Piper-Nachfolger für Ausgabe) auf dem PC, Anbindung an das vorhandene Voice-Modul. **Referenzen:** `V3-REFERENZEN.md`. **Aufwand:** 1–2 Tage. **Ressourcen:** GPU-VRAM (Gaming-Vorrang beachten). **Risiken:** GPL-3.0 bei Piper-Nachfolger; Modellgröße vs. 6 GB; Genauigkeit für „Jarvis“ unbekannt. **Abnahme:** akustischer Test mit echter Stimme, ≥ 9/10 Erkennungen, 0 Cloud-Audio. **Rollback:** Browser-Modus bleibt.
 
 ### U-02 Router-Restquoten im Command Center
-- **STATUS: NICHT UMGESETZT.** Ein Probe-Zugriff auf `council_decisions` (PG, über `db_adapter`) lief in den Timeout; Datenquelle nicht bestätigt, daher keine Anbindung.
+- **STATUS: NICHT UMSETZBAR.** `council_decisions` (PG) ist leer (0 Zeilen): keine Datenquelle für Routing-Entscheidungen.
 - **Problem:** keine Datenquelle. **Lösung:** Evidence-Router-Ledger (liegt auf dem Server) per lesendem Endpunkt anbinden, analog zur Telemetrie. **Aufwand:** 2–3 h. **Risiko:** Portal-Neustart. **Abnahme:** Anzeige gegen Rohdaten verglichen.
 
 ### U-03 Funktionstests für die übrigen Skills
@@ -59,6 +59,7 @@ Zuerst alle **P0/P1**, danach U-01 und U-02; P3 nur einzeln und nach Basisabnahm
 - **Problem:** `docx/openpyxl/pptx/pypdf/reportlab/pdfplumber` fehlen dort; Skills enden mit Exit 2. **Lösung:** Installation in der Hermes-Umgebung (oder eigene Skill-Umgebung). **Risiko:** Änderung der Hermes-Umgebung — daher deine Freigabe. **Abnahme:** die vier Skill-Testläufe (82 Tests) laufen dort grün.
 
 ### U-05 Portal-Barrierefreiheit gegen WCAG 2.2 prüfen
+- **STATUS: AUTOMATISIERT UMGESETZT 27.10.:** axe-core 61 → 1 Knoten, siehe V3-ABSCHLUSS-GATES.md. Manuelle Tastatur-/Screenreader-Prüfung offen.
 - **Problem:** nie formal geprüft. **Lösung:** Prüfliste (Kontrast, Tastaturbedienung, Fokus, reduzierte Bewegung) und Korrektur. **Aufwand:** 0,5–1 Tag.
 
 ---

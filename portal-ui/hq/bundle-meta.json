@@ -17,7 +17,7 @@
       "format": "esm"
     },
     "js/chat.js": {
-      "bytes": 49027,
+      "bytes": 49727,
       "imports": [
         {
           "path": "js/api.js",
@@ -69,7 +69,7 @@
       "format": "esm"
     },
     "js/cc.js": {
-      "bytes": 18262,
+      "bytes": 18487,
       "imports": [
         {
           "path": "js/api.js",
@@ -243,7 +243,7 @@
           "bytesInOutput": 7912
         },
         "js/chat.js": {
-          "bytesInOutput": 36799
+          "bytesInOutput": 36848
         },
         "js/viewer.js": {
           "bytesInOutput": 6983
@@ -258,7 +258,7 @@
           "bytesInOutput": 1914
         },
         "js/cc.js": {
-          "bytesInOutput": 14265
+          "bytesInOutput": 14490
         },
         "js/ledger-view.js": {
           "bytesInOutput": 1093
@@ -276,7 +276,7 @@
           "bytesInOutput": 19255
         }
       },
-      "bytes": 175519
+      "bytes": 175793
     }
   }
 }
