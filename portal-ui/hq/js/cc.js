@@ -29,7 +29,7 @@ export function renderCC(root, ctx) {
     '<div class="grid cols3 section"><div class="holo" id="ccauto"></div><div class="holo" id="ccskills"></div><div class="holo" id="cchist"></div></div>' +
     '<div class="holo section" id="ccna"></div>';
   const $id = id => root.querySelector('#' + id);
-  const X = { status: null, usage: null, plan: null, jobs: [], conn: null, sched: null, sess: null, errs: {} };
+  const X = { tele: null, status: null, usage: null, plan: null, jobs: [], conn: null, sched: null, sess: null, errs: {} };
 
   /* ---- Renderer ---- */
   function kpis() {
@@ -131,11 +131,29 @@ export function renderCC(root, ctx) {
       (se.length ? '<div class="hqk">Chat-Verläufe</div><ul class="hql">' + se.map(s => '<li>' + esc(trunc(s.title, 56)) + '<div class="faint">' + esc(s.where) + ' · vor ' + ago(s.time * 1000) + '</div></li>').join('') + '</ul>' : '');
   }
 
+  function pcPanel() {
+    const t = X.tele && X.tele.pc;
+    if (!t) return NA('PC- & GPU-Telemetrie', X.errs.tele || 'lädt …');
+    if (t.state !== 'fresh') return NA('PC- & GPU-Telemetrie', t.state === 'stale' ? 'Letzter Messwert vor ' + t.age_s + ' s – PC-Reporter meldet nicht mehr (PC aus oder Reporter gestoppt).' : 'Kein gültiger Messwert vorhanden (' + t.state + ').');
+    const g = t.gpu;
+    return '<div class="ccna ok"><b>PC &amp; GPU</b> – Messwert vor ' + t.age_s + ' s<div class="ccrow"><span>CPU</span><span class="mono">' + Math.round(t.cpu_pct) + ' %</span></div>' + bar(Math.round(t.cpu_pct)) +
+      '<div class="ccrow"><span>RAM</span><span class="mono">' + Math.round(t.ram_pct) + ' %</span></div>' + bar(Math.round(t.ram_pct)) +
+      (g ? '<div class="ccrow"><span>GPU</span><span class="mono">' + Math.round(g.util_pct) + ' % · ' + Math.round(g.temp_c) + ' °C</span></div>' + bar(Math.round(g.util_pct)) +
+        '<div class="ccrow"><span>VRAM</span><span class="mono">' + Math.round(g.vram_used_mb) + ' / ' + Math.round(g.vram_total_mb) + ' MB</span></div>' + bar(pct(g.vram_used_mb, g.vram_total_mb)) : '<div class="faint">Keine GPU-Werte (nvidia-smi nicht verfügbar).</div>') +
+      '<div class="faint">Nur Messwerte; keine Prozessnamen. Zeigt Auslastung, nicht ob ein Worker arbeitet.</div></div>';
+  }
+
+  function logPanel() {
+    const L = X.tele && X.tele.logs;
+    if (!L) return NA('Logs', X.errs.tele || 'lädt …');
+    const rows = Object.keys(L.units).map(u => { const v = L.units[u]; return v.error ? '<li><span class="dot warn"></span> <b class="mono">' + esc(u) + '</b> <span class="faint">' + esc(v.error) + '</span></li>' :
+      '<li><span class="dot ' + (v.errors ? 'err' : 'ok') + '"></span> <b class="mono">' + esc(u) + '</b> ' + v.errors + ' Fehler' + v.last.map(m => '<div class="faint mono">' + hhmm(m.t * 1000) + ' ' + esc(m.msg) + '</div>').join('') + '</li>'; }).join('');
+    return '<div class="ccna ok"><b>Logs</b> – ' + esc(L.window) + '<ul class="hql">' + rows + '</ul><div class="faint">Zugangsdaten werden maskiert; höchstens 3 gekürzte Zeilen je Dienst.</div></div>';
+  }
+
   function na() {
-    $id('ccna').innerHTML = renderLedger(X.ledger) + '<h2 class="holo-title">Noch nicht angebunden<span class="sub">Für diese Felder existiert aktuell keine API – sie werden nicht simuliert</span></h2><div class="grid cols3">' +
-      NA('Modelle & Router-Quoten', 'Evidence-Router-Ledger liegt auf dem Server (router/), hat aber keinen Portal-Endpunkt.') +
-      NA('GPU & Worker-Telemetrie', 'Worker/GPU laufen auf dem Windows-PC; es gibt keinen Telemetrie-Eingang in das Portal.') +
-      NA('Logs', 'Kein Log-Endpunkt im Portal; Terminal-Ansicht bleibt der Zugriffsweg.') + '</div>';
+    $id('ccna').innerHTML = renderLedger(X.ledger) + '<h2 class="holo-title">Weitere Quellen<span class="sub">Angebunden nur, wo eine echte Datenquelle existiert – nichts wird simuliert</span></h2><div class="grid cols3">' +
+      NA('Modelle & Router-Quoten', 'Evidence-Router-Ledger liegt auf dem Server (router/), hat aber keinen Portal-Endpunkt.') + pcPanel() + logPanel() + '</div>';
   }
 
   let active = true;
@@ -146,6 +164,7 @@ export function renderCC(root, ctx) {
     const get = async (k, fn) => { try { X[k] = await fn(); delete X.errs[k]; } catch (e) { X.errs[k] = e.message; } };
     await Promise.all([
       get('status', () => api('/api/status')),
+      get('tele', () => api('/api/jarvis/telemetry')),
       get('ledger', async () => { const r = await api('/api/jarvis', { body: { cmd: 'usage' } }); if (!r.ok) throw new Error('Ledger nicht verfügbar'); return r.data; }),
       get('usage', () => cop('usage', {})),
       get('conn', () => cop('connectors', {})),

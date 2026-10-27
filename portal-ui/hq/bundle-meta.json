@@ -69,7 +69,7 @@
       "format": "esm"
     },
     "js/cc.js": {
-      "bytes": 16058,
+      "bytes": 18262,
       "imports": [
         {
           "path": "js/api.js",
@@ -258,7 +258,7 @@
           "bytesInOutput": 1914
         },
         "js/cc.js": {
-          "bytesInOutput": 12498
+          "bytesInOutput": 14265
         },
         "js/ledger-view.js": {
           "bytesInOutput": 1093
@@ -270,13 +270,13 @@
           "bytesInOutput": 9646
         },
         "js/port.js": {
-          "bytesInOutput": 49901
+          "bytesInOutput": 49900
         },
         "js/views.js": {
           "bytesInOutput": 19255
         }
       },
-      "bytes": 173753
+      "bytes": 175519
     }
   }
 }

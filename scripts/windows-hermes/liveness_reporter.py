@@ -62,6 +62,28 @@ def live_profiles():
     return [p for p in s.get('served_profiles', []) if HANDLE.match(p) and p not in parked], None
 
 
+def push_telemetry():
+    """Strikt isolierter Messwert-Push (CPU/RAM/GPU) – Fehler duerfen die Liveness-Meldung nie beeinflussen."""
+    global tele_ok
+    try:
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import pc_telemetry
+        r = subprocess.run(SSH + ['python3', '/opt/jarvis/council/telemetry_ingest.py'], input=json.dumps(pc_telemetry.snapshot()),
+                           capture_output=True, text=True, timeout=45, creationflags=CREATE_NO_WINDOW)
+        good = r.returncode == 0
+        if good != tele_ok or not good:
+            log.info('Telemetrie %s %s', 'ok' if good else 'FEHLER', r.stderr.strip()[:160])
+        tele_ok = good
+    except Exception as e:                       # noqa: BLE001
+        if tele_ok is not False:
+            log.info('Telemetrie Ausnahme: %s', str(e)[:160])
+        tele_ok = False
+
+
+tele_ok = None
+
+
 def main():
     log.info('Reporter gestartet')
     last_ok = None
@@ -82,6 +104,7 @@ def main():
         except Exception as e:                   # noqa: BLE001
             log.info('Ausnahme: %s', str(e)[:200])
             last_ok = False
+        push_telemetry()
         time.sleep(INTERVAL)
 
 
