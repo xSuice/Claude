@@ -57,3 +57,7 @@ Quelle: `scripts/verification-v3/council_chains.py` über die persistierten Sess
 | ab 26.10. (A4-1 Toolsperre + A4-2 Debattenbudget) | 43 | 119 | 17 | 2 | 1 |
 
 Gesamt 1466 DM-Aufrufe in 270 Ketten, Median 2. Spitze am 24.10. mit 644 DMs. Das ist eine zeitliche Korrelation, kein Kausalitätsbeweis. Es sind gesendete Aufrufe, kein Zustellbeweis; Themen und Ergebnisqualität sind nicht erfasst. Das Debattenbudget (3 Runden, rund 6 DMs) ist nur per SOUL.md festgelegt, technisch nicht erzwungen: seit 26.10. überschreiten noch 2 Ketten es, die längste hat 17 DMs. Damit ist die Messquelle für Council-Runden vorhanden (r3 teilweise), die Themenzuordnung bleibt offen.
+
+
+## Nachtrag: Gateway-Transportfix aktiv
+Gateway-Prozess seit 27.10. 12:31 (PID 32052), jünger als `run_notifications.py` (05:32). Gegenprobe mit einzeiligem 3,6-kB-JSON: Abschlussmeldung enthielt den Tail inkl. Endmarke statt „showing last 0 chars“. Das Gate „Transportfix aktiv“ gilt damit als erfüllt.
