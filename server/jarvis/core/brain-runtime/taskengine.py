@@ -1840,6 +1840,10 @@ class Engine:
     def pc_lease(self, caps: list[str], worker: str) -> dict | None:
         t = now_s(self.clock)
         with self._conn(True) as c:
+            # Worker polling is an independent intake path: every stop level
+            # prohibits handing out a NEW execution lease, including SOFT.
+            if self.kill_level() is not None:
+                return None
             rows = c.execute("SELECT s.* FROM job_steps s JOIN jobs j ON j.id=s.job_id WHERE j.owner=? AND s.kind='pc' "
                              "AND s.state='waiting' AND j.state IN ('waiting_pc','running') ORDER BY j.created, s.idx LIMIT 20",
                              (self.brain.identity,)).fetchall()
@@ -1858,6 +1862,8 @@ class Engine:
         j = self._job(job_id)
         if not j:
             raise PermissionError('job not found')
+        if self.kill_level() in ('exec', 'hard'):
+            raise PermissionError('kill switch active: late PC result refused')
         with self._conn() as c:   # erst prüfen, dann entpacken: ein spätes Ergebnis einer alten Revision darf nichts schreiben
             pre = c.execute("SELECT revision FROM job_steps WHERE job_id=? AND sid=? AND kind='pc' AND state='running'", (job_id, sid)).fetchone()
         if not pre or int(pre[0]) != int(j.get('revision') or 1):
