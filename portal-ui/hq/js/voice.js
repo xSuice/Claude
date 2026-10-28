@@ -7,6 +7,7 @@ import { toast } from './api.js';
 import { S, agentState, isFresh, shortName, refresh } from './store.js';
 import { ROSTER } from './roster.js';
 import { voiceAsk } from './chat.js';
+import { handleTaskVoice } from './voicetasks.js';
 import { speechChunks } from './speech-text.js';
 import { LOCAL_VOICE, LocalEar, localHealth, playLocal, unlockAudio, transcribeWav, stripWake } from './localvoice.js';
 
@@ -70,7 +71,7 @@ export function answerLocal(text) {
     const c = s => st.filter(a => a.status === s).length;
     return { reply: ids.length + ' Agenten: ' + c('working') + ' arbeiten, ' + c('planning') + ' in Planung, ' + c('idle') + ' ohne Auftrag. ' + (S.incidents.length ? S.incidents.length + ' offene Incidents.' : 'Keine offenen Incidents.') + ' Watchdog ' + (isFresh(S.agents.find(a => a.agent === 'watchdog')) ? 'aktiv.' : 'nicht aktuell.') };
   }
-  if (/(was kannst du|hilfe|befehle)/.test(t)) return { reply: 'Ich beantworte Fragen zu Status, Alarmen, Aufträgen, wer gerade arbeitet, was ein bestimmter Agent macht, und öffne Bereiche. Alles andere frage ich bei JARVIS nach, nur lesend.' };
+  if (/(was kannst du|hilfe|befehle)/.test(t)) return { reply: 'Ich beantworte Fragen zu Status, Alarmen, Aufträgen und wer gerade arbeitet, öffne Bereiche und lege Aufträge an: Sag „Neuer Auftrag“ und was zu tun ist, ich frage vorher nach. Alles andere frage ich bei JARVIS nach, nur lesend.' };
   return null;
 }
 
@@ -112,12 +113,33 @@ function speak(text, done) {
   if (!useLocalVoice()) next();
 }
 
+/* Satzweise Ausgabe waehrend das Modell noch schreibt (nur lokale Stimme) */
+export function sentenceCut(text) {   // Index hinter dem letzten abgeschlossenen Satz, -1 wenn keiner
+  let cut = -1; const re = /[.!?…](?=\s|$)/g; let m;
+  while ((m = re.exec(text))) if (m.index + 1 < text.length || /[.!?…]$/.test(text)) cut = m.index + 1;
+  return cut;
+}
+function speakStream(done) {
+  if (!V.speakOn || !useLocalVoice()) return null;
+  cancelSpeech();
+  const run = speechRun, q = []; q.open = true;
+  setState('speaking'); earPause(true);
+  const finish = () => { if (run !== speechRun) return; stopLocal = null; setTimeout(() => earPause(false), 350); setState(idle()); done && done(); };
+  stopLocal = playLocal(q, { isCurrent: () => run === speechRun, onDone: finish, onAudio: () => { V.level = 0.8; },
+    onError: () => { if (run !== speechRun) return; stopLocal = null; finish(); } });
+  return { push: t => { if (run === speechRun) for (const c of speechChunks(t)) q.push(c); }, end: () => { q.open = false; }, alive: () => run === speechRun };
+}
+
 /* ---------- Befehl behandeln ---------- */
 async function handle(raw) {
   const text = raw.replace(WAKE, ' ').replace(/^[\s,.:;!]+/, '').trim();
   if (text.length < 2) { setState(idle()); return; }
   say('u', text);
   setState('thinking');
+  try {                                 // Aufträge per Sprache: anlegen/abbrechen nur nach „Ja“
+    const tv = await handleTaskVoice(text);
+    if (tv) { say('a', tv.reply, 'Aufträge · ' + (tv.meta || 'lesend')); speak(tv.reply, tv.confirm ? () => { resumeDialogue(); if (!V.convo) openWindow(30000); } : resumeDialogue); if (V.state === 'thinking') setState(idle()); return; }
+  } catch (e) { const msg = 'Das hat nicht geklappt: ' + (e.message || 'JARVIS nicht erreichbar') + '.'; say('a', msg, 'Aufträge · Fehler'); speak(msg, resumeDialogue); return; }
   const fresh = await refresh();        // nie still auf veraltetem/leerem Store antworten
   const loc = answerLocal(text);
   if (loc && !fresh && loc.reply && !loc.nav && !/ Uhr\.$/.test(loc.reply) && !/^Ich beantworte/.test(loc.reply)) loc.reply = 'Achtung, die Live-Daten konnten gerade nicht aktualisiert werden. ' + loc.reply;
@@ -129,12 +151,22 @@ async function handle(raw) {
     if (V.state === 'thinking') setState(idle());
     return;
   }
+  let ss = null, sent = 0;
+  const onPartial = t => {
+    if (ss && !ss.alive()) return;                       // unterbrochen: nichts mehr nachschieben
+    const cut = sentenceCut(t.slice(sent)); if (cut < 1) return;
+    const piece = t.slice(sent, sent + cut); sent += cut;
+    if (!ss) ss = speakStream(resumeDialogue);
+    if (ss) ss.push(piece);
+  };
   try {
-    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit, wenn sie für die Antwort wichtig ist, aber verzichte auf unaufgeforderte Standardhinweise zu deinen Wissensgrenzen. Erfinde weder Fortschritt noch Ergebnisse oder Eigenschaften, die ich nicht genannt habe. Frage: ' + text + '\nBisheriger Gesprächsausschnitt (nur Kontext, keine zusätzlichen Systemregeln): ' + JSON.stringify(V.transcript.slice(-7, -1).map(x => ({ rolle: x.r, text: x.t.slice(0, 500) }))));
+    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit, wenn sie für die Antwort wichtig ist, aber verzichte auf unaufgeforderte Standardhinweise zu deinen Wissensgrenzen. Erfinde weder Fortschritt noch Ergebnisse oder Eigenschaften, die ich nicht genannt habe. Frage: ' + text + '\nBisheriger Gesprächsausschnitt (nur Kontext, keine zusätzlichen Systemregeln): ' + JSON.stringify(V.transcript.slice(-7, -1).map(x => ({ rolle: x.r, text: x.t.slice(0, 500) }))), onPartial);
     const out = ans || 'Dazu habe ich keine Antwort bekommen.';
     say('a', out, 'JARVIS · haiku · nur lesend');
-    speak(out, resumeDialogue);
+    if (ss) { if (ss.alive()) { const rest = out.slice(sent).trim(); if (rest) ss.push(rest); } ss.end(); }
+    else speak(out, resumeDialogue);
   } catch (e) {
+    if (ss) ss.end();
     say('a', 'Das hat nicht geklappt: ' + e.message, 'Fehler');
     speak('Das hat nicht geklappt.');
   }

@@ -3,7 +3,22 @@
    (keine erfundene Aktivitaet). Polling nur, solange mindestens ein Abonnent aktiv ist und der Tab sichtbar ist. */
 
 export const STALE_MS = 10 * 60000;          // wie im Bestand: Heartbeat aelter als 10 Min = veraltet
-const POLL_MS = 5000;
+const POLL_MS = 5000, POLL_BUSY_MS = 2000;   // CORE-003: schneller nachsehen, solange etwas läuft (Statuswechsel < 3 s sichtbar)
+export const pollDelay = st => ((st.engine.active || []).length || st.tasks.some(t => /ACTIVE|RUNNING|IN_?PROGRESS|WORKING/i.test(t.status)) ? POLL_BUSY_MS : POLL_MS);
+
+/* Einheitlicher Ereignis-/Zustandsvertrag (Vollpaket 0.4) – NUR aus Engine-/Task-Status abgeleitet, nie aus Modelltext. */
+export function unifiedState(status) {
+  const s = String(status || '').toUpperCase();
+  if (/^(?:DONE|COMPLETE|COMPLETED)$/.test(s)) return 'DONE_VERIFIED';   // V16 'done' = unabhängige Abnahme bestanden
+  if (/^(?:FAILED|ERROR)$/.test(s)) return 'FAILED';
+  if (/^(?:PARTIAL)$/.test(s)) return 'PARTIAL';
+  if (/^(?:CANCELLED|CANCELED)$/.test(s)) return 'CANCELLED';
+  if (/WAITING_APPROVAL|NEEDS_APPROVAL/.test(s)) return 'WAITING_APPROVAL';
+  if (/BLOCKED|WAITING_PC|WAITING/.test(s)) return 'BLOCKED';
+  if (/RECOVER|RETRY/.test(s)) return 'RECOVERING';
+  if (/ACTIVE|RUNNING|IN_?PROGRESS|WORKING|PLANNING/.test(s)) return 'RUNNING';
+  return 'IDLE';
+}
 
 export const S = {
   agents: [],            // [{agent,last_heartbeat,status}]
@@ -93,13 +108,15 @@ async function doPoll() {
 }
 
 function emit(fresh) { subs.forEach(fn => { try { fn(S, fresh); } catch (e) { console.error(e); } }); }
-function loop() { if (!document.hidden) poll(); }
+function loop() {
+  timer = setTimeout(async () => { if (!document.hidden) await poll(); if (timer) loop(); }, S.loaded ? pollDelay(S) : POLL_MS);
+}
 document.addEventListener('visibilitychange', () => { if (!document.hidden && subs.size) poll(); });
 
 export function subscribe(fn) {
   subs.add(fn);
-  if (!timer) { timer = setInterval(loop, POLL_MS); poll(); } else if (S.loaded) fn(S, []);
-  return () => { subs.delete(fn); if (!subs.size && timer) { clearInterval(timer); timer = null; prev = null; } };
+  if (!timer) { timer = true; poll(); loop(); } else if (S.loaded) fn(S, []);
+  return () => { subs.delete(fn); if (!subs.size && timer) { clearTimeout(timer); timer = null; prev = null; } };
 }
 
 /* Gemeinsame Zustandsableitung je Agent (Voice nutzt sie; HQ/CC haben identische Regeln) */

@@ -6,9 +6,9 @@ async function boot(){
  globalThis.SpeechSynthesisUtterance=class{constructor(t){this.text=t}};
  globalThis.speechSynthesis={getVoices:()=>[],cancel(){},speak(u){audio.push(u)}};
  globalThis.localStorage={getItem:()=>null,setItem(){}};
- globalThis.__deps={speechChunks,toast(){},S:{tasks:[],incidents:[],agents:[]},agentState(){return {status:'idle',open:[]}},isFresh:()=>true,shortName:s=>s,refresh:async()=>true,ROSTER:[],voiceAsk:async p=>{requests.push(p);return 'Lass uns das zusammen anschauen.'}};
+ globalThis.__deps={speechChunks,toast(){},S:{tasks:[],incidents:[],agents:[]},agentState(){return {status:'idle',open:[]}},isFresh:()=>true,shortName:s=>s,refresh:async()=>true,ROSTER:[],handleTaskVoice:async()=>null,voiceAsk:async p=>{requests.push(p);return 'Lass uns das zusammen anschauen.'}};
  let s=fs.readFileSync(new URL('./js/voice.js',import.meta.url),'utf8').replace(/^import .*;\r?$/gm,'');
- s='const {speechChunks,toast,S,agentState,isFresh,shortName,refresh,ROSTER,voiceAsk}=globalThis.__deps;\n'+s;
+ s='const {speechChunks,toast,S,agentState,isFresh,shortName,refresh,ROSTER,voiceAsk,handleTaskVoice}=globalThis.__deps;\n'+s;
  const saved={setTimeout:globalThis.setTimeout,clearTimeout:globalThis.clearTimeout};
  globalThis.setTimeout=(f,ms)=>{timers.set(++id,{f,ms});return id};globalThis.clearTimeout=i=>timers.delete(i);
  const m=await import('data:text/javascript;base64,'+Buffer.from(s+'//'+Math.random()).toString('base64'));
@@ -92,5 +92,14 @@ test('conversation mode keeps listening after answers and window timers (no wake
   b.m.endConversation();
   assert.equal(b.m.V.convo,false);
   assert.notEqual(b.m.V.state,'listening');
+ }finally{b.cleanup()}
+});
+
+test('sentenceCut finds the end of the last complete sentence while streaming',async()=>{
+ const b=await boot();try{
+  assert.equal(b.m.sentenceCut('Hallo Andre'),-1);
+  assert.equal(b.m.sentenceCut('Das ist Satz eins. Und zwei'),18);
+  assert.equal(b.m.sentenceCut('Fertig.'),7);
+  assert.equal(b.m.sentenceCut('Version 1.22 ist da'),-1);   // Dezimalpunkt ist kein Satzende
  }finally{b.cleanup()}
 });

@@ -1,4 +1,4 @@
-# APPROVAL_MATRIX – MA-HOME JARVIS (Stand 27.10.2026, 22:40)
+# APPROVAL_MATRIX – MA-HOME JARVIS (Stand 28.10.2026, 04:15 – Owner: „mach alles fertig los“ = empfohlenes Paket freigegeben)
 
 Grundlage: `MA-HOME_JARVIS_KIMI_VOLLPaket.zip` mit Abschnitt 0–0.6, Teil A–D und den beiden Originalanhängen. Die Einträge folgen dem Schema aus 0.2.
 Status: `VORSCHLAG | GENEHMIGT | ABGELEHNT | UMGESETZT | VERIFIZIERT`. Prüftiefe: *Doku geprüft · lokal getestet · synthetisch E2E · Zielgerät offen*.
@@ -23,7 +23,7 @@ ressourcen: "keine"
 kosten: "keine"
 auswirkungen: "Auth-Kette; Rollback *.bak-vor-keyrotation"
 abnahme: ["alter Schlüssel → 401", "neuer Schlüssel nur in den 2 Dateien", "Portal + Statusmonitor grün"]
-status: VORSCHLAG (empfohlen, sofort)
+status: VERIFIZIERT 28.10. – neuer Schlüssel (Fingerprint 6b90462a) in portal.json, Caddyfile, state.json; alter Schlüssel → 401, neuer → 200, öffentlich 302 (Login), Kuma 8/8 grün; Backups *.bak-vor-keyrotation-20261027. Alte Kopien in root-only Backups sind wertlos, weil der alte Schlüssel abgewiesen wird.
 ```
 
 ```yaml
@@ -71,8 +71,9 @@ bestand: "Watchdog mit Evidenzmodell vorhanden (Incidents im Portal); Kuma deckt
 option: "30-min-Tiefencheck als systemd-Timer (jarvis_deepcheck.py): offene Tasks ohne Fortschrittsbeleg > Schwelle, Jobs 'gestartet ohne Run', Ledger-Anomalien → Incident + Kuma-Push-Monitor 'Tiefencheck lebt'"
 risiken: ["Fehlalarme bei legitimen Wartephasen → Wartegründe aus Taskstatus respektieren"]
 kosten: "keine; < 2 s CPU je Lauf"
-abnahme: ["künstlich hängender Testauftrag erzeugt Incident", "legitime Wartephase erzeugt keinen", "ausgefallener Tiefencheck → Kuma-Alarm"]
-status: VORSCHLAG (empfohlen)
+abnahme: ["künstlich hängender Testauftrag erzeugt Befund", "legitime Wartephase erzeugt keinen", "ausgefallener Tiefencheck → Kuma-Alarm"]
+umsetzung: "jarvis_deepcheck.py (cron 7,37 * * * *), nur lesend auf brain.db; Befund → Kuma-Push 'Tiefencheck (30 min)' down → Signal; bleibt der Lauf aus (35 min) → ebenfalls Alarm. Schreibt KEINE Incidents in die Engine (Core bleibt Eigentümer)."
+status: VERIFIZIERT – 7/7 Unit-Tests (hängend, Wartephase < 24 h, Lease, Tick-Fehler, Speicher/Platte), Live-Lauf 'OK', Monitor 9/9 up und mit Signal verknüpft
 ```
 
 ```yaml
@@ -86,11 +87,9 @@ status: VERIFIZIERT
 proposal_id: CORE-003
 bereich: "Einheitlicher Ereignisvertrag (Abschnitt 0.4) für Chat, Command Center, Living HQ, Sprache"
 bestand: "store.js leitet Ereignisse aus Poll-Differenzen ab; Engine schreibt events je Job (jarvis.py events)"
-option: "/api/jarvis/events (SSE mit Resync über monotone Revision) aus bestehender Engine-Eventtabelle; Living HQ/CC abonnieren statt pollen; Zustände IDLE/RUNNING/WAITING_APPROVAL/BLOCKED/RECOVERING/DONE_VERIFIED nur aus Engine, nie aus LLM-Text"
-risiken: ["SSE durch Caddy/Waitress: Thread-Bindung je Verbindung (Waitress 4 Threads) → Long-Polling-Fallback"]
-kosten: "keine"
-abnahme: ["Statuswechsel erscheint < 3 s in HQ und CC", "Verbindungsabbruch → 'letzter bekannter Stand', danach Resync ohne Duplikat"]
-status: VORSCHLAG (empfohlen)
+entscheidung: "KEIN SSE: Waitress hat 4 Threads, jede offene SSE-Verbindung bindet einen dauerhaft → Portal könnte bei 3–4 Tabs hängen. Stattdessen adaptives Polling im bestehenden Store: 2 s solange etwas läuft, 5 s im Leerlauf, sofort bei Tab-Rückkehr."
+umsetzung: "store.js pollDelay() + unifiedState() (IDLE/RUNNING/WAITING_APPROVAL/BLOCKED/RECOVERING/DONE_VERIFIED/FAILED/PARTIAL/CANCELLED nur aus Engine-/Task-Status)"
+status: UMGESETZT – Unit-Tests 2/2; Statuswechsel spätestens nach 2 s + Abrufzeit sichtbar (nicht separat im Browser gemessen). Echtes SSE erst mit eigenem Event-Dienst (später, Owner-Entscheidung)
 ```
 
 ## Sprache (Produktziel „wie ChatGPT Voice“)
@@ -124,14 +123,17 @@ bestand: "lokale Antworten 3,5–4 s nach Sprechbeginn; Modellantworten (haiku) 
 option: "voiceAsk streamt bereits NDJSON → Satzgrenzen erkennen, je Satz Piper anstoßen (Queue vorhanden: speechChunks/playLocal)"
 abnahme: ["erster hörbarer Satz < 4 s nach Frageende bei Modellantworten (messen, nicht versprechen)", "Unterbrechen stoppt auch noch nicht gesprochene Sätze"]
 kosten: "keine"
-status: VORSCHLAG (empfohlen – größter Hebel für 'natürlich')
+messung: "Satzweise Ausgabe ist eingebaut (Ton begann 1 s vor Ende der Antwort). Aber: Ziel < 4 s NICHT erreicht – Modellfrage dauerte 35 s bis zum ersten Ton, weil Claude im Lesemodus erst den Vault durchsucht und den Text erst danach schreibt. Engpass ist der Modellaufruf, nicht die Sprachausgabe."
+nächster_schritt: "Für Smalltalk eine schnelle Route ohne Vault-Suche (Kimi/haiku direkt, kein Werkzeug) – Owner-Entscheidung, da andere Route/Kosten"
+status: UMGESETZT – Ziel nicht erreicht (ehrlich gemessen)
 ```
 
 ```yaml
 proposal_id: VOICE-005
 bereich: "Whisper small statt base (bessere Erkennung seltener Wörter, z. B. 'Minecraft' → 'Minikraft')"
-ressourcen: "PC (Ryzen 5 3600): grob 2–3× Rechenzeit je Satz – erst messen"
-status: VORSCHLAG
+messung: "28.10., 8 Fachsätze (Piper-Stimme, 16 kHz): base 0,75 Worttreffer/1,07 s · base+Fachwort-Prompt 0,88/1,04 s · small 0,74/3,32 s · small+Prompt 0,80/3,69 s"
+entscheidung: "small ABGELEHNT (nicht besser, 3,5× langsamer). base + Fachwort-Prompt live (ma_voice_service.py, Backup *.bak-vor-sttprompt-20261028, 4/4 Tests)"
+status: VERIFIZIERT (mit synthetischer Stimme – echte Stimme kann anders ausfallen)
 ```
 
 ```yaml
@@ -148,7 +150,8 @@ bestand: "Sprache ist heute absichtlich nur lesend"
 option: "Intent → jarvis.py submit/status/cancel über bestehende Portal-API; Rückfrage 'Soll ich den Auftrag … anlegen?' + Bestätigung per Knopf/Ja; Barge-in löst nie cancel_task aus"
 risiken: ["Fehlerkennung → falscher Auftrag: deshalb Bestätigungsschritt und Anzeige des Transkripts"]
 abnahme: ["Entscheidende Gesamtprobe aus D3 (Auftrag geben, unterbrechen, Anforderung ändern, Fortschritt fragen)"]
-status: VORSCHLAG (empfohlen)
+umsetzung: "voicetasks.js: 'Neuer Auftrag: …' → JARVIS liest das Verstandene vor und fragt; nur 'Ja' legt an (client_id gegen Doppelanlage), 'Nein' oder anderes Thema verwirft, Rückfrage verfällt nach 30 s. 'Brich den Auftrag ab' → Rückfrage → nur 'Ja' bricht ab. 'Wie weit ist mein Auftrag?' liest den Engine-Zustand."
+status: UMGESETZT – 5/5 Unit-Tests, Browser-E2E: Anlegen→Nein (nichts angelegt), Abbrechen ohne laufenden Auftrag, Fortschritt. Ein echtes 'Ja' wurde NICHT getestet (hätte einen echten Auftrag erzeugt). 'Anforderung ändern' fehlt: V16 hat keinen Änderungsbefehl → LÜCKE
 ```
 
 ```yaml
@@ -166,7 +169,8 @@ bereich: "Portal als installierbare App (PWA) statt APK"
 bestand: "manifest.webmanifest + sw.js vorhanden (classic); neue Shell nutzt sie"
 option: "Installationshinweis (beforeinstallprompt, iOS-Hinweis), Offline-Seite 'letzter Stand', Icons/Theme an HQ-Design"
 abnahme: ["Installieren auf Android", "Start im Vollbild", "Mikrofon in der installierten App"]
-status: VORSCHLAG (empfohlen; Gerätetest durch Owner nötig)
+umsetzung: "Knopf '⤓ App' oben (Android/Chrome/Edge: echtes Installationsfenster; iPhone: Hinweis Teilen → Zum Home-Bildschirm; installiert: kein Knopf). Manifest-Name 'MA-HOME JARVIS'/'JARVIS', Farben an HQ (Backup manifest.webmanifest.bak-vor-jarvisname-20261028)"
+status: UMGESETZT – 2/2 Unit-Tests; Installation auf deinem Handy offen
 ```
 
 ```yaml
@@ -201,4 +205,4 @@ status: VORSCHLAG (nach CORE-003)
 2. „Hey Jarvis“ mit echter Stimme: ggf. Empfindlichkeit anpassen (Regler, Diagnose → „Bericht kopieren“).
 3. Signal-Dialog vom Handy: gemeldet als in Ordnung.
 
-Jarvis: Phase B – Gesprächsmodus, Wakeword und Dienste-Wächter live und synthetisch verifiziert – Entscheidung: empfohlenes Paket SEC-001, VOICE-004, VOICE-007, OPS-003, CORE-003, UX-001 freigeben?
+Jarvis: Phase B – empfohlenes Paket umgesetzt (SEC-001, OPS-003, VOICE-005 verifiziert; VOICE-004/-007, CORE-003, UX-001 umgesetzt) – Engpass Antwortzeit liegt beim Modellaufruf (35 s) – Entscheidung: schnelle Smalltalk-Route ohne Vault-Suche?

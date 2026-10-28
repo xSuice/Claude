@@ -642,12 +642,17 @@ export async function renderChat(root, me) {
 
 /* Wird von der Shell fuer Kopfzeilen-Knoepfe genutzt */
 /* Sprachfrage: laeuft durch denselben Chat-Zustand (Verlauf bleibt einheitlich), IMMER nur lesend (haiku, Modus lesen, Ordner notizen) */
-export async function voiceAsk(prompt) {
+export async function voiceAsk(prompt, onPartial) {
   claudeLoad();
   if (claudeState.busy) throw new Error('Ein anderer JARVIS-Auftrag läuft gerade.');
   const before = claudeState.msgs.length;
   claudeSend(prompt, { dir: 'notizen', mode: 'lesen', model: 'haiku' });
-  for (let i = 0; i < 600; i++) { await new Promise(r => setTimeout(r, 500)); if (!claudeState.busy) break; }
+  let seen = '';
+  for (let i = 0; i < 1500; i++) {   // max. ~5 min; Teiltext alle 200 ms an die Sprachausgabe (erster Satz wird gesprochen, bevor der Rest fertig ist)
+    await new Promise(r => setTimeout(r, 200));
+    if (onPartial) { const a = claudeState.msgs.slice(before).reverse().find(m => m.r === 'a'); if (a && a.t && a.t !== seen) { seen = a.t; try { onPartial(seen); } catch (e) { /* */ } } }
+    if (!claudeState.busy) break;
+  }
   const fresh = claudeState.msgs.slice(before);
   const err = fresh.find(m => m.r === 'e');
   if (err) throw new Error(err.t);

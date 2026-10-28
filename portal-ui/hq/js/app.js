@@ -5,6 +5,7 @@ import { renderHQ, leaveHQ } from './hq.js';
 import { renderCC, leaveCC } from './cc.js';
 import { renderVoice, leaveVoice, mountVoiceButton } from './voiceui.js';
 import { initVoice } from './voice.js';
+import { mountInstall } from './install.js';
 import { setMe, renderNeu, renderMusik, renderEinstellungen, renderWissen, renderVault, renderJarvis } from './port.js';
 import { closeViewer } from './viewer.js';
 import * as V from './views.js';
@@ -238,6 +239,7 @@ function mountTabbar() {
   renderNav();
   mountTabbar();
   mountVoiceButton($('.topbar'), go);
+  mountInstall($('.topbar'), toast);
   initVoice(v => go(v));
   try { me = await api('/api/me'); setMe(me); } catch (e) { /* Gast: Admin-Schalter bleiben aus */ }
   // Teilen-Menue (PWA share_target, GET /?title=&text=&url=): geteilter Text/Link landet als Entwurf im Chat

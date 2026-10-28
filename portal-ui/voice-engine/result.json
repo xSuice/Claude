@@ -1,0 +1,38 @@
+{
+ "base/ohne": {
+  "treffer": 0.746,
+  "s_pro_satz": 1.07,
+  "beispiele": [
+   "Der Zähle mir in drei Sätzen etwas über Minekraft modem.",
+   "richte den Auftrag ab.",
+   "Neue Auftrag fasse die sehr verlogs von heute zusammen."
+  ]
+ },
+ "base/prompt": {
+  "treffer": 0.88,
+  "s_pro_satz": 1.04,
+  "beispiele": [
+   "Da zählen wir in drei Sätzen etwas über Minikraft Modding.",
+   "Richte den Auftrag ab.",
+   "Neuer Auftrag fasse die Serverlogs von heute zusammen."
+  ]
+ },
+ "small/ohne": {
+  "treffer": 0.736,
+  "s_pro_satz": 3.32,
+  "beispiele": [
+   "Der Zähle mir in drei Sätzen etwas über Minerkraftmodin.",
+   "Bericht den Auftrag ab",
+   "Neuer Auftrag fasset die sehr verlogs von heute zusammen."
+  ]
+ },
+ "small/prompt": {
+  "treffer": 0.801,
+  "s_pro_satz": 3.69,
+  "beispiele": [
+   "Der Zähle-Mir in drei Sätzen, etwas über Minerkraftmodin.",
+   "Bericht den Auftrag ab.",
+   "Neuer Auftrag fasset die Serverlogs von heute zusammen."
+  ]
+ }
+}

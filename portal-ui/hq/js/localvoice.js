@@ -153,6 +153,7 @@ export function playLocal(chunks, { onDone, onError, isCurrent, onAudio }) {
   let pending = fetchNext();
   const step = async () => {
     if (stopped || !isCurrent()) return;
+    if (!pending && chunks.open) { setTimeout(() => { if (stopped || !isCurrent()) return; pending = fetchNext(); step(); }, 120); return; }   // Strom: auf naechsten Satz warten
     if (!pending) { onDone(); return; }
     let buf;
     try { buf = await pending; } catch (e) { if (!stopped) onError(e); return; }
