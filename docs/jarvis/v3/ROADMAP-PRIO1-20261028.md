@@ -5,14 +5,24 @@ Grundlage: `ARCHITEKTUR-REFERENZANALYSE-20261028.md`. Leitsatz: kein Plattform-N
 | # | Paket | Status | Beleg |
 |---|---|---|---|
 | 1 | **Auftrag ändern** (Task-ID + unveränderliche Revisionen, CAS, Fencing, neustartfest, Sprache/Portal) | ✅ **live 28.10.** | Release `20261028-074307-6245dd0`: 433/433 Tests (4 übersprungen), 10 neue Revisionstests; Live-Kette über die Brücke; Browser-E2E per Sprache; Commits `6245dd0`, `8f12241` |
-| 2 | Fach-Councils (8 Gruppen, Decision Artifact, nur beratend technisch erzwungen, Metriken) | offen – nächstes Paket | – |
-| 3 | Smart Router aktivieren (Policy-Score, harte Filter, Provider-Aliase, Quoten-Ledger mit `confidence`, Shadow-Eval → Canary) | offen | – |
-| 4 | Living HQ mit normalisierten AgentEvents (Pixel-Agents-Muster, eigene Figuren) | offen | – |
-| 5 | Memory Distiller (Kandidaten aus abgenommenen Aufträgen, Provenienz, Dedupe, Review-Queue) | offen | – |
-| 6 | Sprache < 4 s (Streaming-Überlappung STT/LLM/TTS) | teilweise: 5–6 s | APPROVAL_MATRIX VOICE-004 |
-| 7 | Basis-GO-Gate | offen | Kriterien siehe Analyse |
-| 8 | Capability-Broker + Approval + Audit + Secrets-Refs + 3-stufiger Kill | offen (vor Phase C Pflicht) | – |
-| 9 | Phase C als Capability-Folge | nicht begonnen | – |
+| 1b | **Abbruch-Fencing** (Live-Befund: Abbruch während der Planung wurde vom späten Plan überschrieben) | ✅ live | `ae1ca74`; 3 Tests, gegen den alten Code nachweislich rot |
+| 2 | **Fach-Councils**: 8 Gruppen, ≤ 5 Rollen an jarvis-*-Profile gebunden, ohne Werkzeuge, Decision Artifact je Revision, Dissens sichtbar, Block-Votum erzwingt Plan-Freigabe, Metriken | ✅ live, aktiviert | `e81f1b2`; Live: SECURITY-Council, 3 Rollen, 30 s, 16,7k Token, 4 Einwände, Konfidenz 0,83 |
+| 3 | **Smart Router**: harte Filter, gewichteter Score, Aliase, Budgets mit Herkunft, Ausweichen bei Störung, Shadow-Log, Canary nur für Claude-Modelle, Backtest | ✅ live im **Shadow-Modus** | `9e6b924`; Backtest auf 180 Aufrufen: 0 Policy-Verstöße. Befunde behoben: Kontingentgrenzen galten als Modellfehler; „Markdown“ wurde als „down“ = critical erkannt; der alte Tier 1 war wirkungslos und hätte `kimi_pro` an die Claude-CLI gegeben |
+| 4 | **Living HQ aus echten Ereignissen** (normalisierte AgentEvents, kein Zufall, kein Phantom-Arbeiten) | ✅ live | `f093c20` |
+| 5 | **Memory Distiller** (Kandidaten nur nach bestandener Abnahme, Evidenz, Dedupe und Widerspruch, Review-Queue, Vault nur nach Freigabe) | ✅ live | `f093c20`, `707dbb8`; Live: 1 Kandidat wartet im Command Center auf dich |
+| 6 | **Sprache < 4 s** | ⚠️ verbessert, nicht belegt | künstliche Stimme: 4,5–5,4 s statt 6,2–6,7 s. Dein Handytest steht aus |
+| 7 | **Basis-GO-Gate** | ⏳ 9/11 ✅ | `BASIS-GO-20261028.md` |
+| 8 | **Capability-Security-Kern**: Broker, Audit (redigiert), einmalige Freigabe gebunden an Revision + Schritt + Parameter, Secret-Scope, Not-Aus SOFT/EXEC/HARD ohne KI, Anti-Stagnation | ✅ live | `5ca1f27` (vom Release-Skript wegen eines roten Tests korrekt abgelehnt), `58e1c37`; Broker-Panel mit Not-Aus im Command Center |
+| 9 | **Phase C** als Capability-Folge (C1 `browser.read` …) | ⏸ wartet auf Basis-GO | 26 Ziel-Fähigkeiten im Broker als „nicht registriert“ → werden abgelehnt |
+
+Aktives Release: `20261028-092016-58e1c37` mit 486 Tests (4 übersprungen). Repo: `f7f9419`.
+
+## Owner-Entscheidungen (nicht automatisch)
+1. **Router auf Canary**: Empfehlung nach etwa 1 Woche Shadow: `router.mode=canary`, `canary_pct=10`.
+2. **Moonshot und OpenRouter anbinden**: Dafür braucht es Konten und Schlüssel (Kosten).
+3. **Gespräch: Claude zuerst oder Qwen zuerst**: Empfehlung Claude zuerst. Qwen 8B passt nicht ganz in den Grafikspeicher und hat in den Tests Fakten erfunden.
+4. **Watchdog L3** (automatischer Neustart von Brücke oder Worker): ja oder nein.
+5. **Phase C** erst nach deinem Handy- und Stimmtest.
 
 ## Paket 1 – was genau gilt jetzt
 - Eine Änderung erzeugt **Revision N+1 mit derselben Auftragsnummer**. Die alte Anfrage, der Änderungstext, der Urheber (`portal:<user>`/`cli:<user>`) und der Zeitpunkt stehen in `job_revisions`. Die alten Schritte werden als Momentaufnahme gesichert (`superseded_steps`).
