@@ -791,6 +791,8 @@ class Engine:
     def tick(self, max_seconds: int = 50) -> dict:
         """One bounded scheduler pass: recover, expire, then work on at most a few steps."""
         lvl = self.kill_level()
+        if lvl != 'hard':
+            self._egress_isolate(False)   # Not-Aus aufgehoben: Egress ggf. wieder freigeben
         if lvl in ('exec', 'hard'):
             if lvl == 'hard':
                 self._hard_isolate()
@@ -1495,6 +1497,43 @@ class Engine:
         if n:
             for jid in self._active_ids():
                 self.event(jid, 'kill', 'HARD ISOLATE: PC-Lease entzogen, Cloud-Fallback aus')
+        self._egress_isolate(True)
+
+    def _egress_isolate(self, engage: bool) -> None:
+        """HARD ISOLATE: Egress fuer den Engine-Benutzer per root-Helper sperren/freigeben.
+        Idempotent (Marker), fail-soft (Helper-Fehler stoppt nie den Not-Aus selbst;
+        PC-Lease-Entzug/Cloud-Aus laufen unabhaengig davon). Meldet Fehler nur einmal,
+        bis es klappt. System-Events unter job_id 'system' (kein FK)."""
+        import subprocess
+        base = self.brain.db_path.parent
+        marker, failed = base / 'HARD_ISOLATED', base / 'HARD_ISOLATE_FAILED'
+        cmd_for = lambda mode: (self.hard_isolate_cmd(mode) if callable(getattr(self, 'hard_isolate_cmd', None))
+                                else ['sudo', '-n', '/usr/local/sbin/ma-jarvis-hard-isolate', mode])
+        if engage:
+            if marker.exists():
+                return
+            try:
+                rc = subprocess.run(cmd_for('on'), capture_output=True, timeout=20).returncode
+            except (OSError, subprocess.TimeoutExpired):
+                rc = 1
+            if rc == 0:
+                marker.write_text(time.strftime('%Y-%m-%dT%H:%M:%S'))
+                failed.unlink(missing_ok=True)
+                self.event('system', 'hard_isolate_egress',
+                           'HARD ISOLATE: Egress gesperrt - keine NEUEN Verbindungen des Engine-Benutzers')
+            elif not failed.exists():
+                failed.write_text(str(rc))
+                self.event('system', 'hard_isolate_failed',
+                           f'HARD ISOLATE: Egress-Helper fehlgeschlagen (rc={rc}); PC-Leases dennoch entzogen, Cloud aus')
+        else:
+            if not marker.exists():
+                return
+            try:
+                subprocess.run(cmd_for('off'), capture_output=True, timeout=20)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            marker.unlink(missing_ok=True)
+            self.event('system', 'hard_isolate_off', 'HARD ISOLATE aufgehoben: Egress wieder freigegeben')
 
     def _active_ids(self) -> list[str]:
         with self._conn() as c:
