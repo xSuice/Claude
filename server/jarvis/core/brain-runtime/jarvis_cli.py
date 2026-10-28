@@ -3,7 +3,7 @@
 
   jarvis_cli.py --config CFG submit            stdin: JSON line {"request", "client_id", "options"} [+ '\n' + tar.gz of inputs]
   jarvis_cli.py --config CFG status JOB | events JOB [--since N] | list [--limit N] | result JOB | result-tar JOB
-  jarvis_cli.py --config CFG cancel JOB | approve JOB [--step S] [--answer TEXT]
+  jarvis_cli.py --config CFG cancel JOB | approve JOB [--step S] [--answer TEXT] | revise JOB --change TEXT [--expected N]
   jarvis_cli.py --config CFG tick [--max-seconds 50]     (cron, every minute, under flock)
   jarvis_cli.py --config CFG usage | caps [--discover] | learned | forget template|lesson ID | meta
   jarvis_cli.py --config CFG doctor | kill on|off [--global]
@@ -188,6 +188,7 @@ def main(argv=None):
     s = sp.add_parser('events'); s.add_argument('job'); s.add_argument('--since', type=int, default=0)
     s = sp.add_parser('list'); s.add_argument('--limit', type=int, default=20)
     s = sp.add_parser('approve'); s.add_argument('job'); s.add_argument('--step'); s.add_argument('--answer', default=''); s.add_argument('--by')
+    s = sp.add_parser('revise'); s.add_argument('job'); s.add_argument('--change', required=True); s.add_argument('--expected', type=int); s.add_argument('--by')
     s = sp.add_parser('tick'); s.add_argument('--max-seconds', type=int, default=50); s.add_argument('--log')
     sp.add_parser('usage'); sp.add_parser('learned'); sp.add_parser('meta'); sp.add_parser('doctor')
     s = sp.add_parser('caps'); s.add_argument('--discover', action='store_true'); s.add_argument('--no-selftest', action='store_true')
@@ -240,6 +241,10 @@ def main(argv=None):
             return out(eng.cancel(a.job))
         if a.cmd == 'approve':
             return out(eng.approve(a.job, a.step, a.answer, by=approver(a.by)))
+        if a.cmd == 'revise':   # Auftrag ändern: gleiche Task-ID, neue Revision; Urheber wie bei Freigaben nur aus Prozessmetadaten
+            if global_kill(cfg) or (app['state'] / 'KILL').exists():
+                return out({'error': 'Not-Aus aktiv: keine Änderungen'}, 3)
+            return out(eng.revise(a.job, a.change, by=approver(a.by), expected_revision=a.expected))
         if a.cmd == 'tick':
             return cmd_tick(app, cfg, a)
         if a.cmd == 'usage':

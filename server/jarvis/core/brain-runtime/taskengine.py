@@ -88,7 +88,11 @@ CREATE TABLE IF NOT EXISTS job_calls(
     cache_write INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, tokens_out INTEGER NOT NULL DEFAULT 0,
     list_usd REAL NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS job_calls_job ON job_calls(job_id, id);
+CREATE TABLE IF NOT EXISTS job_revisions(
+    job_id TEXT NOT NULL, revision INTEGER NOT NULL, parent INTEGER, request TEXT NOT NULL, change TEXT, by TEXT NOT NULL,
+    created INTEGER NOT NULL, superseded_steps TEXT, PRIMARY KEY(job_id, revision));
 '''
+DATA_ORDER = ['public', 'internal', 'private']
 ACTIVE = ('queued', 'planning', 'running')
 FINAL = ('done', 'partial', 'failed', 'cancelled')
 WORKER_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep']
@@ -397,6 +401,10 @@ class Engine:
         self.me = f'{socket.gethostname()}:{os.getpid()}'
         with brain.connection(True) as c:
             c.executescript(SCHEMA)
+            # Revisionen (28.10.2026): Task-ID bleibt, jede Aenderung ist eine neue unveraenderliche Revision (additive Migration)
+            for table in ('jobs', 'job_steps'):
+                if 'revision' not in [r[1] for r in c.execute(f'PRAGMA table_info({table})')]:
+                    c.execute(f'ALTER TABLE {table} ADD COLUMN revision INTEGER NOT NULL DEFAULT 1')
 
     # ------------------------------------------------------------------ helpers
     def _conn(self, write=False):
@@ -514,6 +522,9 @@ class Engine:
             if r:
                 return {'job_id': r['id'], 'state': r['state'], 'duplicate': True}
             raise
+        with self._conn(True) as c:
+            c.execute('INSERT OR IGNORE INTO job_revisions(job_id,revision,parent,request,change,by,created) VALUES(?,1,NULL,?,NULL,?,?)',
+                      (job_id, safe, 'submit:' + spec['origin'], ts))
         eff = ', '.join(EFFECT_TEXT[e] for e in cls['effects']) or 'keine'
         self.event(job_id, 'submitted', f'Datenklasse {cls["data_class"]}, Risiko {cls["risk"]}, externe Wirkungen: {eff}; '
                                         f'Budget {budget["claude_calls"]} Claude-Aufrufe / {budget["tokens_new"]} Token')
@@ -541,6 +552,13 @@ class Engine:
         out.update(request=j['request'][:500], data_class=j['spec']['data_class'], effects=j['spec']['effects'],
                    budget=j['spec']['budget'], steps=steps, goal=(j['plan'] or {}).get('goal'),
                    deliverables=[d['path'] for d in (j['plan'] or {}).get('deliverables', [])])
+        out['revision'] = int(j.get('revision') or 1)
+        with self._conn() as c:
+            out['revisions'] = [{'revision': r['revision'], 'parent': r['parent'], 'change': (r['change'] or '')[:300], 'by': r['by'],
+                                 'created': r['created']} for r in c.execute(
+                'SELECT revision,parent,change,by,created FROM job_revisions WHERE job_id=? ORDER BY revision', (job_id,))]
+        if not out['revisions']:   # Altauftrag von vor der Migration
+            out['revisions'] = [{'revision': 1, 'parent': None, 'change': '', 'by': 'submit', 'created': j['created']}]
         out['attribution'] = attribute_job(out, self.events(job_id, 0, 1000))  # Herkunft nur aus Schritten, Aufrufen, Ereignissen
         return out
 
@@ -554,7 +572,7 @@ class Engine:
 
     def listing(self, limit: int = 20) -> list[dict]:
         with self._conn() as c:
-            rows = c.execute('SELECT id,state,verdict,created,finished,claude_calls,tokens_new,substr(request,1,90) request '
+            rows = c.execute('SELECT id,state,verdict,revision,created,finished,claude_calls,tokens_new,substr(request,1,90) request '
                              'FROM jobs WHERE owner=? ORDER BY created DESC LIMIT ?', (self.brain.identity, limit)).fetchall()
         return [dict(r) for r in rows]
 
@@ -573,6 +591,68 @@ class Engine:
                       (now_s(self.clock), job_id))
         self.event(job_id, 'cancelled', reason)
         return {'job_id': job_id, 'state': 'cancelled', 'changed': True}
+
+    def _revision(self, job_id: str) -> int:
+        with self._conn() as c:
+            row = c.execute('SELECT revision FROM jobs WHERE id=?', (job_id,)).fetchone()
+        return int(row[0]) if row else 0
+
+    def revise(self, job_id: str, change: str, by: str | None = None, expected_revision: int | None = None) -> dict:
+        """Auftrag aendern: dieselbe Task-ID, neue unveraenderliche Revision (Compare-and-Set). Der alte Plan wird als Verlauf
+        gesichert; laufende/offene Schritte der alten Revision werden uebersprungen, ihre spaeten Ergebnisse verworfen (Fencing).
+        Der Workspace bleibt: bereits erstellte Dateien kann die neue Planung weiterverwenden."""
+        if not isinstance(by, str) or not APPROVER.match(by):
+            raise PermissionError('Änderung ohne bekannten Urheber (cli:<name> oder portal:<name>) wird nicht angenommen')
+        if not isinstance(change, str) or not 3 <= len(change.strip()) <= 8000:
+            raise ValueError('Änderung muss 3..8000 Zeichen haben')
+        change = change.strip()
+        cls = classify_request(change)
+        if cls['data_class'] == 'secret':
+            raise PermissionError('Die Änderung enthält ein Geheimnis-Muster (Passwort/Token/Schlüssel). Nichts geändert.')
+        j = self._job(job_id)
+        if not j:
+            raise PermissionError('job not found')
+        if j['state'] in FINAL:
+            raise ValueError(f'Auftrag ist bereits abgeschlossen ({j["state"]}) - bitte einen neuen Auftrag anlegen')
+        rev = int(j.get('revision') or 1)
+        if expected_revision is not None and int(expected_revision) != rev:
+            raise ValueError(f'Revision veraltet: aktuell {rev}, erwartet {expected_revision}')
+        safe = runner.redact(change)
+        new_req = f'{j["request"]}\n\n[Änderung Revision {rev + 1}] {safe}'
+        if len(new_req) > 20000:
+            raise ValueError('Auftrag mit Änderungen wäre länger als 20000 Zeichen - bitte neuen Auftrag anlegen')
+        spec = dict(j['spec'])
+        spec['effects'] = sorted(set(spec.get('effects') or []) | set(cls['effects']))
+        if DATA_ORDER.index(cls['data_class']) > DATA_ORDER.index(spec.get('data_class', 'internal')):
+            spec['data_class'] = cls['data_class']
+        if 'privileged' in spec['effects']:
+            spec['risk'] = 'privileged'
+        elif spec['effects'] and spec.get('risk') == 'read':
+            spec['risk'] = 'reversible'
+        spec['plan_approval'] = bool(spec.get('plan_approval')) or spec['risk'] == 'privileged' or 'money' in spec['effects']
+        spec['local_answer'] = None
+        snapshot = json.dumps([{'sid': x['sid'], 'title': x['title'], 'kind': x['kind'], 'state': x['state'], 'attempts': x['attempts'],
+                                'detail': (x['result'] or {}).get('detail', '')[:300]} for x in self._steps(job_id)], ensure_ascii=False)
+        t = now_s(self.clock)
+        with self._conn(True) as c:
+            cur = c.execute("UPDATE jobs SET revision=?, request=?, spec=?, state='queued', plan=NULL, fix_rounds=0, updated=?, "
+                            "lease_owner=CASE WHEN lease_owner LIKE 'pc:%' THEN NULL ELSE lease_owner END, "
+                            "lease_until=CASE WHEN lease_owner LIKE 'pc:%' THEN NULL ELSE lease_until END "
+                            "WHERE id=? AND owner=? AND revision=? AND state NOT IN ('done','partial','failed','cancelled')",
+                            (rev + 1, new_req, json.dumps(spec, ensure_ascii=False), t, job_id, self.brain.identity, rev))
+            if cur.rowcount != 1:
+                raise ValueError('Auftrag wurde gleichzeitig geändert oder abgeschlossen - bitte erneut versuchen')
+            c.execute('INSERT OR IGNORE INTO job_revisions(job_id,revision,parent,request,change,by,created) VALUES(?,?,NULL,?,NULL,?,?)',
+                      (job_id, rev, j['request'], 'submit', j['created']))
+            c.execute('UPDATE job_revisions SET superseded_steps=? WHERE job_id=? AND revision=?', (snapshot, job_id, rev))
+            c.execute('INSERT INTO job_revisions(job_id,revision,parent,request,change,by,created) VALUES(?,?,?,?,?,?,?)',
+                      (job_id, rev + 1, rev, new_req, safe, by, t))
+            n = c.execute("UPDATE job_steps SET state='skipped', feedback=?, updated=? WHERE job_id=? AND "
+                          "state IN ('pending','ready','waiting','running')", (f'überholt durch Revision {rev + 1}', t, job_id)).rowcount
+        self.event(job_id, 'revised', f'Revision {rev + 1} durch {by}: {safe[:300]} ({n} offene Schritte der Revision {rev} überholt; '
+                                      'Arbeitsordner bleibt erhalten)')
+        return {'job_id': job_id, 'revision': rev + 1, 'state': 'queued', 'superseded_steps': n,
+                'plan_approval': spec['plan_approval'], 'effects': spec['effects']}
 
     def approve(self, job_id: str, sid: str | None = None, answer: str = '', by: str | None = None) -> dict:
         """Approve a plan or answer a question. A question is NOT an approval: a human step needs a non-empty answer.
@@ -920,6 +1000,9 @@ class Engine:
                 self._close_goal(j, 'failure', f'Planung gescheitert: {plan[:300]}')
                 return {'progress': True, 'state': 'failed'}
             source = getattr(self, '_last_plan_source', 'claude')
+        if self._revision(j['id']) != int(j.get('revision') or 1):   # während der Planung geändert: Plan gehört zur alten Revision
+            self.event(j['id'], 'superseded', f'Plan der Revision {j.get("revision") or 1} verworfen - Auftrag wurde inzwischen geändert')
+            return {'progress': True, 'why': 'superseded'}
         with self._conn(True) as c:
             c.execute('DELETE FROM job_steps WHERE job_id=?', (j['id'],))
             for i, s in enumerate(plan['steps']):
@@ -927,9 +1010,9 @@ class Engine:
                 kind = s['kind']
                 if kind == 'improve':
                     kind, spec = 'local', {**spec, 'capability': IMPROVE_CAP}
-                c.execute('INSERT INTO job_steps(id,job_id,idx,sid,title,kind,spec,deps,state,updated) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                c.execute('INSERT INTO job_steps(id,job_id,idx,sid,title,kind,spec,deps,state,updated,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                           (uuid.uuid4().hex, j['id'], i, s['id'], s['title'], kind, json.dumps(spec, ensure_ascii=False),
-                           json.dumps(s.get('deps', [])), 'pending', now_s(self.clock)))
+                           json.dumps(s.get('deps', [])), 'pending', now_s(self.clock), int(j.get('revision') or 1)))
         state = 'waiting_approval' if j['spec'].get('plan_approval') else 'running'
         self._set(j['id'], state=state, plan=plan, plan_source=source, task_type=plan['task_type'])
         self.event(j['id'], 'planned', f'{len(plan["steps"])} Schritte, {len(plan["deliverables"])} Ergebnisdateien, Typ {plan["task_type"]}'
@@ -1101,6 +1184,11 @@ class Engine:
             return self._finalize(self._job(j['id']), forced=str(e))
         except CapError as e:
             r = {'ok': False, 'detail': f'Ungültiger Aufruf: {e}'}
+        # Revisions-Fencing: wurde der Auftrag während des Schritts geändert, gehört dieses Ergebnis zur alten Revision.
+        if self._revision(j['id']) != int(j.get('revision') or 1):
+            self.event(j['id'], 'superseded', f'Schritt {s["sid"]}: Ergebnis der Revision {j.get("revision") or 1} verworfen '
+                                              f'(aktuell Revision {self._revision(j["id"])})')
+            return {'progress': True, 'why': 'superseded'}
         # Fencing: Ergebnis nur persistieren, wenn der Lease noch bei uns liegt. Ein Verlust-
         # Nachfolger besitzt den Auftrag; unsere spaete Antwort wird verworfen statt ueberschrieben.
         if not self._lease(j['id']):
@@ -1308,6 +1396,12 @@ class Engine:
         j = self._job(job_id)
         if not j:
             raise PermissionError('job not found')
+        with self._conn() as c:   # erst prüfen, dann entpacken: ein spätes Ergebnis einer alten Revision darf nichts schreiben
+            pre = c.execute("SELECT revision FROM job_steps WHERE job_id=? AND sid=? AND kind='pc' AND state='running'", (job_id, sid)).fetchone()
+        if not pre or int(pre[0]) != int(j.get('revision') or 1):
+            if pre is None:
+                self.event(job_id, 'superseded', f'PC-Ergebnis für Schritt {sid} abgelehnt: kein laufender Schritt (überholt oder unbekannt)')
+            raise ValueError('no running PC step with this id (superseded or unknown)')
         if tar_bytes:
             safe_extract(tar_bytes, Path(j['workspace']))
         with self._conn(True) as c:
@@ -1331,6 +1425,9 @@ class Engine:
 
     # ------------------------------------------------------------------ finalize
     def _finalize(self, j: dict, forced: str | None = None) -> dict:
+        if j['state'] != 'cancelled' and self._revision(j['id']) != int(j.get('revision') or 1):
+            self.event(j['id'], 'superseded', f'Abschluss der Revision {j.get("revision") or 1} verworfen - Auftrag wurde geändert')
+            return {'progress': True, 'why': 'superseded'}
         plan = j['plan'] or {'deliverables': [], 'goal': j['request'][:200], 'task_type': 'unplanned'}
         w = Path(j['workspace'])
         acc = self.accept.run(w, plan['deliverables']) if plan['deliverables'] else {'ok': False, 'deliverables': []}
@@ -1354,6 +1451,9 @@ class Engine:
         verdict = 'done' if acc['ok'] and not forced else ('partial' if n_ok else 'failed')
         if j['state'] == 'cancelled':
             verdict = 'cancelled'
+        if verdict != 'cancelled' and self._revision(j['id']) != int(j.get('revision') or 1):   # während der Abnahme geändert
+            self.event(j['id'], 'superseded', f'Abnahme der Revision {j.get("revision") or 1} verworfen - Auftrag wurde geändert')
+            return {'progress': True, 'why': 'superseded'}
         res = Path(j['results'])
         res.mkdir(parents=True, exist_ok=True)
         files = []
@@ -1375,7 +1475,7 @@ class Engine:
         summary = (f'{n_ok}/{len(acc["deliverables"])} Ergebnisdateien bestanden die unabhängige Abnahme'
                    + (f'; abgebrochen: {forced}' if forced else ''))
         manifest = {
-            'job_id': j['id'], 'verdict': verdict, 'request': j['request'], 'goal': plan.get('goal'), 'task_type': plan.get('task_type'),
+            'job_id': j['id'], 'revision': int(j.get('revision') or 1), 'verdict': verdict, 'request': j['request'], 'goal': plan.get('goal'), 'task_type': plan.get('task_type'),
             'plan_source': cur['plan_source'], 'data_class': j['spec']['data_class'], 'files': files,
             'steps': [{'sid': s['sid'], 'title': s['title'], 'kind': s['kind'], 'state': s['state'], 'attempts': s['attempts'],
                        'capability': s['spec'].get('capability'), 'model': (s['result'] or {}).get('model')} for s in steps],
