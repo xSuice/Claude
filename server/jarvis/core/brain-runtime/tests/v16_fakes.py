@@ -31,8 +31,10 @@ def result(text='ok', new=1000, cache=5000, usd=0.01, is_error=False, structured
 class FakeClaude:
     """plan: dict or callable(prompt)->dict|str ; steps: {title: callable(cwd: Path, prompt: str, call_no: int) -> str|None}"""
 
-    def __init__(self, plan=None, steps=None, plan_cost=0.02, step_cost=0.05):
+    def __init__(self, plan=None, steps=None, plan_cost=0.02, step_cost=0.05, council=None):
         self.plan, self.steps = plan, steps or {}
+        self.council = council   # callable(prompt) -> dict|str  (Council-Rollen; ohne Angabe: neutrale Meinung)
+        self.council_calls = []
         self.calls = []
         self.plan_cost, self.step_cost = plan_cost, step_cost
         self.step_calls = {}
@@ -40,8 +42,14 @@ class FakeClaude:
     def __call__(self, args, prompt, cwd, timeout):
         model = args[args.index('--model') + 1]
         tools = args[args.index('--tools') + 1]
-        planning = tools == ''
-        self.calls.append({'model': model, 'planning': planning, 'tools': tools, 'cwd': str(cwd), 'prompt': prompt})
+        council = tools == '' and 'COUNCIL-ROLLE:' in prompt
+        planning = tools == '' and not council
+        self.calls.append({'model': model, 'planning': planning, 'council': council, 'tools': tools, 'cwd': str(cwd), 'prompt': prompt})
+        if council:
+            self.council_calls.append(prompt)
+            o = self.council(prompt) if self.council else {'recommendation': 'umsetzen wie beschrieben', 'constraints': ['Tests zuerst'],
+                                                             'risks': [], 'objections': [], 'block': False, 'confidence': 0.8}
+            return 0, result(o if isinstance(o, str) else json.dumps(o), new=800, usd=0.002), ''
         if planning:
             p = self.plan(prompt) if callable(self.plan) else self.plan
             text = p if isinstance(p, str) else json.dumps(p)

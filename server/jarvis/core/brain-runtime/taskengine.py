@@ -37,6 +37,7 @@ from attribution import attribute_job
 from capabilities import BUILTIN, CapError, check_rel
 from orders import Orders, killed
 import runner
+import council as council_mod
 from secretscan import has_secret
 
 try:
@@ -91,6 +92,10 @@ CREATE INDEX IF NOT EXISTS job_calls_job ON job_calls(job_id, id);
 CREATE TABLE IF NOT EXISTS job_revisions(
     job_id TEXT NOT NULL, revision INTEGER NOT NULL, parent INTEGER, request TEXT NOT NULL, change TEXT, by TEXT NOT NULL,
     created INTEGER NOT NULL, superseded_steps TEXT, PRIMARY KEY(job_id, revision));
+CREATE TABLE IF NOT EXISTS job_councils(
+    job_id TEXT NOT NULL, revision INTEGER NOT NULL, council TEXT NOT NULL, reason TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('running','done')), opinions TEXT NOT NULL DEFAULT '{}', artifact TEXT,
+    started INTEGER NOT NULL, finished INTEGER, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(job_id, revision));
 '''
 DATA_ORDER = ['public', 'internal', 'private']
 ACTIVE = ('queued', 'planning', 'running')
@@ -398,6 +403,7 @@ class Engine:
         self.res = {'min_mem_mb': 600, 'min_mem_heavy_mb': 1200, 'max_psi_mem': 10.0, 'max_psi_cpu_heavy': 50.0,
                     'max_load_per_cpu': 3.0, 'max_bridge_jobs': 1, **(cfg.get('resources') or {})}
         self.lease_s = int(cfg.get('lease_s', 120))
+        self.council_cfg = {'enabled': False, 'max_roles': 3, 'model': 'haiku', **(cfg.get('council') or {})}
         self.me = f'{socket.gethostname()}:{os.getpid()}'
         with brain.connection(True) as c:
             c.executescript(SCHEMA)
@@ -486,6 +492,7 @@ class Engine:
         spec = {'data_class': cls['data_class'], 'effects': cls['effects'], 'risk': cls['risk'], 'budget': budget,
                 'deadline': deadline, 'model': manual, 'no_web': bool(opts.get('no_web')), 'origin': str(opts.get('origin') or 'cli')[:20],
                 'quality': str(opts.get('quality') or '')[:600], 'client_id': idem,
+                'council': opts.get('council') if opts.get('council') in (*council_mod.COUNCILS, 'off', 'auto') else 'auto',
                 'improve': bool(opts.get('improve')) and bool((self.cfg.get('improve') or {}).get('enabled')),
                 'plan_approval': bool(opts.get('plan_approval')) or cls['risk'] == 'privileged' or 'money' in cls['effects'],
                 'local_answer': 'usage' if (not cls['effects'] and not opts.get('improve') and is_usage_question(request)) else None}
@@ -557,6 +564,7 @@ class Engine:
             out['revisions'] = [{'revision': r['revision'], 'parent': r['parent'], 'change': (r['change'] or '')[:300], 'by': r['by'],
                                  'created': r['created']} for r in c.execute(
                 'SELECT revision,parent,change,by,created FROM job_revisions WHERE job_id=? ORDER BY revision', (job_id,))]
+        out['council'] = self.council_artifact(job_id, out['revision'])
         if not out['revisions']:   # Altauftrag von vor der Migration
             out['revisions'] = [{'revision': 1, 'parent': None, 'change': '', 'by': 'submit', 'created': j['created']}]
         out['attribution'] = attribute_job(out, self.events(job_id, 0, 1000))  # Herkunft nur aus Schritten, Aufrufen, Ereignissen
@@ -971,6 +979,11 @@ class Engine:
         self._set(j['id'], state='planning', started=j['started'] or now_s(self.clock))
         if j['spec'].get('local_answer') == 'usage':
             return self._answer_usage(j)
+        if self.council_cfg.get('enabled'):
+            cr = self._council(j)
+            if cr is not None:   # zurückgestellt, überholt oder Budget erschöpft
+                return cr
+            j = self._job(j['id'])   # Budget/Plan-Freigabe können sich durch den Council geändert haben
         plan, source, example = None, None, None
         tpl = self.learning.match(j['request'], j['spec']) if self.learning else None
         if tpl and tpl['match'] == 'exact':
@@ -1018,6 +1031,103 @@ class Engine:
         self.event(j['id'], 'planned', f'{len(plan["steps"])} Schritte, {len(plan["deliverables"])} Ergebnisdateien, Typ {plan["task_type"]}'
                                        + ('; wartet auf Freigabe des Plans' if state == 'waiting_approval' else ''))
         return {'progress': True, 'state': state}
+
+    # ------------------------------------------------------------------ council (beratend, ohne Werkzeuge)
+    def _council_row(self, job_id: str, rev: int):
+        with self._conn() as c:
+            return c.execute('SELECT * FROM job_councils WHERE job_id=? AND revision=?', (job_id, rev)).fetchone()
+
+    def council_artifact(self, job_id: str, rev: int | None = None) -> dict | None:
+        rev = rev or self._revision(job_id)
+        row = self._council_row(job_id, rev)
+        return json.loads(row['artifact']) if row and row['artifact'] else None
+
+    def _council(self, j: dict) -> dict | None:
+        """Council-Runde vor der Planung. None = fertig oder nicht nötig; sonst Rückgabe für tick()."""
+        rev = int(j.get('revision') or 1)
+        row = self._council_row(j['id'], rev)
+        if row and row['state'] == 'done':
+            return None
+        t = now_s(self.clock)
+        if not row:
+            name, reason = council_mod.select(j['request'], j['spec'])
+            if not name:
+                with self._conn(True) as c:
+                    c.execute("INSERT OR IGNORE INTO job_councils(job_id,revision,council,reason,state,started,finished) VALUES(?,?,'-',?,'done',?,?)",
+                              (j['id'], rev, reason, t, t))
+                self.event(j['id'], 'council_skip', f'Kein Council: {reason}')
+                return None
+            n = len(council_mod.roles(name, self.council_cfg['max_roles']))
+            spec = dict(j['spec'])
+            spec['budget'] = {**spec['budget'], 'claude_calls': min(spec['budget']['claude_calls'] + n, self.jmax['claude_calls'])}
+            with self._conn(True) as c:
+                c.execute("INSERT OR IGNORE INTO job_councils(job_id,revision,council,reason,state,started) VALUES(?,?,?,?,'running',?)",
+                          (j['id'], rev, name, reason, t))
+            self._set(j['id'], spec=spec)
+            self.event(j['id'], 'council', f'{name}-Council einberufen ({n} Rollen, nur beratend, ohne Werkzeuge): {reason}')
+            j = self._job(j['id'])
+            row = self._council_row(j['id'], rev)
+        name, reason = row['council'], row['reason']
+        ops = json.loads(row['opinions'] or '{}')
+        for role in council_mod.roles(name, self.council_cfg['max_roles']):
+            if role[0] in ops:
+                continue   # nach Unterbrechung: fertige Rollen nicht erneut befragen
+            try:
+                res = self._claude_call(j, prompt=council_mod.briefing(j['request'], j['spec'], name, role), model=self.council_cfg['model'],
+                                        tools=[], system=council_mod.ROLE_SYSTEM, sid=f'council:{name}:{role[0]}'[:60], write=False,
+                                        max_turns=1, timeout_s=180)
+            except BudgetExceeded as e:
+                return self._finalize(self._job(j['id']), forced=str(e))
+            if res is None:
+                self._set(j['id'], state='queued')
+                return {'progress': False, 'why': 'council deferred'}
+            ops[role[0]] = council_mod.parse_opinion(res.get('text') or '', res.get('structured')) if res.get('ok') \
+                else {**council_mod.parse_opinion(''), 'objections': [f'Aufruf fehlgeschlagen: {str(res.get("error"))[:150]}']}
+            if self._revision(j['id']) != rev:
+                self.event(j['id'], 'superseded', f'Council-Runde der Revision {rev} verworfen - Auftrag wurde geändert')
+                return {'progress': True, 'why': 'superseded'}
+            with self._conn(True) as c:
+                c.execute('UPDATE job_councils SET opinions=?, calls=calls+1 WHERE job_id=? AND revision=?',
+                          (json.dumps(ops, ensure_ascii=False), j['id'], rev))
+        art = council_mod.merge(name, reason, ops, j['id'], rev)
+        with self._conn(True) as c:
+            c.execute("UPDATE job_councils SET state='done', artifact=?, finished=? WHERE job_id=? AND revision=?",
+                      (json.dumps(art, ensure_ascii=False), now_s(self.clock), j['id'], rev))
+        if art['blocked_by'] and not j['spec'].get('plan_approval'):
+            self._set(j['id'], spec={**j['spec'], 'plan_approval': True})
+        self.event(j['id'], 'council_done', f'{name}: {len(art["constraints"])} Randbedingungen, {len(art["dissent"])} Einwände, '
+                                            f'Konfidenz {art["confidence"]}' + (f'; Block-Votum: {", ".join(art["blocked_by"])} - '
+                                                                               'Plan braucht Freigabe' if art['blocked_by'] else ''))
+        return None
+
+    def council_metrics(self) -> dict:
+        """Messbar statt behauptet: Runden je Council, Dauer, Aufrufe, Tokens, Einwände, Konfidenz, Ergebnis des Auftrags."""
+        with self._conn() as c:
+            rows = c.execute("SELECT k.*, j.verdict FROM job_councils k JOIN jobs j ON j.id=k.job_id WHERE j.owner=? AND k.council<>'-'",
+                             (self.brain.identity,)).fetchall()
+            skipped = c.execute("SELECT COUNT(*) FROM job_councils k JOIN jobs j ON j.id=k.job_id WHERE j.owner=? AND k.council='-'",
+                                (self.brain.identity,)).fetchone()[0]
+            tok = {r['job_id']: r['t'] for r in c.execute("SELECT job_id, SUM(tokens_in+cache_write+tokens_out) t FROM job_calls "
+                                                          "WHERE sid LIKE 'council:%' GROUP BY job_id")}
+        out = {}
+        for r in rows:
+            a = json.loads(r['artifact']) if r['artifact'] else {}
+            m = out.setdefault(r['council'], {'rounds': 0, 'done': 0, 'calls': 0, 'seconds': 0, 'tokens': 0, 'dissent': 0, 'blocked': 0,
+                                               'confidence_sum': 0.0, 'verdicts': {}})
+            m['rounds'] += 1
+            m['calls'] += r['calls']
+            m['tokens'] += int(tok.get(r['job_id']) or 0)
+            if r['state'] == 'done':
+                m['done'] += 1
+                m['seconds'] += (r['finished'] or r['started']) - r['started']
+                m['dissent'] += len(a.get('dissent') or [])
+                m['blocked'] += 1 if a.get('blocked_by') else 0
+                m['confidence_sum'] += float(a.get('confidence') or 0)
+            v = r['verdict'] or 'offen'
+            m['verdicts'][v] = m['verdicts'].get(v, 0) + 1
+        for m in out.values():
+            m['avg_confidence'] = round(m.pop('confidence_sum') / m['done'], 2) if m['done'] else None
+        return {'councils': out, 'skipped_simple': skipped}
 
     def _answer_usage(self, j: dict) -> dict:
         """Usage/cost question answered from the local job data: no model call. Per-call rows are the primary source and
@@ -1095,6 +1205,9 @@ class Engine:
             web='erlaubt (nur öffentliche Recherche)' if spec['data_class'] == 'public' and not spec.get('no_web') else 'NICHT erlaubt',
             effects=eff or 'keine', caps=json.dumps(caps, ensure_ascii=False), max_steps=self.jd['max_steps'],
             quality=spec.get('quality') or '(keine besonderen Vorgaben)', lessons=lessons or '(noch keine)')
+        art = self.council_artifact(j['id'], int(j.get('revision') or 1)) if self.council_cfg.get('enabled') else None
+        if art:
+            prompt += council_mod.planner_text(art)
         if spec.get('improve'):
             prompt += IMPROVE_PLAN_HINT
         if example:
