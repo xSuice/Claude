@@ -7,6 +7,7 @@ Part of KIMI_PRO_DIRECTOR_V2 Phase 1, Arbeitspaket 2.
 """
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 ComplexityTier = Literal['routine', 'strategic', 'critical']
@@ -57,10 +58,12 @@ class TaskClassifier:
         """
         text = task_payload.lower()
 
-        # Count hits per tier
-        critical_hits = [kw for kw in CRITICAL_KEYWORDS if kw in text]
-        strategic_hits = [kw for kw in STRATEGIC_KEYWORDS if kw in text]
-        routine_hits = [kw for kw in ROUTINE_KEYWORDS if kw in text]
+        # Count hits per tier. Kurze Schluesselwoerter (<= 5 Zeichen) nur am Wortanfang: sonst wird z. B. 'down' in
+        # 'Markdown' oder 'p1' in 'mp1' als "critical" gewertet (Live-Befund 28.10.2026, Smart-Router-Shadow).
+        hit = lambda kw: (re.search(r"(?<![a-z0-9äöüß])" + re.escape(kw), text) is not None) if len(kw) <= 5 else kw in text
+        critical_hits = [kw for kw in CRITICAL_KEYWORDS if hit(kw)]
+        strategic_hits = [kw for kw in STRATEGIC_KEYWORDS if hit(kw)]
+        routine_hits = [kw for kw in ROUTINE_KEYWORDS if hit(kw)]
 
         # Priority: critical > strategic > routine
         if critical_hits:

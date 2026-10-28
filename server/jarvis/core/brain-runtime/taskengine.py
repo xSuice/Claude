@@ -40,6 +40,7 @@ import runner
 import council as council_mod
 import smart_policy
 import distiller
+import broker
 from secretscan import has_secret
 
 try:
@@ -108,6 +109,14 @@ CREATE TABLE IF NOT EXISTS knowledge_candidates(
     private INTEGER NOT NULL DEFAULT 0,
     state TEXT NOT NULL CHECK(state IN ('proposed','duplicate','conflict','approved','rejected','written')),
     ref INTEGER, created INTEGER NOT NULL, decided INTEGER, decided_by TEXT, note_path TEXT);
+CREATE TABLE IF NOT EXISTS audit_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, job_id TEXT NOT NULL, revision INTEGER NOT NULL, sid TEXT,
+    agent TEXT, model TEXT, provider TEXT, capability TEXT NOT NULL, params TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT,
+    approval_id INTEGER, sandbox TEXT, result TEXT, evidence TEXT, duration_ms INTEGER, secret_refs TEXT);
+CREATE TABLE IF NOT EXISTS cap_approvals(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, revision INTEGER NOT NULL, sid TEXT NOT NULL, capability TEXT NOT NULL,
+    params_hash TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','granted','used','expired')),
+    created INTEGER NOT NULL, decided INTEGER, decided_by TEXT);
 '''
 DATA_ORDER = ['public', 'internal', 'private']
 ACTIVE = ('queued', 'planning', 'running')
@@ -699,6 +708,10 @@ class Engine:
                                 "AND kind='human'", (json.dumps({'detail': 'beantwortet', 'answer': answer[:2000], 'by': by}), now_s(self.clock), job_id, sid))
                 if cur.rowcount != 1:
                     raise ValueError('no waiting human step with this id')
+        if not sid:   # Freigabe ohne Schritt: offene Broker-Freigaben der AKTUELLEN Revision erteilen (an Parameter gebunden)
+            with self._conn(True) as c:
+                c.execute("UPDATE cap_approvals SET state='granted', decided=?, decided_by=? WHERE job_id=? AND revision=? AND state='pending'",
+                          (now_s(self.clock), by, job_id, int(j.get('revision') or 1)))
         self._set(job_id, state='running')
         self.event(job_id, 'approved', f'{"Antwort auf Rückfrage " + sid if sid else "Freigabe des Plans"} durch {by}'
                                        + (f': {answer[:200]}' if answer else ''))
@@ -777,19 +790,23 @@ class Engine:
 
     def tick(self, max_seconds: int = 50) -> dict:
         """One bounded scheduler pass: recover, expire, then work on at most a few steps."""
-        if killed(self.brain):
-            return {'idle': 'kill switch (KILL file) - no actions'}
+        lvl = self.kill_level()
+        if lvl in ('exec', 'hard'):
+            if lvl == 'hard':
+                self._hard_isolate()
+            return {'idle': f'kill switch Stufe {lvl} - keine Aktionen'}
         rec = self.recover()
         self._expire()
         t_end = time.monotonic() + max_seconds
         done = []
         while True:  # at least one step per tick, then more while time is left
             with self._conn() as c:
-                ids = [r[0] for r in c.execute("SELECT id FROM jobs WHERE owner=? AND state IN ('queued','running') "
+                ids = [r[0] for r in c.execute("SELECT id FROM jobs WHERE owner=? AND state IN " +
+                                               ("('running') " if lvl == 'soft' else "('queued','running') ") +   # SOFT: keine neuen Aufträge
                                                'ORDER BY created LIMIT 20', (self.brain.identity,))]
             progressed = False
             for jid in ids:
-                if killed(self.brain):
+                if self.kill_level() in ('exec', 'hard'):
                     break
                 if not self._lease(jid):
                     continue
@@ -1462,8 +1479,98 @@ class Engine:
         return last_err or 'unbekannter Fehler'
 
     # ------------------------------------------------------------------ step execution
+    # ------------------------------------------------------------------ capability broker, audit, kill levels
+    def kill_level(self) -> str | None:
+        own = broker.kill_level(self.brain.db_path.parent / 'KILL')
+        glob = broker.kill_level(Path(self.cfg['system_db']).parent / 'KILL') if self.cfg.get('system_db') else None
+        order = {None: 0, 'soft': 1, 'exec': 2, 'hard': 3}
+        return max((own, glob), key=lambda x: order[x])
+
+    def _hard_isolate(self) -> None:
+        """HARD ISOLATE ohne LLM: PC-Leases entziehen, Cloud-Fallback aus. (Netz-Egress sperren braucht root -> nicht hier.)"""
+        with self._conn(True) as c:
+            n = c.execute("UPDATE jobs SET lease_owner=NULL, lease_until=NULL WHERE owner=? AND lease_owner LIKE 'pc:%'",
+                          (self.brain.identity,)).rowcount
+        self.cloud = None
+        if n:
+            for jid in self._active_ids():
+                self.event(jid, 'kill', 'HARD ISOLATE: PC-Lease entzogen, Cloud-Fallback aus')
+
+    def _active_ids(self) -> list[str]:
+        with self._conn() as c:
+            return [r_[0] for r_ in c.execute("SELECT id FROM jobs WHERE owner=? AND state NOT IN ('done','partial','failed','cancelled')",
+                                              (self.brain.identity,))]
+
+    def _audit(self, **kw) -> int:
+        params = kw.pop('params', {})
+        red = runner.redact(json.dumps(params, ensure_ascii=False, default=str))[:4000]
+        with self._conn(True) as c:
+            c.execute('INSERT INTO audit_log(ts,job_id,revision,sid,agent,model,provider,capability,params,decision,reason,approval_id,sandbox,'
+                      'secret_refs) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                      (now_s(self.clock), kw['job_id'], kw['revision'], kw.get('sid'), kw.get('agent'), kw.get('model'), kw.get('provider'),
+                       kw['capability'], red, kw['decision'], kw.get('reason'), kw.get('approval_id'), kw.get('sandbox'),
+                       json.dumps(kw.get('secret_refs') or [])))
+            return c.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+    def _audit_result(self, aid: int | None, r: dict, ms: int) -> None:
+        if not aid:
+            return
+        with self._conn(True) as c:
+            c.execute('UPDATE audit_log SET result=?, evidence=?, duration_ms=? WHERE id=?',
+                      ('ok' if r.get('ok') else 'fehler: ' + runner.redact(str(r.get('detail') or ''))[:300],
+                       json.dumps({k: r[k] for k in ('model', 'ms', 'exit') if k in r}, default=str)[:500], ms, aid))
+
+    def _broker_gate(self, j: dict, s: dict) -> tuple[dict | None, int | None]:
+        """(Rückgabe für tick oder None, audit_id). Erzwingt die Policy außerhalb des Prompts."""
+        info = self.reg.get(s['spec'].get('capability'), 'pc' if s['kind'] == 'pc' else None) if s['kind'] in ('local', 'pc') else None
+        cap, params = broker.classify(s['kind'], s['spec'], info, j['spec'])
+        rev = int(j.get('revision') or 1)
+        ph = broker.params_hash(j['id'], rev, s['sid'], cap, params)
+        cur = self._job(j['id']) or {}
+        b = j['spec']['budget']
+        budget_ok = cur.get('claude_calls', 0) < b['claude_calls'] or s['kind'] != 'claude'
+        worker_ok = s['kind'] not in ('local', 'pc') or bool(info and info.get('status') == 'tested') or cap == 'improve.trial'
+        with self._conn() as c:
+            appr = c.execute("SELECT id FROM cap_approvals WHERE job_id=? AND revision=? AND sid=? AND params_hash=? AND state='granted'",
+                             (j['id'], rev, s['sid'], ph)).fetchone()
+        d = broker.decide(cap, kill=self.kill_level(), job_active=cur.get('state') in ('running',),
+                          revision_ok=self._revision(j['id']) == rev, data_class=j['spec'].get('data_class') or 'internal',
+                          budget_ok=budget_ok, approved=bool(appr), worker_ok=worker_ok)
+        aid = self._audit(job_id=j['id'], revision=rev, sid=s['sid'], agent=s['kind'], model=s['spec'].get('model'),
+                          provider='anthropic-plan' if s['kind'] == 'claude' else ('pc' if s['kind'] == 'pc' else 'server'),
+                          capability=cap, params=params, decision=d['decision'], reason=d['reason'],
+                          approval_id=appr[0] if appr else None, sandbox=broker.CATALOG.get(cap, {}).get('sandbox'))
+        if d['decision'] == 'allow':
+            if appr:
+                with self._conn(True) as c:   # einmalig: verbrauchen
+                    c.execute("UPDATE cap_approvals SET state='used' WHERE id=?", (appr[0],))
+            return None, aid
+        if d['decision'] == 'approval':
+            with self._conn(True) as c:
+                if not c.execute("SELECT 1 FROM cap_approvals WHERE job_id=? AND revision=? AND sid=? AND params_hash=? AND state='pending'",
+                                 (j['id'], rev, s['sid'], ph)).fetchone():
+                    c.execute("INSERT INTO cap_approvals(job_id,revision,sid,capability,params_hash,state,created) VALUES(?,?,?,?,?,'pending',?)",
+                              (j['id'], rev, s['sid'], cap, ph, now_s(self.clock)))
+            self._set(j['id'], state='waiting_approval')
+            self.event(j['id'], 'approval_needed', f'Schritt {s["sid"]}: {d["reason"]} - Freigabe gilt nur für genau diesen Schritt '
+                                                   f'mit diesen Parametern in Revision {rev}')
+            return {'progress': True, 'state': 'waiting_approval'}, aid
+        self._step_set(s['id'], state='failed', result={'detail': 'Broker: ' + d['reason']})
+        self.event(j['id'], 'blocked', f'Schritt {s["sid"]}: Broker lehnt ab - {d["reason"]}')
+        return {'progress': True}, aid
+
+    def audit(self, job_id: str | None = None, limit: int = 100) -> dict:
+        with self._conn() as c:
+            q = ('SELECT a.* FROM audit_log a JOIN jobs j ON j.id=a.job_id WHERE j.owner=?' + (' AND a.job_id=?' if job_id else '')
+                 + ' ORDER BY a.id DESC LIMIT ?')
+            rows = [dict(r_) for r_ in c.execute(q, (self.brain.identity, *([job_id] if job_id else []), limit))]
+            pend = [dict(r_) for r_ in c.execute("SELECT p.* FROM cap_approvals p JOIN jobs j ON j.id=p.job_id WHERE j.owner=? AND p.state='pending'",
+                                                 (self.brain.identity,))]
+        return {'audit': rows, 'pending_approvals': pend, 'kill_level': self.kill_level(),
+                'catalog': {k: {x: v[x] for x in ('registered', 'risk', 'approval') if x in v} for k, v in broker.CATALOG.items()}}
+
     def _run_step(self, j: dict, s: dict) -> dict:
-        if killed(self.brain):
+        if self.kill_level() in ('exec', 'hard'):
             return {'progress': False, 'why': 'kill switch'}
         if s['attempts'] >= self.jd['step_attempts'] + j['fix_rounds']:
             self._step_set(s['id'], state='failed', result={'detail': 'zu viele Versuche'})
@@ -1477,6 +1584,9 @@ class Engine:
             self.event(j['id'], 'question', f'Schritt {s["sid"]} braucht Philipp: {s["spec"].get("question", "")}'
                                             + self._improve_summary(j))
             return {'progress': True, 'state': 'waiting_approval'}
+        gate, aid = self._broker_gate(j, s)
+        if gate is not None:
+            return gate
         if kind == 'pc':
             cap = s['spec'].get('capability')
             info = self.reg.get(cap, 'pc')
@@ -1490,6 +1600,7 @@ class Engine:
             self.event(j['id'], 'pc', f'Schritt {s["sid"]} wartet auf den PC-Worker ({cap})')
             return {'progress': True, 'state': 'waiting_pc'}
         self._step_set(s['id'], state='running', attempts=s['attempts'] + 1, started=now_s(self.clock))
+        t_step = time.monotonic()
         try:
             # a deferral (budget, plan quota, RAM/CPU pressure) is not an attempt: give the attempt back
             if kind == 'claude':
@@ -1507,6 +1618,7 @@ class Engine:
             return self._finalize(self._job(j['id']), forced=str(e))
         except CapError as e:
             r = {'ok': False, 'detail': f'Ungültiger Aufruf: {e}'}
+        self._audit_result(aid, r, int((time.monotonic() - t_step) * 1000))
         # Abbruch-Fencing: wurde der Auftrag während des Schritts abgebrochen/abgeschlossen, wird nichts mehr geschrieben.
         now_state = (self._job(j['id']) or {}).get('state')
         if now_state in FINAL:

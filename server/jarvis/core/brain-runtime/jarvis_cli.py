@@ -102,7 +102,7 @@ def read_stdin_request() -> tuple[dict, bytes]:
 
 
 def cmd_tick(app, cfg, a):
-    if global_kill(cfg):
+    if global_kill(cfg) and app['engine'].kill_level() != 'soft':   # SOFT: laufende Aufträge dürfen fertig werden
         return out({'idle': 'global kill switch'})
     lock = open(Path(cfg['system_db']).parent / 'tick.lock', 'w')
     try:
@@ -190,10 +190,11 @@ def main(argv=None):
     s = sp.add_parser('approve'); s.add_argument('job'); s.add_argument('--step'); s.add_argument('--answer', default=''); s.add_argument('--by')
     s = sp.add_parser('revise'); s.add_argument('job'); s.add_argument('--change', required=True); s.add_argument('--expected', type=int); s.add_argument('--by')
     s = sp.add_parser('tick'); s.add_argument('--max-seconds', type=int, default=50); s.add_argument('--log')
-    sp.add_parser('usage'); sp.add_parser('learned'); sp.add_parser('meta'); sp.add_parser('doctor'); sp.add_parser('councils'); sp.add_parser('router'); pa = sp.add_parser('activity'); pk = sp.add_parser('knowledge'); pk.add_argument('--op', default='list', choices=('list', 'approve', 'reject')); pk.add_argument('--id', type=int); pk.add_argument('--by', default=''); pa.add_argument('--since', type=int, default=0); sp.add_parser('router-backtest')
+    sp.add_parser('usage'); sp.add_parser('learned'); sp.add_parser('meta'); sp.add_parser('doctor'); sp.add_parser('councils'); sp.add_parser('router'); pau = sp.add_parser('audit'); pau.add_argument('--job'); pau.add_argument('--limit', type=int, default=100); pa = sp.add_parser('activity'); pk = sp.add_parser('knowledge'); pk.add_argument('--op', default='list', choices=('list', 'approve', 'reject')); pk.add_argument('--id', type=int); pk.add_argument('--by', default=''); pa.add_argument('--since', type=int, default=0); sp.add_parser('router-backtest')
     s = sp.add_parser('caps'); s.add_argument('--discover', action='store_true'); s.add_argument('--no-selftest', action='store_true')
     s = sp.add_parser('forget'); s.add_argument('kind', choices=['template', 'lesson', 'memory']); s.add_argument('ident')
     s = sp.add_parser('kill'); s.add_argument('state', choices=['on', 'off']); s.add_argument('--global', dest='glob', action='store_true')
+    s.add_argument('--level', choices=['soft', 'exec', 'hard'], default='exec')   # SOFT: keine neuen Aufträge; EXEC: nichts ausführen; HARD: + Leases/Cloud entziehen
     sp.add_parser('pc-lease'); sp.add_parser('pc-report')
     s = sp.add_parser('pc-push'); s.add_argument('job'); s.add_argument('step')
     g = s.add_mutually_exclusive_group(required=True); g.add_argument('--ok', action='store_true'); g.add_argument('--fail', action='store_true')
@@ -257,6 +258,8 @@ def main(argv=None):
             if a.discover:
                 return out({'discovered': app['registry'].discover(selftest=not a.no_selftest), 'caps': app['registry'].listing()})
             return out({'caps': app['registry'].listing()})
+        if a.cmd == 'audit':   # Capability-Broker: Entscheidungen, offene Freigaben, Not-Aus-Stufe, Katalog
+            return out(eng.audit(a.job, max(1, min(500, a.limit))))
         if a.cmd == 'knowledge':   # Memory-Distiller: Review-Queue; approve schreibt eine belegte Notiz in den Vault
             return out(eng.knowledge(a.op, a.id, approver(a.by) if a.op != 'list' else ''))
         if a.cmd == 'activity':   # Living HQ: normalisierte AgentEvents + wer gerade echt arbeitet
@@ -280,10 +283,10 @@ def main(argv=None):
         if a.cmd == 'kill':
             f = (Path(cfg['system_db']).parent if a.glob else app['state']) / 'KILL'
             if a.state == 'on':
-                f.write_text(time.strftime('%Y-%m-%d %H:%M:%S Not-Aus\n'))
+                f.write_text(a.level + '\n')   # Inhalt = Stufe (broker.kill_level); ohne LLM, wirkt beim nächsten Takt/Schritt
             else:
                 f.unlink(missing_ok=True)
-            return out({'kill': a.state, 'scope': 'global' if a.glob else cfg['identity'], 'file': str(f)})
+            return out({'kill': a.state, 'level': a.level if a.state == 'on' else None, 'scope': 'global' if a.glob else cfg['identity'], 'file': str(f)})
         if a.cmd == 'pc-lease':
             if global_kill(cfg) or (app['state'] / 'KILL').exists():
                 return out({'lease': None, 'why': 'kill switch'})
