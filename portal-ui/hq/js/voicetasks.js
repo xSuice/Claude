@@ -29,12 +29,29 @@ export function jobSentence(j) {
   return 'Dein letzter Auftrag „' + short(j.request) + '“ ' + st + '.';
 }
 
+/* PRIO2 N1: Rückfallebene, wenn kein Satzmuster greift: das lokale Qwen (PC) ordnet die Äußerung einer Absicht zu.
+   Nur Zuordnung, nie Ausführung: Anlegen/Ändern/Abbrechen laufen weiter über dieselbe Ja-Rückfrage. Fehler/503/Zeitlimit -> null (altes Verhalten). */
+const MODEL_INTENTS = ['submit', 'revise', 'cancel', 'progress', 'none'];
+export async function modelIntent(text, run, ms = 2500) {
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
+  try {
+    const d = await api('/api/voice/intent', { body: { text, run: run || null }, signal: ac.signal });
+    return d && MODEL_INTENTS.includes(d.intent) ? d.intent : null;
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+const words = s => String(s).trim().replace(/\s+/g, ' ').replace(/[!?.]+$/, '').trim();
+
 let pending = null;   // { kind, request|job, until }
 export const pendingTask = (now = Date.now()) => (pending && now < pending.until ? pending : null);
 export function clearPending() { pending = null; }
 
-/* Liefert {reply, meta} oder null (= nicht zuständig). */
-export async function handleTaskVoice(text, deps = { jv, now: Date.now }) {
+/* Liefert {reply, meta} oder null (= nicht zuständig). deps.local(text) = true: die lokale Übersicht antwortet (Modell wird nicht gefragt). */
+export async function handleTaskVoice(text, deps = {}) {
+  deps = { jv, now: Date.now, classify: modelIntent, local: () => false, ...deps };
   const p = pendingTask(deps.now());
   if (p) {
     if (isYes(text)) {
@@ -46,24 +63,37 @@ export async function handleTaskVoice(text, deps = { jv, now: Date.now }) {
     if (isNo(text)) { pending = null; return { reply: 'Okay, ich mache nichts.', meta: 'verworfen' }; }
     pending = null;   // etwas anderes gesagt: Rückfrage verfällt, normal weiter
   }
-  const it = parseTaskIntent(text);
-  if (!it) return null;
+  let it = parseTaskIntent(text), list = null, via = '';
+  const jobs = async () => { if (!list) list = ((await deps.jv('list', { limit: 5 })) || {}).jobs || []; return list; };
+  if (!it) {
+    if (deps.local(text)) return null;
+    let k = null;
+    try {
+      const run = (await jobs()).find(j => !FINAL.includes(j.state));
+      k = await deps.classify(text, run ? run.request : null);
+    } catch (e) { k = null; }
+    const w = words(text);
+    if (k === 'submit') it = w.length >= 8 ? { kind: 'submit', request: w } : { kind: 'submit_empty' };
+    else if (k === 'revise') it = w.length >= 5 ? { kind: 'revise', change: w } : { kind: 'revise_empty' };
+    else if (k === 'cancel' || k === 'progress') it = { kind: k };
+    if (!it) return null;
+    via = ' · erkannt von Qwen lokal';
+  }
   if (it.kind === 'revise_empty') return { reply: 'Was soll ich am Auftrag ändern? Sag zum Beispiel: Ändere den Auftrag, nimm Java 25.' };
   if (it.kind === 'submit_empty') return { reply: 'Was soll der Auftrag sein? Sag zum Beispiel: Neuer Auftrag, fasse die Serverlogs von heute zusammen.' };
   if (it.kind === 'submit') {
     pending = { kind: 'submit', request: it.request, client_id: rid(), until: deps.now() + CONFIRM_MS };
-    return { reply: 'Ich habe verstanden: „' + short(it.request) + '“. Soll ich den Auftrag anlegen? Sag Ja oder Nein.', meta: 'wartet auf Bestätigung', confirm: true };
+    return { reply: 'Ich habe verstanden: „' + short(it.request) + '“. Soll ich den Auftrag anlegen? Sag Ja oder Nein.', meta: 'wartet auf Bestätigung' + via, confirm: true };
   }
-  const { jobs } = await deps.jv('list', { limit: 5 });
-  const list = jobs || [];
-  if (it.kind === 'progress') return { reply: list[0] ? jobSentence(list[0]) : 'Es gibt noch keinen Auftrag.' };
-  const run = list.find(j => !FINAL.includes(j.state));
+  const all = await jobs();
+  if (it.kind === 'progress') return { reply: all[0] ? jobSentence(all[0]) : 'Es gibt noch keinen Auftrag.', meta: via ? 'lesend' + via : undefined };
+  const run = all.find(j => !FINAL.includes(j.state));
   if (it.kind === 'revise') {
     if (!run) return { reply: 'Es läuft gerade kein Auftrag, den ich ändern könnte. Für etwas Neues sag „Neuer Auftrag“.' };
     pending = { kind: 'revise', job: run.id, change: it.change, expected: run.revision || 1, until: deps.now() + CONFIRM_MS };
-    return { reply: 'Ich ändere den Auftrag „' + short(run.request) + '“: „' + short(it.change) + '“. Der Auftrag behält seine Nummer und wird neu geplant. Soll ich? Sag Ja oder Nein.', meta: 'wartet auf Bestätigung', confirm: true };
+    return { reply: 'Ich ändere den Auftrag „' + short(run.request) + '“: „' + short(it.change) + '“. Der Auftrag behält seine Nummer und wird neu geplant. Soll ich? Sag Ja oder Nein.', meta: 'wartet auf Bestätigung' + via, confirm: true };
   }
   if (!run) return { reply: 'Es läuft gerade kein Auftrag, den ich abbrechen könnte.' };
   pending = { kind: 'cancel', job: run.id, until: deps.now() + CONFIRM_MS };
-  return { reply: 'Soll ich den Auftrag „' + short(run.request) + '“ wirklich abbrechen? Sag Ja oder Nein.', meta: 'wartet auf Bestätigung', confirm: true };
+  return { reply: 'Soll ich den Auftrag „' + short(run.request) + '“ wirklich abbrechen? Sag Ja oder Nein.', meta: 'wartet auf Bestätigung' + via, confirm: true };
 }

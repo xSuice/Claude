@@ -78,3 +78,65 @@ def voice_tts():
     resp = Response(body, code, mimetype=rtype.split(';')[0] or 'application/octet-stream')
     resp.headers['Cache-Control'] = 'no-store'
     return resp
+
+
+# ---------- Gespräch mit Qwen lokal (PC, Ollama). 503 = nicht bereit -> Frontend nimmt Claude. ----------
+@voice_bp.route('/api/voice/warm', methods=['POST'])
+def voice_warm():
+    _admin()
+    code, rtype, body = _call('/warm', b'{}', timeout=8)
+    return Response(body, code if code in (200, 503) else 503, mimetype='application/json')
+
+
+@voice_bp.route('/api/voice/chat', methods=['POST'])
+def voice_chat():
+    """JSON {messages:[{role:user|assistant, content}]} (max. 12). Streamt NDJSON vom PC weiter; speichert und loggt nichts."""
+    _admin()
+    payload = request.get_json(silent=True) or {}
+    msgs = payload.get('messages')
+    if not isinstance(msgs, list) or not 1 <= len(msgs) <= 12:
+        return jsonify({'error': 'messages ungültig'}), 400
+    req = urllib.request.Request(UPSTREAM + '/chat', data=json.dumps({'messages': msgs}).encode(), method='POST')
+    req.add_header('X-Voice-Token', _token())
+    req.add_header('Content-Type', 'application/json')
+    try:
+        up = urllib.request.urlopen(req, timeout=25)
+    except urllib.error.HTTPError as e:
+        return Response(e.read(), e.code, mimetype='application/json')
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return jsonify({'error': 'Lokaler Sprachdienst nicht erreichbar (PC aus?)'}), 503
+
+    def gen():
+        with up:
+            for line in up:
+                yield line
+    resp = Response(gen(), 200, mimetype='application/x-ndjson')
+    resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['X-Accel-Buffering'] = 'no'
+    return resp
+
+
+# ---------- VOICE-INTENT (PRIO2 N1): Absicht einer Äußerung vom lokalen Qwen. Nur Zuordnung, nie Ausführung. ----------
+INTENTS = ('submit', 'revise', 'cancel', 'progress', 'none')
+
+
+@voice_bp.route('/api/voice/intent', methods=['POST'])
+def voice_intent():
+    """JSON {text, run|null} -> {intent, ms}. 503 = PC/Qwen nicht bereit, 502 = unbrauchbar; Frontend nutzt dann Satzmuster."""
+    _admin()
+    payload = request.get_json(silent=True) or {}
+    text, run = payload.get('text'), payload.get('run')
+    if not isinstance(text, str) or not text.strip() or len(text) > 500:
+        return jsonify({'error': 'text ungültig'}), 400
+    if run is not None and (not isinstance(run, str) or len(run) > 300):
+        return jsonify({'error': 'run ungültig'}), 400
+    code, _, body = _call('/intent', json.dumps({'text': text, 'run': run}).encode(), timeout=4)
+    if code != 200:
+        return jsonify({'error': 'Absichtserkennung nicht verfügbar'}), (code if code in (400, 502) else 503)
+    try:
+        d = json.loads(body)
+    except ValueError:
+        return jsonify({'error': 'Absichtserkennung nicht verfügbar'}), 502
+    if not isinstance(d, dict) or d.get('intent') not in INTENTS:
+        return jsonify({'error': 'Absichtserkennung nicht verfügbar'}), 502
+    return jsonify({'intent': d['intent'], 'ms': int(d.get('ms') or 0)})

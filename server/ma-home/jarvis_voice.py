@@ -114,3 +114,29 @@ def voice_chat():
     resp.headers['Cache-Control'] = 'no-store'
     resp.headers['X-Accel-Buffering'] = 'no'
     return resp
+
+
+# ---------- VOICE-INTENT (PRIO2 N1): Absicht einer Äußerung vom lokalen Qwen. Nur Zuordnung, nie Ausführung. ----------
+INTENTS = ('submit', 'revise', 'cancel', 'progress', 'none')
+
+
+@voice_bp.route('/api/voice/intent', methods=['POST'])
+def voice_intent():
+    """JSON {text, run|null} -> {intent, ms}. 503 = PC/Qwen nicht bereit, 502 = unbrauchbar; Frontend nutzt dann Satzmuster."""
+    _admin()
+    payload = request.get_json(silent=True) or {}
+    text, run = payload.get('text'), payload.get('run')
+    if not isinstance(text, str) or not text.strip() or len(text) > 500:
+        return jsonify({'error': 'text ungültig'}), 400
+    if run is not None and (not isinstance(run, str) or len(run) > 300):
+        return jsonify({'error': 'run ungültig'}), 400
+    code, _, body = _call('/intent', json.dumps({'text': text, 'run': run}).encode(), timeout=4)
+    if code != 200:
+        return jsonify({'error': 'Absichtserkennung nicht verfügbar'}), (code if code in (400, 502) else 503)
+    try:
+        d = json.loads(body)
+    except ValueError:
+        return jsonify({'error': 'Absichtserkennung nicht verfügbar'}), 502
+    if not isinstance(d, dict) or d.get('intent') not in INTENTS:
+        return jsonify({'error': 'Absichtserkennung nicht verfügbar'}), 502
+    return jsonify({'intent': d['intent'], 'ms': int(d.get('ms') or 0)})

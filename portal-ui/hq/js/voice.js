@@ -157,7 +157,7 @@ async function handle(raw) {
   say('u', text);
   setState('thinking');
   try {                                 // Aufträge per Sprache: anlegen/abbrechen nur nach „Ja“
-    const tv = await handleTaskVoice(text);
+    const tv = await handleTaskVoice(text, { local: t => !!answerLocal(t) });   // PRIO2 N1: lokale Antworten (Status, Uhrzeit, Übersicht) behalten Vorrang vor dem Modell
     if (tv) { say('a', tv.reply, 'Aufträge · ' + (tv.meta || 'lesend')); speak(tv.reply, tv.confirm ? () => { resumeDialogue(); if (!V.convo) openWindow(30000); } : resumeDialogue); if (V.state === 'thinking') setState(idle()); return; }
   } catch (e) { const msg = 'Das hat nicht geklappt: ' + String(e.message || 'JARVIS nicht erreichbar').replace(/^[A-Za-z]*Error: /, '').replace(/ - /g, ', ') + '.'; say('a', msg, 'Aufträge · Fehler'); speak(msg, resumeDialogue); return; }
   // VOICE-004: Live-Daten nur holen, wenn die Frage lokal beantwortet wird (Status, Alarme, Aufträge) – freie Gespräche warten

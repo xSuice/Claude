@@ -25,6 +25,10 @@ class Fake(BaseHTTPRequestHandler):
         elif self.path == '/chat':
             self.send_response(200); self.send_header('Content-Type', 'application/x-ndjson'); self.end_headers()
             self.wfile.write(b'{"t": "Hallo "}\n{"t": "Andre."}\n{"done": true}\n')
+        elif self.path == '/intent':
+            code = SEEN.get('intent_code', 200)
+            self.send_response(code); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            self.wfile.write(SEEN.get('intent_body', b'{"intent": "submit", "text": "x", "ms": 900}'))
         elif self.path == '/warm':
             self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(b'{"state": "loading"}')
         else:
@@ -127,6 +131,35 @@ class VoiceProxyTests(unittest.TestCase):
         self.admin['v'] = False
         try:
             self.assertEqual(self.c.post('/api/voice/chat', json={'messages': [{'role': 'user', 'content': 'x'}]}).status_code, 403)
+        finally:
+            self.admin['v'] = True
+
+
+    def test_intent_forwards_and_sanitizes(self):
+        SEEN.pop('intent_code', None); SEEN.pop('intent_body', None)
+        r = self.c.post('/api/voice/intent', json={'text': 'Sortier die Fotos', 'run': 'Logs'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json(), {'intent': 'submit', 'ms': 900})          # nur Absicht + Zeit, kein Freitext zurück
+        self.assertEqual(json.loads(SEEN['body']), {'text': 'Sortier die Fotos', 'run': 'Logs'})
+        self.assertEqual(SEEN['token'], 'tok')
+
+    def test_intent_errors_map_to_fallback_codes(self):
+        try:
+            SEEN['intent_code'], SEEN['intent_body'] = 503, b'{"error": "Qwen nicht bereit"}'
+            self.assertEqual(self.c.post('/api/voice/intent', json={'text': 'x'}).status_code, 503)
+            SEEN['intent_code'], SEEN['intent_body'] = 200, b'{"intent": "rm_rf"}'
+            self.assertEqual(self.c.post('/api/voice/intent', json={'text': 'x'}).status_code, 502)
+            SEEN['intent_code'], SEEN['intent_body'] = 500, b'boom'
+            self.assertEqual(self.c.post('/api/voice/intent', json={'text': 'x'}).status_code, 503)
+        finally:
+            SEEN.pop('intent_code', None); SEEN.pop('intent_body', None)
+
+    def test_intent_validates_and_admin_only(self):
+        for p in ({}, {'text': ''}, {'text': 'x' * 501}, {'text': 'ok', 'run': 3}, {'text': 'ok', 'run': 'y' * 301}):
+            self.assertEqual(self.c.post('/api/voice/intent', json=p).status_code, 400, p)
+        self.admin['v'] = False
+        try:
+            self.assertEqual(self.c.post('/api/voice/intent', json={'text': 'x'}).status_code, 403)
         finally:
             self.admin['v'] = True
 

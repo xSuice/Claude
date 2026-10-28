@@ -2,7 +2,7 @@
 Prueft die V16-Engine (brain.db) auf haengende Auftraege und abgelaufene Leases sowie Speicher/Platte und neue Tick-Fehler.
 Ergebnis geht als Heartbeat an den Uptime-Kuma-Push-Monitor 'Tiefencheck (30 min)': up = alles ok, down = Befund (-> Signal ueber die Bruecke).
 Bleibt der Lauf ganz aus, alarmiert Kuma ebenfalls. Exit 0 = ok, 1 = Befund, 2 = Pruefung selbst gescheitert."""
-import json, os, shutil, sqlite3, sys, time, urllib.parse, urllib.request
+import json, os, shutil, sqlite3, subprocess, sys, time, urllib.parse, urllib.request
 
 DB = '/srv/ma-home/library/.jarvis/v16/philipp/brain.db'
 TICK_ERR = '/home/andrew/.local/state/ma-jarvis/tick.err'
@@ -12,9 +12,12 @@ ACTIVE = ('queued', 'planning', 'running')          # muessen Fortschritt zeigen
 WAITING = ('waiting_approval', 'waiting_pc')        # legitime Wartephasen
 STUCK_S, WAIT_S = 30 * 60, 24 * 3600
 MIN_MEM_MB, MIN_DISK_PCT = 150, 10
+# B1-RESOURCES: 2 Kerne -> Last15 > 3.0 heisst ueber 30 min dauerhaft ueberlastet; Swap > 80 % = Speicherdruck
+MAX_LOAD15, MAX_SWAP_PCT = 3.0, 80
 
 
-def findings(now=None, db=DB, tick_err=TICK_ERR, state=None, mem_mb=None, disk_pct=None):
+def findings(now=None, db=DB, tick_err=TICK_ERR, state=None, mem_mb=None, disk_pct=None,
+             load15=None, swap_used_pct=None, oom_kills=None):
     now = time.time() if now is None else now
     state = {} if state is None else state
     out = []
@@ -46,7 +49,42 @@ def findings(now=None, db=DB, tick_err=TICK_ERR, state=None, mem_mb=None, disk_p
         out.append('wenig freier Speicher: %d MB' % mem_mb)
     if disk_pct is not None and disk_pct < MIN_DISK_PCT:
         out.append('Platte fast voll: %d %% frei' % disk_pct)
+    if load15 is not None and load15 > MAX_LOAD15:
+        out.append('Dauerlast: Last15 %.1f bei 2 Kernen' % load15)
+    if swap_used_pct is not None and swap_used_pct > MAX_SWAP_PCT:
+        out.append('Swap zu %d %% belegt' % swap_used_pct)
+    if oom_kills:
+        out.append('earlyoom hat %d Prozess(e) beendet' % oom_kills)
     return out
+
+
+def count_oom_kills(lines):
+    # nur echte Abbrueche ('sending SIGTERM to process 123 ...'), nicht das Start-Banner ('sending SIGTERM when mem avail ...')
+    return sum(1 for l in lines if 'sending SIG' in l and ' to process ' in l)
+
+
+def swap_used_pct(mi):
+    tot = mi.get('SwapTotal', 0)
+    return 0 if not tot else round(100 * (tot - mi.get('SwapFree', 0)) / tot)
+
+
+def meminfo():
+    out = {}
+    with open('/proc/meminfo') as f:
+        for line in f:
+            k, v = line.split(':', 1)
+            out[k] = int(v.split()[0])
+    return out
+
+
+def oom_kills_since(since_ts):
+    # nur lesend; andrew ist in Gruppe adm -> Journal lesbar. Fehler = 0 (kein Fehlalarm), Lauf selbst bleibt gueltig
+    try:
+        r = subprocess.run(['journalctl', '-u', 'earlyoom', '--no-pager', '-o', 'cat', '--since', '@%d' % int(since_ts)],
+                           capture_output=True, text=True, timeout=20)
+        return count_oom_kills(r.stdout.splitlines())
+    except (OSError, subprocess.SubprocessError):
+        return 0
 
 
 def mem_available_mb():
@@ -73,7 +111,11 @@ def main():
         state = {}
     try:
         du = shutil.disk_usage('/srv')
-        f = findings(state=state, mem_mb=mem_available_mb(), disk_pct=100 * du.free // du.total)
+        now = time.time()
+        since = state.get('oom_since', now - 1800)
+        f = findings(state=state, mem_mb=mem_available_mb(), disk_pct=100 * du.free // du.total,
+                     load15=os.getloadavg()[2], swap_used_pct=swap_used_pct(meminfo()), oom_kills=oom_kills_since(since))
+        state['oom_since'] = now
     except Exception as e:  # Pruefung selbst kaputt -> ebenfalls melden
         f, code = ['Tiefencheck gescheitert: %s' % type(e).__name__], 2
     else:

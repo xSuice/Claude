@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# ma-jarvis-hard-isolate on|off — HARD ISOLATE: Egress des Engine-Benutzers (andrew)
+# Idempotent. Eigenstaendige Kette mit Sprung an OUTPUT-Spitze:
+#   lo + ESTABLISHED akzeptieren (Admin-SSH und lokal bleiben), neue Verbindungen
+#   des Engine-Benutzers DROP, alles andere (root/Dienste) RETURN = unveraendert.
+set -euo pipefail
+CHAIN=MA_JARVIS_HARD
+
+populate() { # $1 = frontend (iptables|ip6tables)
+  "$1" -N "$CHAIN" 2>/dev/null || true
+  "$1" -F "$CHAIN"
+  "$1" -A "$CHAIN" -o lo -j ACCEPT
+  "$1" -A "$CHAIN" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  "$1" -A "$CHAIN" -m owner --uid-owner andrew -j DROP
+  "$1" -A "$CHAIN" -j RETURN
+}
+
+case "${1:-}" in
+  on)
+    populate iptables
+    iptables -C OUTPUT -j "$CHAIN" 2>/dev/null || iptables -I OUTPUT 1 -j "$CHAIN"
+    if command -v ip6tables >/dev/null 2>&1; then
+      populate ip6tables
+      ip6tables -C OUTPUT -j "$CHAIN" 2>/dev/null || ip6tables -I OUTPUT 1 -j "$CHAIN"
+    fi
+    echo "hard-isolate ON"
+    ;;
+  off)
+    while iptables -C OUTPUT -j "$CHAIN" 2>/dev/null; do iptables -D OUTPUT -j "$CHAIN"; done
+    iptables -F "$CHAIN" 2>/dev/null || true
+    iptables -X "$CHAIN" 2>/dev/null || true
+    if command -v ip6tables >/dev/null 2>&1; then
+      while ip6tables -C OUTPUT -j "$CHAIN" 2>/dev/null; do ip6tables -D OUTPUT -j "$CHAIN"; done
+      ip6tables -F "$CHAIN" 2>/dev/null || true
+      ip6tables -X "$CHAIN" 2>/dev/null || true
+    fi
+    echo "hard-isolate OFF"
+    ;;
+  *) echo "usage: $0 on|off" >&2; exit 2 ;;
+esac

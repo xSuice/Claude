@@ -17,7 +17,7 @@
       "format": "esm"
     },
     "js/chat.js": {
-      "bytes": 50379,
+      "bytes": 50782,
       "imports": [
         {
           "path": "js/api.js",
@@ -33,7 +33,7 @@
       "format": "esm"
     },
     "js/store.js": {
-      "bytes": 7159,
+      "bytes": 9509,
       "imports": [],
       "format": "esm"
     },
@@ -43,7 +43,7 @@
       "format": "esm"
     },
     "js/hq.js": {
-      "bytes": 18241,
+      "bytes": 19723,
       "imports": [
         {
           "path": "js/api.js",
@@ -69,7 +69,7 @@
       "format": "esm"
     },
     "js/cc.js": {
-      "bytes": 19826,
+      "bytes": 29590,
       "imports": [
         {
           "path": "js/api.js",
@@ -99,13 +99,24 @@
       ],
       "format": "esm"
     },
+    "js/voicetasks.js": {
+      "bytes": 8120,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        }
+      ],
+      "format": "esm"
+    },
     "js/speech-text.js": {
       "bytes": 1004,
       "imports": [],
       "format": "esm"
     },
     "js/localvoice.js": {
-      "bytes": 8466,
+      "bytes": 11093,
       "imports": [
         {
           "path": "js/api.js",
@@ -116,7 +127,7 @@
       "format": "esm"
     },
     "js/voice.js": {
-      "bytes": 20495,
+      "bytes": 32744,
       "imports": [
         {
           "path": "js/api.js",
@@ -139,6 +150,11 @@
           "original": "./chat.js"
         },
         {
+          "path": "js/voicetasks.js",
+          "kind": "import-statement",
+          "original": "./voicetasks.js"
+        },
+        {
           "path": "js/speech-text.js",
           "kind": "import-statement",
           "original": "./speech-text.js"
@@ -152,7 +168,7 @@
       "format": "esm"
     },
     "js/voiceui.js": {
-      "bytes": 9662,
+      "bytes": 15315,
       "imports": [
         {
           "path": "js/api.js",
@@ -163,12 +179,22 @@
           "path": "js/voice.js",
           "kind": "import-statement",
           "original": "./voice.js"
+        },
+        {
+          "path": "js/localvoice.js",
+          "kind": "import-statement",
+          "original": "./localvoice.js"
         }
       ],
       "format": "esm"
     },
+    "js/install.js": {
+      "bytes": 1593,
+      "imports": [],
+      "format": "esm"
+    },
     "js/port.js": {
-      "bytes": 67860,
+      "bytes": 69889,
       "imports": [
         {
           "path": "js/api.js",
@@ -205,7 +231,7 @@
       "format": "esm"
     },
     "js/app.js": {
-      "bytes": 15677,
+      "bytes": 15761,
       "imports": [
         {
           "path": "js/api.js",
@@ -238,6 +264,11 @@
           "original": "./voice.js"
         },
         {
+          "path": "js/install.js",
+          "kind": "import-statement",
+          "original": "./install.js"
+        },
+        {
           "path": "js/port.js",
           "kind": "import-statement",
           "original": "./port.js"
@@ -266,49 +297,55 @@
           "bytesInOutput": 3999
         },
         "js/app.js": {
-          "bytesInOutput": 9631
+          "bytesInOutput": 9650
         },
         "js/chat.js": {
-          "bytesInOutput": 37242
+          "bytesInOutput": 37407
         },
         "js/viewer.js": {
           "bytesInOutput": 6983
         },
         "js/hq.js": {
-          "bytesInOutput": 12464
+          "bytesInOutput": 13146
         },
         "js/store.js": {
-          "bytesInOutput": 4196
+          "bytesInOutput": 5020
         },
         "js/roster.js": {
           "bytesInOutput": 1914
         },
         "js/cc.js": {
-          "bytesInOutput": 15679
+          "bytesInOutput": 23647
         },
         "js/ledger-view.js": {
           "bytesInOutput": 1093
         },
         "js/voiceui.js": {
-          "bytesInOutput": 7554
+          "bytesInOutput": 12242
         },
         "js/voice.js": {
-          "bytesInOutput": 12851
+          "bytesInOutput": 18808
+        },
+        "js/voicetasks.js": {
+          "bytesInOutput": 5517
         },
         "js/speech-text.js": {
           "bytesInOutput": 554
         },
         "js/localvoice.js": {
-          "bytesInOutput": 4559
+          "bytesInOutput": 5981
+        },
+        "js/install.js": {
+          "bytesInOutput": 1007
         },
         "js/port.js": {
-          "bytesInOutput": 49904
+          "bytesInOutput": 51112
         },
         "js/views.js": {
           "bytesInOutput": 19255
         }
       },
-      "bytes": 188008
+      "bytes": 217465
     }
   }
 }

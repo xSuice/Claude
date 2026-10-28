@@ -4,7 +4,7 @@ Reached by the portal through an SSH reverse tunnel (ma-server 127.0.0.1:18790 -
 Every request needs the shared token (X-Voice-Token); audio and text stay on MA-HOME machines.
 One job at a time, below-normal CPU priority (gaming keeps precedence). Logs carry no audio or text.
 """
-import hmac, io, json, os, pathlib, sys, tempfile, threading, time, wave
+import hmac, io, json, os, pathlib, re, sys, tempfile, threading, time, wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -56,7 +56,9 @@ def tts_voice():
 
 
 # Fachwort-Prompt (gemessen 28.10. mit 8 Piper-Saetzen: base 0,75 -> 0,88 Worttreffer, gleiche Zeit; small war schlechter und 3,5x langsamer)
-STT_PROMPT = 'Jarvis, Auftrag, Aufträge, Minecraft, Modding, Fabric, Forge, Serverlogs, Command Center, Router, Signal, Portal, Uptime Kuma.'
+# PRIO2 N3 (28.10.): + Projektbegriffe. 16 Saetze: alt 0,88->0,86, neu 0,74->0,86. Langer Prompt mit allen Begriffen war schlechter (verwaessert).
+STT_PROMPT = ('Jarvis, Auftrag, Aufträge, Minecraft, Modding, Fabric, Forge, Serverlogs, Command Center, Router, Signal, Portal, Uptime Kuma, '
+              'Nexum, Crimson Zone, SMP, Eternal Bonds, Qwen, Living HQ, Watchdog.')
 
 
 def transcribe(data, suffix):
@@ -116,6 +118,26 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, ValueError):
             pass
 
+    def intent(self, body):
+        """PRIO2 N1: {text, run|null} -> {intent, text, ms}. 503 kalt/GPU belegt, 502 unbrauchbare Modellantwort.
+        In beiden Faellen nutzt das Portal seine Satzmuster (altes Verhalten). Fuehrt nie etwas aus."""
+        try:
+            req = json.loads(body.decode('utf-8'))
+            text, run = clean_intent_input(req.get('text'), req.get('run'))
+        except (ValueError, json.JSONDecodeError, AttributeError) as e:
+            return self.reply(400, {'error': str(e)[:120]})
+        if chat_state() != 'warm':
+            return self.reply(503, {'error': 'Qwen nicht bereit', 'state': warm_up()})
+        t0 = time.time()
+        try:
+            res = classify_intent(text, run)
+        except (OSError, ValueError):
+            return self.reply(503, {'error': 'Ollama nicht erreichbar'})
+        if res is None:
+            return self.reply(502, {'error': 'Absicht nicht erkannt'})
+        res['ms'] = int((time.time() - t0) * 1000)
+        return self.reply(200, res)
+
     def log_message(self, fmt, *args):  # no paths/bodies in logs
         sys.stderr.write('%s %s %s\n' % (time.strftime('%H:%M:%S'), self.command, args[1] if len(args) > 1 else ''))
 
@@ -158,6 +180,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {'state': warm_up(), 'model': CHAT_MODEL})
         if self.path == '/chat':
             return self.chat(body)
+        if self.path == '/intent':
+            return self.intent(body)
         if not _lock.acquire(timeout=20):
             return self.reply(503, {'error': 'Sprachdienst ist gerade belegt'})
         try:
@@ -186,7 +210,7 @@ OLLAMA = 'http://127.0.0.1:11434'
 CHAT_MODEL = os.environ.get('MA_CHAT_MODEL', 'qwen3:8b')
 KEEP_ALIVE = '15m'                  # danach gibt Ollama den Grafikspeicher wieder frei
 GPU_BUSY_MIB = 1500                 # belegt schon etwas anderes (Spiel) so viel VRAM, wird Qwen nicht geladen
-CHAT_SYS = ('Du bist JARVIS, der persönliche Assistent von Andre im MA-HOME. Sprich natürliches, freundliches Deutsch wie in einem echten Gespräch: '
+CHAT_SYS = ('Du bist JARVIS, der persönliche Assistent von Andrew im MA-HOME. Sprich natürliches, freundliches Deutsch wie in einem echten Gespräch: '
             'höchstens drei kurze Sätze, kein Markdown, keine Listen, keine Emojis, keine Links. Bleib bei Fakten ehrlich: wenn du unsicher bist, sag es. '
             'Du hast keinen Zugriff auf Dateien, Notizen oder Aufträge und behauptest nie, etwas nachgesehen oder erledigt zu haben.')
 _warm = {'state': 'off', 'since': 0.0}
@@ -259,6 +283,71 @@ def clean_messages(msgs):
     if out[-1]['role'] != 'user':
         raise ValueError('letzte Nachricht muss vom Nutzer sein')
     return out
+
+
+# ---------- PRIO2 N1: Absichtserkennung (dasselbe geladene Modell -> kein Tausch im Grafikspeicher) ----------
+INTENTS = ('submit', 'revise', 'cancel', 'progress', 'none')
+INTENT_MAX_TEXT = 300
+INTENT_SCHEMA = {'type': 'object', 'required': ['intent', 'text'],
+                 'properties': {'intent': {'type': 'string', 'enum': list(INTENTS)}, 'text': {'type': 'string'}}}
+INTENT_SYS = '''Du ordnest eine gesprochene deutsche Äußerung an den Heimassistenten JARVIS einer Absicht zu. JARVIS erledigt Aufträge (Jobs).
+Die Nachricht beginnt mit [Kontext: ...]: entweder der gerade laufende Auftrag oder "kein laufender Auftrag". Danach folgt die Äußerung.
+Antworte nur mit JSON {"intent": ..., "text": ...}.
+
+intent:
+- "submit": eine NEUE Arbeit für JARVIS mit eigenem Gegenstand – auch als höfliche Frage ("Kannst du mir … zusammenfassen?") oder Wunsch ("Ich brauche eine Liste …"). Ein laufender Auftrag ändert daran nichts: neue Tätigkeit mit neuem Gegenstand = submit. text = die Aufgabe, knapp.
+- "revise": die Äußerung bezieht sich auf den LAUFENDEN Auftrag und ändert, ergänzt oder schränkt ihn ein. Typisch: "dabei", "auch noch", "lieber", "stattdessen", "doch nur", "nicht X sondern Y", "und dann …", Bezug mit "das/die/es" auf das laufende Ergebnis. text = die Änderung.
+- "cancel": der laufende Auftrag soll aufhören oder verworfen werden. text = "".
+- "progress": Frage nach Stand, Dauer, Ergebnis oder Problemen eines Auftrags. text = "".
+- "none": Gespräch, Wissensfragen, Dank, Lob, Begrüßung, Fragen zu JARVIS selbst. text = "".
+Faustregel: Kann JARVIS sofort mit Wissen antworten -> none. Soll JARVIS etwas an Dateien, Servern, Diensten oder Daten TUN -> submit (neu) oder revise (laufend).
+
+Beispiele:
+[Kontext: laufender Auftrag "Fotos vom Urlaub umbenennen"] Leg mir außerdem eine Liste der Server-Updates an -> {"intent":"submit","text":"Liste der Server-Updates anlegen"}
+[Kontext: laufender Auftrag "Fotos vom Urlaub umbenennen"] Nimm dabei bitte das Datum in den Namen -> {"intent":"revise","text":"Datum in den Dateinamen aufnehmen"}
+[Kontext: laufender Auftrag "Logs zusammenfassen"] Lieber nur die Fehler -> {"intent":"revise","text":"nur die Fehler"}
+[Kontext: laufender Auftrag "Logs zusammenfassen"] Vergiss es, brauch ich nicht -> {"intent":"cancel","text":""}
+[Kontext: kein laufender Auftrag] Prüf mal, ob alle Dienste laufen -> {"intent":"submit","text":"prüfen, ob alle Dienste laufen"}
+[Kontext: laufender Auftrag "Backup erstellen"] Klappt das? -> {"intent":"progress","text":""}
+[Kontext: kein laufender Auftrag] Was ist ein Backup? -> {"intent":"none","text":""}'''
+
+
+_INTENT_RE = re.compile(r'"intent"\s*:\s*"([a-z]+)"')
+
+
+def clean_intent_input(text, run):
+    if not isinstance(text, str) or not text.strip() or len(text) > 500:
+        raise ValueError('text ungültig')
+    if run is not None and (not isinstance(run, str) or len(run) > 300):
+        raise ValueError('run ungültig')
+    return ' '.join(text.split()), (' '.join(run.split()) or None) if run else None
+
+
+def classify_intent(text, run):
+    """Liefert {'intent', 'text'} oder None bei unbrauchbarer Modellantwort (nie geraten)."""
+    ctx = 'laufender Auftrag "%s"' % run if run else 'kein laufender Auftrag'
+    body = {'model': CHAT_MODEL, 'stream': True, 'think': False, 'format': INTENT_SCHEMA, 'keep_alive': KEEP_ALIVE,
+            'options': {'temperature': 0, 'num_predict': 80, 'num_ctx': 4096},   # = Chat-num_ctx, sonst laedt Ollama das Modell neu
+            'messages': [{'role': 'system', 'content': INTENT_SYS}, {'role': 'user', 'content': '[Kontext: %s] %s' % (ctx, text)}]}
+    # Streamen und abbrechen, sobald die Absicht feststeht: sie wird laut Schema VOR dem Text erzeugt (temperature 0),
+    # das Ergebnis ist also identisch zum vollstaendigen Lauf, spart aber die Text-Token (~1,4 s -> ~0,9 s gemessen).
+    raw = ''
+    with _ollama('/api/chat', body, timeout=8) as r:
+        for line in r:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            raw += (d.get('message') or {}).get('content') or ''
+            m = _INTENT_RE.search(raw)
+            if m or d.get('done'):
+                break
+    m = _INTENT_RE.search(raw)
+    intent = m.group(1) if m else None
+    if intent not in INTENTS:
+        return None
+    # Auftrags-/Aenderungstext = Andrews Wortlaut (normalisiert); die Engine plant daraus selbst.
+    return {'intent': intent, 'text': text[:INTENT_MAX_TEXT] if intent in ('submit', 'revise') else ''}
 
 
 def lower_priority():
