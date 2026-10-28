@@ -124,8 +124,9 @@ option: "voiceAsk streamt bereits NDJSON → Satzgrenzen erkennen, je Satz Piper
 abnahme: ["erster hörbarer Satz < 4 s nach Frageende bei Modellantworten (messen, nicht versprechen)", "Unterbrechen stoppt auch noch nicht gesprochene Sätze"]
 kosten: "keine"
 messung: "Satzweise Ausgabe ist eingebaut (Ton begann 1 s vor Ende der Antwort). Aber: Ziel < 4 s NICHT erreicht – Modellfrage dauerte 35 s bis zum ersten Ton, weil Claude im Lesemodus erst den Vault durchsucht und den Text erst danach schreibt. Engpass ist der Modellaufruf, nicht die Sprachausgabe."
-nächster_schritt: "Für Smalltalk eine schnelle Route ohne Vault-Suche (Kimi/haiku direkt, kein Werkzeug) – Owner-Entscheidung, da andere Route/Kosten"
-status: UMGESETZT – Ziel nicht erreicht (ehrlich gemessen)
+schnellroute: "28.10. vom Owner freigegeben: Brückenmodus 'gespraech' (keine Werkzeuge, keine Settings/MCP, 1 Zug, Haiku, gleiche Tageslimits; Backup ma-claude-bridge.py.bak-vor-gespraech-20261028). Notizfragen ('in meinen Notizen', 'schau nach', 'Vault' …) gehen weiter über den Lesemodus."
+messung_neu: "Brücke direkt: erstes Wort 3,3 s (vorher ~35 s), Init meldet 0 Werkzeuge, Dateilese-Versuch abgelehnt. Browser-E2E: erster Ton 5,3–5,9 s nach erkannter Frage (Modell + erster Piper-Satz), Folgefrage mit Kontext korrekt."
+status: VERIFIZIERT synthetisch – Ziel < 4 s bis erstem Ton knapp verfehlt (5–6 s), ca. 6× schneller als vorher
 ```
 
 ```yaml
@@ -205,4 +206,4 @@ status: VORSCHLAG (nach CORE-003)
 2. „Hey Jarvis“ mit echter Stimme: ggf. Empfindlichkeit anpassen (Regler, Diagnose → „Bericht kopieren“).
 3. Signal-Dialog vom Handy: gemeldet als in Ordnung.
 
-Jarvis: Phase B – empfohlenes Paket umgesetzt (SEC-001, OPS-003, VOICE-005 verifiziert; VOICE-004/-007, CORE-003, UX-001 umgesetzt) – Engpass Antwortzeit liegt beim Modellaufruf (35 s) – Entscheidung: schnelle Smalltalk-Route ohne Vault-Suche?
+Jarvis: Phase B – empfohlenes Paket plus Schnellroute umgesetzt; Gesprächsantworten 5–6 s statt 35 s bis zum ersten Ton – offen: Tests mit echter Stimme und am Handy durch den Owner.

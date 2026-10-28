@@ -103,3 +103,10 @@ test('sentenceCut finds the end of the last complete sentence while streaming',a
   assert.equal(b.m.sentenceCut('Version 1.22 ist da'),-1);   // Dezimalpunkt ist kein Satzende
  }finally{b.cleanup()}
 });
+
+test('voice route: fast conversation by default, notes only when asked',async()=>{
+ const b=await boot();try{
+  for(const q of ['Erzähle mir etwas über Minecraft Modding','Wie geht es dir?','Was ist der Unterschied zwischen Fabric und Forge?'])assert.equal(b.m.voiceRoute(q),'gespraech',q);
+  for(const q of ['Was steht in meinen Notizen zu Minecraft?','Schau nach, was ich zu Fabric aufgeschrieben habe','Such in meinem Vault nach Prüfung'])assert.equal(b.m.voiceRoute(q),'lesen',q);
+ }finally{b.cleanup()}
+});

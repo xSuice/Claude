@@ -642,11 +642,11 @@ export async function renderChat(root, me) {
 
 /* Wird von der Shell fuer Kopfzeilen-Knoepfe genutzt */
 /* Sprachfrage: laeuft durch denselben Chat-Zustand (Verlauf bleibt einheitlich), IMMER nur lesend (haiku, Modus lesen, Ordner notizen) */
-export async function voiceAsk(prompt, onPartial) {
+export async function voiceAsk(prompt, onPartial, mode = 'lesen') {
   claudeLoad();
   if (claudeState.busy) throw new Error('Ein anderer JARVIS-Auftrag läuft gerade.');
   const before = claudeState.msgs.length;
-  claudeSend(prompt, { dir: 'notizen', mode: 'lesen', model: 'haiku' });
+  claudeSend(prompt, { dir: 'notizen', mode: mode === 'gespraech' ? 'gespraech' : 'lesen', model: 'haiku' });
   let seen = '';
   for (let i = 0; i < 1500; i++) {   // max. ~5 min; Teiltext alle 200 ms an die Sprachausgabe (erster Satz wird gesprochen, bevor der Rest fertig ist)
     await new Promise(r => setTimeout(r, 200));

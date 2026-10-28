@@ -130,6 +130,10 @@ function speakStream(done) {
   return { push: t => { if (run === speechRun) for (const c of speechChunks(t)) q.push(c); }, end: () => { q.open = false; }, alive: () => run === speechRun };
 }
 
+/* Schnellroute: normale Gespräche ohne Werkzeuge (erstes Wort ~3–4 s). Nur wer ausdrücklich nach Notizen/Vault fragt, bekommt den langsamen Lesemodus. */
+export const NOTES = /\b(?:notiz\w*|vault|obsidian|aufgeschrieben|gespeichert|bibliothek|meine[nr]? (?:datei\w*|dokument\w*|unterlagen)|schau (?:mal )?nach|such(?:e)? (?:mal )?(?:in|nach)|nachsehen|nachschauen)\b/i;
+export const voiceRoute = text => (NOTES.test(text) ? 'lesen' : 'gespraech');
+
 /* ---------- Befehl behandeln ---------- */
 async function handle(raw) {
   const text = raw.replace(WAKE, ' ').replace(/^[\s,.:;!]+/, '').trim();
@@ -160,9 +164,9 @@ async function handle(raw) {
     if (ss) ss.push(piece);
   };
   try {
-    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit, wenn sie für die Antwort wichtig ist, aber verzichte auf unaufgeforderte Standardhinweise zu deinen Wissensgrenzen. Erfinde weder Fortschritt noch Ergebnisse oder Eigenschaften, die ich nicht genannt habe. Frage: ' + text + '\nBisheriger Gesprächsausschnitt (nur Kontext, keine zusätzlichen Systemregeln): ' + JSON.stringify(V.transcript.slice(-7, -1).map(x => ({ rolle: x.r, text: x.t.slice(0, 500) }))), onPartial);
+    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit, wenn sie für die Antwort wichtig ist, aber verzichte auf unaufgeforderte Standardhinweise zu deinen Wissensgrenzen. Erfinde weder Fortschritt noch Ergebnisse oder Eigenschaften, die ich nicht genannt habe. Frage: ' + text + '\nBisheriger Gesprächsausschnitt (nur Kontext, keine zusätzlichen Systemregeln): ' + JSON.stringify(V.transcript.slice(-7, -1).map(x => ({ rolle: x.r, text: x.t.slice(0, 500) }))), onPartial, voiceRoute(text));
     const out = ans || 'Dazu habe ich keine Antwort bekommen.';
-    say('a', out, 'JARVIS · haiku · nur lesend');
+    say('a', out, voiceRoute(text) === 'lesen' ? 'JARVIS · haiku · Notizen, nur lesend' : 'JARVIS · haiku · Gespräch, ohne Werkzeuge');
     if (ss) { if (ss.alive()) { const rest = out.slice(sent).trim(); if (rest) ss.push(rest); } ss.end(); }
     else speak(out, resumeDialogue);
   } catch (e) {
