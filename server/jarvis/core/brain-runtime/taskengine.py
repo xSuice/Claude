@@ -1528,7 +1528,7 @@ class Engine:
         ph = broker.params_hash(j['id'], rev, s['sid'], cap, params)
         cur = self._job(j['id']) or {}
         b = j['spec']['budget']
-        budget_ok = cur.get('claude_calls', 0) < b['claude_calls'] or s['kind'] != 'claude'
+        budget_ok = s['kind'] != 'claude' or (cur.get('claude_calls', 0) < b['claude_calls'] and cur.get('tokens_new', 0) < b['tokens_new'])
         worker_ok = s['kind'] not in ('local', 'pc') or bool(info and info.get('status') == 'tested') or cap == 'improve.trial'
         with self._conn() as c:
             appr = c.execute("SELECT id FROM cap_approvals WHERE job_id=? AND revision=? AND sid=? AND params_hash=? AND state='granted'",
@@ -1555,6 +1555,10 @@ class Engine:
             self.event(j['id'], 'approval_needed', f'Schritt {s["sid"]}: {d["reason"]} - Freigabe gilt nur für genau diesen Schritt '
                                                    f'mit diesen Parametern in Revision {rev}')
             return {'progress': True, 'state': 'waiting_approval'}, aid
+        if d['reason'] == 'Budget erschöpft':   # ehrlicher Abschluss wie bisher (Bericht nennt das Job-Budget)
+            self._step_set(s['id'], state='failed', result={'detail': 'Broker: Budget erschöpft'})
+            return self._finalize(self._job(j['id']), forced=f'Job-Budget erschöpft ({cur.get("claude_calls", 0)}/{b["claude_calls"]} Aufrufe, '
+                                                             f'{cur.get("tokens_new", 0)}/{b["tokens_new"]} Token)'), aid
         self._step_set(s['id'], state='failed', result={'detail': 'Broker: ' + d['reason']})
         self.event(j['id'], 'blocked', f'Schritt {s["sid"]}: Broker lehnt ab - {d["reason"]}')
         return {'progress': True}, aid
@@ -1793,12 +1797,29 @@ class Engine:
                     c.execute("UPDATE job_steps SET state='pending',updated=? WHERE id=?", (now_s(self.clock), s['id']))
             c.execute('UPDATE jobs SET fix_rounds=fix_rounds+1, state=? WHERE id=?', ('running', j['id']))
 
+    @staticmethod
+    def failure_signature(sid: str, detail: str) -> str:
+        """Fehler-Signatur (Anti-Stagnation): Zahlen, Zeiten, Pfade und Leerraum normalisiert, damit 'derselbe' Fehler erkannt wird."""
+        d = re.sub(r'/[^\s:\'"]+', '/P', str(detail or '').lower())
+        d = re.sub(r'\d+', 'N', d)
+        d = re.sub(r'\s+', ' ', d).strip()[:600]
+        return hashlib.sha256(f'{sid}|{d}'.encode()).hexdigest()[:16]
+
     def _on_failure(self, j: dict, s: dict, r: dict) -> dict:
         steps = self._steps(j['id'])
         detail = r.get('detail', '')
         mem = j['memory']
         mem.setdefault('notes', []).append(f'{s["sid"]} scheiterte: {detail[:200]}')
+        sig = self.failure_signature(s['sid'], detail)
+        seen = sig in (mem.get('fail_sigs') or [])
+        mem.setdefault('fail_sigs', []).append(sig)
+        mem['fail_sigs'] = mem['fail_sigs'][-30:]
         self._set(j['id'], memory=mem)
+        if seen:   # identische erfolglose Aktion nicht beliebig wiederholen (Recovery-Leiter L5: stoppen und melden)
+            self.event(j['id'], 'stagnation', f'Schritt {s["sid"]}: derselbe Fehler wie zuvor (Signatur {sig}) - keine weitere gleiche '
+                                              'Wiederholung, Ergebnis wird ehrlich als nicht erreicht gemeldet')
+            self._step_set(s['id'], state='failed', result={**r, 'stagnation': sig})
+            return {'progress': True, 'stagnation': sig}
         if s['kind'] == 'claude':
             if s['attempts'] < self.jd['step_attempts']:
                 self._step_set(s['id'], state='ready', feedback=f'Vorheriger Versuch scheiterte: {detail[:1500]}')
