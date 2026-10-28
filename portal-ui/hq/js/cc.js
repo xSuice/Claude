@@ -1,7 +1,7 @@
 /* MA-HOME HQ — Command Center (M4, SPEC §13): dieselben echten Daten wie Living HQ (gemeinsamer Store),
    plus Server-/Token-/Job-/Automations-Quellen. Keine parallelen Statussysteme, keine simulierten Werte.
    Felder ohne Datenquelle werden ausdruecklich als "nicht angebunden" gezeigt. */
-import { esc, api, cop, fmtBytes, fmtUp, fmtTok } from './api.js';
+import { esc, api, cop, fmtBytes, fmtUp, fmtTok, toast } from './api.js';
 import { subscribe, S, isFresh, shortName } from './store.js';
 import { ROSTER, SYSTEM, ROOMS } from './roster.js';
 import { SLASH_CMDS, SLASH_SKILLS } from './chat.js';
@@ -28,9 +28,13 @@ export function renderCC(root, ctx) {
     '<div class="grid cols3 section"><div class="holo" id="cctok"></div><div class="holo" id="ccsrv"></div><div class="holo" id="ccconn"></div></div>' +
     '<div class="grid cols3 section"><div class="holo" id="ccauto"></div><div class="holo" id="ccskills"></div><div class="holo" id="cchist"></div></div>' +
     '<div class="holo section" id="cchealth"></div>' +
+    '<div class="holo section" id="cccouncil"></div>' +
+    '<div class="holo section" id="ccrouter"></div>' +
+    '<div class="holo section" id="ccknow"></div>' +
+    '<div class="holo section" id="ccbroker"></div>' +
     '<div class="holo section" id="ccna"></div>';
   const $id = id => root.querySelector('#' + id);
-  const X = { health: null, tele: null, status: null, usage: null, plan: null, jobs: [], conn: null, sched: null, sess: null, errs: {} };
+  const X = { audit: null, knowledge: null, router: null, councils: null, health: null, tele: null, status: null, usage: null, plan: null, jobs: [], conn: null, sched: null, sess: null, errs: {} };
 
   /* ---- Renderer ---- */
   function kpis() {
@@ -162,6 +166,73 @@ export function renderCC(root, ctx) {
       '<div class="faint">Warnung, keine Sperre: Das Debattenbudget (3 Runden ≈ 6 Nachrichten) steht nur in den SOUL.md-Regeln. Gezählt werden gesendete Aufrufe je Agentenpaar (Pause &lt; 30 min = gleiche Kette), ohne Inhalte; kein Zustell- oder Qualitätsnachweis.</div></div>';
   }
 
+  function councils() {
+    const d = X.councils, el = $id('cccouncil'); if (!el) return;
+    const rows = d && d.councils ? Object.entries(d.councils) : [];
+    el.innerHTML = '<h2 class="holo-title">Fach-Councils<span class="sub">beratend, ohne Werkzeuge · nur bei komplexen oder riskanten Aufträgen · Werte gemessen</span></h2>' +
+      (!d ? '<div class="faint">' + esc(X.errs.councils || 'lädt …') + '</div>' :
+        (rows.length ? '<div class="grid cols4">' + rows.map(([k, m]) => '<div class="ccrow"><span><b>' + esc(k) + '</b> · ' + m.rounds + ' Runde' + (m.rounds === 1 ? '' : 'n') +
+          '</span><span class="mono">' + m.calls + ' Aufrufe · ' + (m.tokens / 1000).toFixed(1) + 'k Token · ' + m.dissent + ' Einwände' + (m.blocked ? ' · ' + m.blocked + '× Block' : '') +
+          (m.avg_confidence != null ? ' · Konfidenz ' + m.avg_confidence : '') + '</span></div>').join('') + '</div>' : '<div class="faint">Noch keine Council-Runde.</div>') +
+        '<p class="faint">' + (d.skipped_simple || 0) + ' einfache Aufträge ohne Council direkt geplant.</p>');
+  }
+
+  const CONF = { provider_api: 'Anbieter-Sonde', measured: 'lokal gemessen', estimated: 'geschätzt', not_connected: 'nicht angebunden', unknown: 'unbekannt' };
+  function routerPanel() {
+    const d = X.router, el = $id('ccrouter'); if (!el) return;
+    if (!d) { el.innerHTML = '<h2 class="holo-title">Smart Router</h2><div class="faint">' + esc(X.errs.router || 'lädt …') + '</div>'; return; }
+    const b = Object.entries(d.budgets || {}).map(([k, v]) => '<div class="ccrow"><span><b>' + esc(k) + '</b>' + (v.blocked ? ' · <span class="bad">gesperrt</span>' : '') +
+      '</span><span class="mono">' + (v.remaining == null ? 'Rest: keine Angabe' : 'Rest ' + Math.round(v.remaining * 100) + ' %') + ' · ' + esc(CONF[v.confidence] || v.confidence) + '</span></div>').join('');
+    const dist = Object.entries(d.distribution || {}).map(([k, v]) => esc(k) + ' ' + v).join(' · ');
+    el.innerHTML = '<h2 class="holo-title">Smart Router<span class="sub">Modus ' + esc(d.mode) + (d.mode === 'canary' ? ' ' + d.canary_pct + ' %' : '') +
+      ' · ' + d.decisions + ' Entscheidungen · Übereinstimmung ' + (d.agreement == null ? '–' : Math.round(d.agreement * 100) + ' %') +
+      ' · Policy-Verstöße ' + d.violation_count + ' · angewendet ' + d.applied + '</span></h2>' +
+      '<div class="grid cols4">' + b + '</div>' + (dist ? '<p class="faint">Schattenwahl: ' + dist + '</p>' : '') +
+      '<p class="faint">Restkontingente nur mit Herkunft; „keine Angabe“ heißt: der Anbieter liefert keinen Wert – es wird nichts erfunden.</p>';
+  }
+
+  const KSTATE = { proposed: 'zur Prüfung', conflict: 'Widerspruch – prüfen', duplicate: 'Duplikat', written: 'im Vault', rejected: 'verworfen', approved: 'freigegeben' };
+  function knowledgePanel() {
+    const d = X.knowledge, el = $id('ccknow'); if (!el) return;
+    if (!d) { el.innerHTML = '<h2 class="holo-title">Gedächtnis-Kandidaten</h2><div class="faint">' + esc(X.errs.knowledge || 'lädt …') + '</div>'; return; }
+    const open = (d.candidates || []).filter(c => c.state === 'proposed' || c.state === 'conflict');
+    const counts = Object.entries(d.counts || {}).map(([k, v]) => esc(KSTATE[k] || k) + ' ' + v).join(' · ');
+    el.innerHTML = '<h2 class="holo-title">Gedächtnis-Kandidaten<span class="sub">nur aus abgenommenen Aufträgen · ins Vault erst nach deiner Freigabe' + (counts ? ' · ' + counts : '') + '</span></h2>' +
+      (open.length ? open.slice(0, 8).map(c => '<details class="ccrow kcand"><summary><b>' + esc(c.title) + '</b> <span class="chip' + (c.state === 'conflict' ? ' crimson' : '') + '">' + esc(KSTATE[c.state]) + '</span>' +
+        (c.private ? ' <span class="chip">privat</span>' : '') + ' <span class="faint mono">' + esc(c.job_id) + ' · Rev. ' + c.revision + '</span></summary>' +
+        '<pre class="kbody">' + esc(c.body) + '</pre><div class="row"><button class="btn small" data-kapprove="' + c.id + '">Ins Gedächtnis übernehmen</button> ' +
+        '<button class="btn ghost small" data-kreject="' + c.id + '">Verwerfen</button></div></details>').join('')
+        : '<div class="faint">Keine offenen Kandidaten.</div>');
+    el.querySelectorAll('[data-kapprove],[data-kreject]').forEach(b => b.onclick = async () => {
+      const ok = b.dataset.kapprove; b.disabled = true;
+      const r = await api('/api/jarvis', { body: { cmd: 'knowledge', kind: ok ? 'approve' : 'reject', ident: String(ok || b.dataset.kreject) } });
+      const res = r.ok ? (r.data.data || r.data) : null;
+      if (!r.ok || !res || res.error || (r.data && r.data.ok === false)) { b.disabled = false; toast('Nicht möglich: ' + ((res && res.error) || (r.data && r.data.error) || 'Fehler'), true); return; }
+      toast(ok ? 'Notiz im Vault angelegt' : 'Kandidat verworfen'); slow().then(paint);
+    });
+  }
+
+  const KILLTXT = { soft: 'SOFT – keine neuen Aufträge', exec: 'EXEC – nichts wird ausgeführt', hard: 'HARD – zusätzlich PC-Leases und Cloud entzogen' };
+  function brokerPanel() {
+    const d = X.audit, el = $id('ccbroker'); if (!el) return;
+    if (!d) { el.innerHTML = '<h2 class="holo-title">Capability-Broker</h2><div class="faint">' + esc(X.errs.audit || 'lädt …') + '</div>'; return; }
+    const au = d.audit || [], cnt = {}; au.forEach(a => { cnt[a.decision] = (cnt[a.decision] || 0) + 1; });
+    const reg = Object.entries(d.catalog || {}), on = reg.filter(([, v]) => v.registered).length;
+    el.innerHTML = '<h2 class="holo-title">Capability-Broker<span class="sub">Policy außerhalb des Prompts · ' + on + ' von ' + reg.length + ' Fähigkeiten mit Executor · letzte ' + au.length +
+      ' Entscheidungen: ' + (Object.entries(cnt).map(([k, v]) => esc(k) + ' ' + v).join(' · ') || 'keine') + '</span></h2>' +
+      '<div class="ccrow"><span><b>Not-Aus</b> (ohne KI, wirkt beim nächsten Takt)</span><span>' + (d.kill_level ? '<span class="chip crimson">' + esc(KILLTXT[d.kill_level] || d.kill_level) + '</span>' : '<span class="chip">aus</span>') + '</span></div>' +
+      '<div class="row">' + ['soft', 'exec', 'hard'].map(l => '<button class="btn ghost small" data-kill="' + l + '">' + l.toUpperCase() + '</button>').join(' ') +
+      ' <button class="btn small" data-kill="off">Not-Aus lösen</button></div>' +
+      ((d.pending_approvals || []).length ? '<div class="hqk">Offene Freigaben (gebunden an Auftrag, Revision, Schritt, Parameter)</div>' + d.pending_approvals.map(p => '<div class="ccrow"><span class="mono">' + esc(p.job_id) + ' · Rev. ' + p.revision + ' · ' + esc(p.sid) + '</span><span>' + esc(p.capability) + '</span></div>').join('') : '') +
+      (au.length ? '<details><summary>Audit (neueste ' + Math.min(12, au.length) + ')</summary>' + au.slice(0, 12).map(a => '<div class="ccrow"><span class="mono">' + esc(a.job_id) + ' ' + esc(a.sid || '') + ' · ' + esc(a.capability) +
+        '</span><span>' + esc(a.decision) + (a.result ? ' · ' + esc(String(a.result).slice(0, 40)) : '') + '</span></div>').join('') + '</details>' : '');
+    el.querySelectorAll('[data-kill]').forEach(b => b.onclick = async () => {
+      const l = b.dataset.kill; if (l !== 'off' && !confirm('Not-Aus Stufe ' + l.toUpperCase() + ' setzen?')) return;
+      const r = await api('/api/jarvis', { body: l === 'off' ? { cmd: 'kill', state: 'off' } : { cmd: 'kill', state: 'on', kind: l } });
+      toast(r.ok && !(r.data && r.data.ok === false) ? (l === 'off' ? 'Not-Aus gelöst' : 'Not-Aus ' + l.toUpperCase() + ' gesetzt') : 'Nicht möglich', !r.ok); slow().then(paint);
+    });
+  }
+
   function health() {
     const h = X.health, L = { up: ['ok', 'läuft'], down: ['err', 'AUSGEFALLEN'], pending: ['warn', 'prüft …'], maintenance: ['warn', 'Wartung'], unknown: ['warn', 'unbekannt'] };
     $id('cchealth').innerHTML = '<h2 class="holo-title">Dienste<span class="sub">Uptime Kuma prüft jede Minute · Ausfälle kommen per Signal aufs Handy</span></h2>' +
@@ -173,11 +244,11 @@ export function renderCC(root, ctx) {
 
   function na() {
     $id('ccna').innerHTML = renderLedger(X.ledger) + '<h2 class="holo-title">Weitere Quellen<span class="sub">Angebunden nur, wo eine echte Datenquelle existiert – nichts wird simuliert</span></h2><div class="grid cols3">' +
-      NA('Modelle & Router-Quoten', 'Die Entscheidungstabelle des Evidence-Routers (council_decisions) ist leer – es gibt keine Quelle.') + pcPanel() + councilPanel() + logPanel() + '</div>';
+      pcPanel() + councilPanel() + logPanel() + '</div>';
   }
 
   let active = true;
-  const paint = () => { if (!active || !root.querySelector('#cckpi')) return; kpis(); agents(); tasks(); incidents(); jobs(); tokens(); server(); conn(); auto(); skills(); history(); health(); na(); };
+  const paint = () => { if (!active || !root.querySelector('#cckpi')) return; kpis(); agents(); tasks(); incidents(); jobs(); tokens(); server(); conn(); auto(); skills(); history(); health(); councils(); routerPanel(); knowledgePanel(); brokerPanel(); na(); };
 
   /* ---- Zusatzquellen (30 s) ---- */
   async function slow() {
@@ -186,6 +257,10 @@ export function renderCC(root, ctx) {
       get('status', () => api('/api/status')),
       get('tele', () => api('/api/jarvis/telemetry')),
       get('health', () => api('/api/jarvis/health')),
+      get('audit', async () => { const r = await api('/api/jarvis', { body: { cmd: 'audit' } }); if (!r.ok) throw new Error('Broker-Audit nicht verfügbar'); return r.data.data || r.data; }),
+      get('knowledge', async () => { const r = await api('/api/jarvis', { body: { cmd: 'knowledge', kind: 'list' } }); if (!r.ok) throw new Error('Kandidaten nicht verfügbar'); return r.data.data || r.data; }),
+      get('router', async () => { const r = await api('/api/jarvis', { body: { cmd: 'router' } }); if (!r.ok) throw new Error('Router-Werte nicht verfügbar'); const x = r.data.data || r.data; delete x.measured; return x; }),
+      get('councils', async () => { const r = await api('/api/jarvis', { body: { cmd: 'councils' } }); if (!r.ok) throw new Error('Council-Werte nicht verfügbar'); return r.data.data || r.data; }),
       get('ledger', async () => { const r = await api('/api/jarvis', { body: { cmd: 'usage' } }); if (!r.ok) throw new Error('Ledger nicht verfügbar'); return r.data; }),
       get('usage', () => cop('usage', {})),
       get('conn', () => cop('connectors', {})),

@@ -25,6 +25,7 @@ export const S = {
   tasks: [],             // [{task_id,title,status,assigned_to,created,updated,priority}]
   incidents: [],         // [{incident_id,classification,subject,state,age_min,...}]
   engine: { active: [], recent: [] },
+  activity: { agents: {}, last: 0 },   // V16-AgentEvents (normalisiert serverseitig, nur echte Ereignisse)
   ts: null, error: null, loaded: false, polls: 0,
   events: []             // [{t,type,agent,text,sev}]  neueste zuerst
 };
@@ -73,7 +74,18 @@ function diff(old, cur) {
   return ev;
 }
 
-let inflight = null;
+/* Living HQ: /api/jarvis cmd activity (lesend, Allowlist). Fehler hier blockieren das HQ nicht (dann ohne Engine-Figuren). */
+async function getActivity(since) {
+  try {
+    const r = await fetch('/api/jarvis', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' },
+      body: JSON.stringify({ cmd: 'activity', since: since || 0 }) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.ok !== false ? (j.data || j) : null;
+  } catch (e) { return null; }
+}
+
+let inflight = null, actP = null, actRes = null;
 function poll() {
   if (inflight) return inflight;
   inflight = doPoll().finally(() => { inflight = null; });
@@ -82,7 +94,9 @@ function poll() {
 async function doPoll() {
   busy = true;
   try {
+    if (!actP) actP = getActivity(S.activity.last).then(r => { actRes = r; }).finally(() => { actP = null; });   // entkoppelt: bremst den Poll nicht
     const [ag, tk] = await Promise.all([getJson('/api/jarvis/agents'), getJson('/api/jarvis/tasks')]);
+    const ac = actRes; actRes = null;
     const cur = {
       agents: Array.isArray(ag.agents) ? ag.agents : [],
       tasks: Array.isArray(tk) ? tk : [],
@@ -90,6 +104,10 @@ async function doPoll() {
       engine: { active: (ag.engine && ag.engine.active) || [], recent: (ag.engine && ag.engine.recent) || [] }
     };
     const fresh = diff(prev, cur);
+    if (ac) {
+      for (const e of ac.events || []) if (S.activity.last) fresh.push({ t: e.ts * 1000, type: 'agent_' + e.activity, agent: e.agent, text: e.job + ' · ' + e.text, sev: e.sev, job: e.job });
+      S.activity = { agents: ac.agents || {}, last: ac.last_id || S.activity.last };
+    }
     prev = cur;
     Object.assign(S, cur, { ts: Date.now(), error: null, loaded: true, polls: S.polls + 1 });
     if (fresh.length) {

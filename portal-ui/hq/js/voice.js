@@ -48,7 +48,7 @@ export function answerLocal(text) {
   if (STOP.test(t) && t.split(' ').length <= 3) return { reply: '', action: 'cancel' };
   let m = t.match(/(?:öffne|zeig(?:e)?(?: mir)?|gehe? zu|wechsle zu|bring mich zu)\s+(?:den |die |das |dem )?([a-zäöü ]+)/);
   if (m) { const key = Object.keys(NAV).sort((a, b) => b.length - a.length).find(k => m[1].trim().startsWith(k)); if (key) return { reply: 'Ich öffne ' + key + '.', nav: NAV[key] }; }
-  if (/(wie spät|uhrzeit|wie ?viel uhr)/.test(t)) return { reply: 'Es ist ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr.' };
+  if (/(wie spät|uhrzeit|wie ?viel uhr)/.test(t) && !/\b(?:in|nach|bei|für) [a-zäöüß]{3,}|zeitzone|zeitverschiebung|wenn es/.test(t)) return { reply: 'Es ist ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr.' };
   const who = ids.find(id => new RegExp('\\b' + shortName(id).replace('-', '[ -]') + '\\b').test(t));
   if (who && /(was macht|woran arbeitet|status von|wie geht|zustand)/.test(t)) {
     const a = agentState(who), word = a.status === 'working' ? 'arbeitet' : a.status === 'planning' ? 'plant' : 'hat gerade keinen Auftrag';
@@ -119,6 +119,14 @@ export function sentenceCut(text) {   // Index hinter dem letzten abgeschlossene
   while ((m = re.exec(text))) if (m.index + 1 < text.length || /[.!?…]$/.test(text)) cut = m.index + 1;
   return cut;
 }
+/* VOICE-004: der ERSTE Sprechteil darf schon an einer Satzteilgrenze (Komma, Doppelpunkt, Semikolon, Gedankenstrich) beginnen,
+   sobald genug Text da ist – spart bis zum ersten Satzende oft eine Sekunde. Danach wieder ganze Sätze (natürlicher Fluss). */
+export function firstCut(text, min = 28) {
+  const s = sentenceCut(text); if (s > 0) return s;
+  let cut = -1; const re = /[,;:–—](?=\s)/g; let m;
+  while ((m = re.exec(text))) if (m.index + 1 >= min) cut = m.index + 1;
+  return cut;
+}
 function speakStream(done) {
   if (!V.speakOn || !useLocalVoice()) return null;
   cancelSpeech();
@@ -152,8 +160,10 @@ async function handle(raw) {
     const tv = await handleTaskVoice(text);
     if (tv) { say('a', tv.reply, 'Aufträge · ' + (tv.meta || 'lesend')); speak(tv.reply, tv.confirm ? () => { resumeDialogue(); if (!V.convo) openWindow(30000); } : resumeDialogue); if (V.state === 'thinking') setState(idle()); return; }
   } catch (e) { const msg = 'Das hat nicht geklappt: ' + String(e.message || 'JARVIS nicht erreichbar').replace(/^[A-Za-z]*Error: /, '').replace(/ - /g, ', ') + '.'; say('a', msg, 'Aufträge · Fehler'); speak(msg, resumeDialogue); return; }
-  const fresh = await refresh();        // nie still auf veraltetem/leerem Store antworten
-  const loc = answerLocal(text);
+  // VOICE-004: Live-Daten nur holen, wenn die Frage lokal beantwortet wird (Status, Alarme, Aufträge) – freie Gespräche warten
+  // nicht auf den Store-Abruf. Lokale Antworten bleiben auf frischen Daten (nie still veraltet).
+  let fresh = true, loc = answerLocal(text);
+  if (loc && !loc.nav && loc.action !== 'cancel' && !/ Uhr\.$/.test(loc.reply)) { fresh = await refresh(); loc = answerLocal(text); }
   if (loc && !fresh && loc.reply && !loc.nav && !/ Uhr\.$/.test(loc.reply) && !/^Ich beantworte/.test(loc.reply)) loc.reply = 'Achtung, die Live-Daten konnten gerade nicht aktualisiert werden. ' + loc.reply;
   if (loc) {
     if (loc.action === 'cancel') { cancelSpeech(); say('a', 'Gestoppt.', 'lokal'); setState(idle()); return; }
@@ -166,7 +176,7 @@ async function handle(raw) {
   let ss = null, sent = 0;
   const onPartial = t => {
     if (ss && !ss.alive()) return;                       // unterbrochen: nichts mehr nachschieben
-    const cut = sentenceCut(t.slice(sent)); if (cut < 1) return;
+    const cut = (sent ? sentenceCut : firstCut)(t.slice(sent)); if (cut < 1) return;
     const piece = t.slice(sent, sent + cut); sent += cut;
     if (!ss) ss = speakStream(resumeDialogue);
     if (ss) ss.push(piece);

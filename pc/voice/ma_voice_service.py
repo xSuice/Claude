@@ -43,7 +43,7 @@ def stt_model():
     if 'stt' not in _models:
         os.environ.setdefault('HF_HUB_DISABLE_XET', '1')
         from faster_whisper import WhisperModel
-        _models['stt'] = WhisperModel('base', device='cpu', compute_type='int8', cpu_threads=2, num_workers=1,
+        _models['stt'] = WhisperModel('base', device='cpu', compute_type='int8', cpu_threads=4, num_workers=1,   # VOICE-004: 4 Threads 0,74 s statt 1,09 s je Satz, gleiche Trefferquote (stt_latency.py)
                                       download_root=str(ROOT / 'models/whisper'))
     return _models['stt']
 

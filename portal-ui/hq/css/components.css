@@ -392,3 +392,7 @@ body::after {
   #view button, #view input[type="range"] { min-height: 44px; min-width: 44px; }
   #vclr, #view a[download], #view a[href*="export"], #view a[href*=".ics"] { display: inline-block; padding: 14px 6px; }
 }
+
+/* Prio-1: Gedächtnis-Kandidaten */
+.kcand summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.kbody{white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto;font-size:12px;margin:8px 0}

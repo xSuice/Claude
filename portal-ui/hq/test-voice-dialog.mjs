@@ -104,6 +104,23 @@ test('sentenceCut finds the end of the last complete sentence while streaming',a
  }finally{b.cleanup()}
 });
 
+test('local clock answers only the own time, not other places (VOICE-004 live finding)',async()=>{
+ const b=await boot();try{
+  assert.match(b.m.answerLocal('Wie spät ist es?').reply,/ Uhr\.$/);
+  assert.equal(b.m.answerLocal('Wie spät ist es in Tokio, wenn es hier neun Uhr morgens ist?'),null);
+  assert.equal(b.m.answerLocal('Welche Zeitzone hat New York und wie viel Uhr ist es dort'),null);
+ }finally{b.cleanup()}
+});
+
+test('firstCut starts speaking at a clause boundary once enough text exists',async()=>{
+ const b=await boot();try{
+  assert.equal(b.m.firstCut('Ja, klar'),-1);                                   // zu kurz: noch warten
+  assert.equal(b.m.firstCut('In Tokio ist es dann ungefähr vier Uhr, also'),39);
+  assert.equal(b.m.firstCut('Kurz gesagt: ja. Und dann'),16);                    // Satzende hat Vorrang
+  assert.equal(b.m.firstCut('Version 1,5 ist da und mehr Text folgt hier'),-1); // Dezimalkomma ist keine Grenze
+ }finally{b.cleanup()}
+});
+
 test('voice route: fast conversation by default, notes only when asked',async()=>{
  const b=await boot();try{
   for(const q of ['Erzähle mir etwas über Minecraft Modding','Wie geht es dir?','Was ist der Unterschied zwischen Fabric und Forge?'])assert.equal(b.m.voiceRoute(q),'gespraech',q);

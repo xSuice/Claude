@@ -5,7 +5,14 @@ test('segmenter sends after speech followed by silence', () => {
   const s = createSegmenter(); s.begin(0); const ev = [];
   for (let t = 0; t <= 3000; t += 50) { const lvl = t >= 500 && t < 1500 ? 0.5 : 0.01; const e = s.feed(lvl, t); if (e) ev.push([e, t]); }
   assert.deepEqual(ev.map(x => x[0]), ['speech', 'send']);
-  assert.ok(ev[1][1] >= 1500 + 900 - 50);
+  assert.ok(ev[1][1] >= 1500 + 650 - 50);
+  assert.ok(ev[1][1] <= 1500 + 650 + 50);   // VOICE-004: Sprechende nach ~0,65 s Stille (vorher 0,9 s)
+});
+test('a short breath pause inside a sentence does not end the turn', () => {
+  const s = createSegmenter(); s.begin(0); const ev = [];
+  for (let t = 0; t <= 4000; t += 50) { const lvl = (t >= 500 && t < 1300) || (t >= 1700 && t < 2500) ? 0.5 : 0.01; const e = s.feed(lvl, t); if (e) ev.push([e, t]); }
+  assert.deepEqual(ev.map(x => x[0]), ['speech', 'send']);   // 400 ms Pause zwischen den Teilen: ein Zug
+  assert.ok(ev[1][1] >= 2500 + 600);
 });
 test('short click is not speech; idle segment is discarded to bound size', () => {
   const s = createSegmenter(); s.begin(0); const ev = [];

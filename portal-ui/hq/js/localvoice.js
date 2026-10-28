@@ -6,7 +6,7 @@ import { api } from './api.js';
 export const LOCAL_VOICE = 'jarvis-local';
 
 /* Reine Zustandsmaschine fuer Sprachsegmente: feed(level, now) -> null | 'speech' | 'send' | 'discard' */
-export function createSegmenter({ threshold = 0.2, startMs = 120, silenceMs = 900, maxMs = 14000, idleMs = 6000 } = {}) {
+export function createSegmenter({ threshold = 0.2, startMs = 120, silenceMs = 650, maxMs = 14000, idleMs = 6000 } = {}) {
   let loudSince = null, speaking = false, lastLoud = 0, segStart = null, floor = 0, born = null, peak = 0, sum = 0, n = 0;
   return {
     get speaking() { return speaking; },

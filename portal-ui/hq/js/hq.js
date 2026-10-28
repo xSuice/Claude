@@ -25,7 +25,7 @@ export function renderHQ(root, ctx) {
     '<div class="hq-drawer" id="hqd" hidden></div></div>' +
     '<aside class="hq-feed holo"><h2 class="holo-title">Ereignisse<span class="sub">nur Änderungen seit Seitenaufruf</span></h2><ul id="hqfeed"></ul>' +
     '<h2 class="holo-title" style="margin-top:16px">Engine<span class="sub">letzte Jobs</span></h2><ul id="hqjobs"></ul></aside></div>' +
-    '<p class="faint hq-note">Zustand = Daten aus <span class="mono">/api/jarvis/{agents,tasks}</span> (Poll 5 s). Figuren ohne Auftrag stehen ruhig; leichtes Atmen und LED-Ruhelicht sind Dekoration und kein Aktivitätsnachweis. Bewegung entsteht nur bei echten Ereignissen (neuer Auftrag, Statuswechsel, Incident, Engine-Job).</p>';
+    '<p class="faint hq-note">Zustand = Daten aus <span class="mono">/api/jarvis/{agents,tasks}</span> und normalisierten V16-Engine-Ereignissen (<span class="mono">cmd activity</span>; Poll 2–5 s). Figuren ohne Auftrag stehen ruhig; leichtes Atmen und LED-Ruhelicht sind Dekoration und kein Aktivitätsnachweis. Bewegung entsteht nur bei echten Ereignissen (neuer Auftrag, Statuswechsel, Incident, Engine-Job).</p>';
 
   const cv = $('#hqc', root), cx = cv.getContext('2d'), stage = $('#hqstage', root);
   let dpr = window.devicePixelRatio || 1, scale = 1, selected = null, hover = null, quality = 1;
@@ -40,11 +40,14 @@ export function renderHQ(root, ctx) {
     const pts = slots(room, list.length);
     list.forEach((d, i) => {
       const home = pts[i];
-      actors.set(d.id, { ...d, home, x: home.x, y: home.y, target: null, queue: [], wait: 0, phase: Math.random() * 6, seed: Math.random() * 6,
+      actors.set(d.id, { ...d, home, x: home.x, y: home.y, target: null, queue: [], wait: 0, phase: 0, seed: (defs.indexOf(d) * 1.7) % 6,
         status: 'idle', alert: false, tasks: [], incidents: [], hb: null, pulses: [], moving: false });
     });
   });
   const zc = { x: ROOMS.zentrale.x + ROOMS.zentrale.w / 2, y: ROOMS.zentrale.y + ROOMS.zentrale.h - 34 };
+  const cc = { x: ROOMS.council.x + ROOMS.council.w / 2, y: ROOMS.council.y + ROOMS.council.h - 40 };
+  const sc = { x: ROOMS.server.x + 140, y: ROOMS.server.y + ROOMS.server.h - 40 };
+  [...actors.values()].forEach((a, i) => { a.idx = i; });
 
   function derive() {
     const tmap = Object.fromEntries(S.tasks.map(t => [t.task_id, t]));
@@ -55,7 +58,9 @@ export function renderHQ(root, ctx) {
     });
     actors.forEach(a => {
       const open = a.tasks.filter(t => !RE_DONE.test(t.status));
-      a.status = open.some(t => RE_WORK.test(t.status)) ? 'working' : open.some(t => RE_PLAN.test(t.status)) ? 'planning' : 'idle';
+      const live = (S.activity && S.activity.agents || {})[a.id];   // echter offener Engine-Aufruf (Claude/Cloud/PC/Council)
+      a.live = live || null;
+      a.status = live || open.some(t => RE_WORK.test(t.status)) ? 'working' : open.some(t => RE_PLAN.test(t.status)) ? 'planning' : 'idle';
       a.alert = a.incidents.length > 0 || (a.hb && !isFresh(a.hb));
     });
   }
@@ -66,8 +71,15 @@ export function renderHQ(root, ctx) {
       if (!a) return;
       const col = e.sev === 'warn' ? '#FF2E4D' : e.sev === 'ok' ? '#4ADE80' : '#35C4D8';
       a.pulses.push({ t: performance.now(), col });
-      if (!reduced && (e.type === 'task_new' || e.type === 'task_assign' || e.type === 'task_status') && a.room !== 'zentrale') {
-        a.queue.push({ goto: { x: zc.x + (Math.random() * 60 - 30), y: zc.y }, wait: 2200 });
+      if (reduced) return;
+      // Bewegung nur aus echten Ereignissen; Ziel deterministisch je Figur (kein Zufall)
+      const off = ((a.idx * 37) % 60) - 30;
+      if ((e.type === 'task_new' || e.type === 'task_assign' || e.type === 'task_status') && a.room !== 'zentrale') {
+        a.queue.push({ goto: { x: zc.x + off, y: zc.y }, wait: 2200 });
+      } else if (e.type === 'agent_consult' && /gestartet/.test(e.text) && a.room !== 'council') {
+        a.queue.push({ goto: { x: cc.x + off, y: cc.y }, wait: 6000 });   // Council-Rolle geht in die Konferenz
+      } else if (e.type === 'agent_work' && /gestartet/.test(e.text) && a.room !== 'server') {
+        a.queue.push({ goto: { x: sc.x + off, y: sc.y }, wait: 2500 });   // Ausführung holt Rechenzeit im Serverraum
       }
     });
   }
@@ -235,6 +247,7 @@ export function renderHQ(root, ctx) {
       '<h3>' + esc(shortName(a.id)) + (a.alert ? ' <span class="chip crimson">Alarm</span>' : '') + '</h3>' +
       '<div class="sub">' + esc(a.role) + ' · ' + esc(ROOMS[a.room].name) + '</div>' +
       '<p><span class="chip ' + (a.status === 'working' ? 'cyan' : '') + '">' + STATUS_TXT[a.status] + '</span></p>' +
+      (a.live ? '<div class="hqk">Gerade (Engine)</div><div><span class="mono">' + esc(a.live.job) + '</span> · ' + esc(a.live.text) + '</div>' : '') +
       (a.hb ? '<div class="hqk">Heartbeat</div><div>' + (isFresh(a.hb) ? '<span class="dot ok"></span> aktuell' : '<span class="dot warn"></span> veraltet') + ' · vor ' + ago(a.hb.last_heartbeat) + ' · ' + esc(a.hb.status) + '</div>' : '<div class="hqk">Heartbeat</div><div class="faint">keine Telemetrie in der Heartbeat-Tabelle</div>') +
       '<div class="hqk">Aufträge (' + a.tasks.length + ')</div>' + (a.tasks.length ? '<ul class="hql">' + a.tasks.map(t => '<li><b class="mono">' + esc(t.task_id) + '</b> ' + esc(t.title) + '<br><span class="chip">' + esc(t.status) + '</span> <span class="faint">akt. vor ' + ago(t.updated) + '</span></li>').join('') + '</ul>' : '<div class="faint">keine zugewiesen</div>') +
       (a.incidents.length ? '<div class="hqk">Incidents</div><ul class="hql">' + a.incidents.map(i => '<li><span class="chip crimson">' + esc(i.classification) + '</span> ' + esc(i.subject) + ' <span class="faint">seit ' + Math.round(i.age_min / 60) + ' Std</span></li>').join('') + '</ul>' : '') +
