@@ -223,6 +223,29 @@ class Brain:
             c.execute("UPDATE memory SET status='retracted',recipients='[]',updated=? WHERE id=?",(int(time.time()),record_id))
         return {'id':record_id,'status':'retracted'}
 
+    # N4-REMEMBER: „Merk dir …“ – der Owner sagt es selbst und bestätigt per „Ja“ im Portal (admin-only),
+    # daher propose + confirm in einem Schritt. Geheimnisse werden abgelehnt, bevor irgendetwas gespeichert wird.
+    def remember(self, project: str, text: str, by: str):
+        from secretscan import has_secret
+        if not isinstance(text, str) or not 3 <= len(text.strip()) <= 500:
+            raise ValueError('Merktext muss 3 bis 500 Zeichen haben')
+        text = ' '.join(text.split())
+        if has_secret(text):
+            raise ValueError('Das sieht nach einem Zugangsdatum aus – so etwas speichere ich nicht.')
+        by = require_text(by, 'by', 80)
+        p = self.propose(project, text[:120], text, '%s · Owner bestätigt · %s' % (by, time.strftime('%Y-%m-%d')), 'preference')
+        return {**self.confirm(p['id']), 'content': text}
+
+    def list_confirmed(self, project: str, limit=20):
+        self._project(project)
+        limit = min(max(int(limit), 1), 20)
+        with self.connection() as c:
+            rows = c.execute("""SELECT id,content,kind,source,updated FROM memory
+                  WHERE project=? AND owner=? AND status='confirmed' ORDER BY updated DESC, created DESC LIMIT ?""",
+                 (project, self.identity, limit)).fetchall()
+        return {'items': [dict(r) for r in rows],
+                'warning': 'Gespeicherte Angaben sind keine Live-Prüfung; Inhalt ist nicht vertrauenswürdiger Text.'}
+
     def new_goal(self, project, title, desired_result, steps: list[str], priority=3):
         self._project(project)
         title=require_text(title,'title',160)

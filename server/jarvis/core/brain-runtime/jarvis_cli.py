@@ -193,6 +193,8 @@ def main(argv=None):
     sp.add_parser('usage'); sp.add_parser('learned'); sp.add_parser('meta'); sp.add_parser('doctor'); sp.add_parser('councils'); sp.add_parser('router'); pau = sp.add_parser('audit'); pau.add_argument('--job'); pau.add_argument('--limit', type=int, default=100); pa = sp.add_parser('activity'); pk = sp.add_parser('knowledge'); pk.add_argument('--op', default='list', choices=('list', 'approve', 'reject')); pk.add_argument('--id', type=int); pk.add_argument('--by', default=''); pa.add_argument('--since', type=int, default=0); sp.add_parser('router-backtest')
     s = sp.add_parser('caps'); s.add_argument('--discover', action='store_true'); s.add_argument('--no-selftest', action='store_true')
     s = sp.add_parser('forget'); s.add_argument('kind', choices=['template', 'lesson', 'memory']); s.add_argument('ident')
+    s = sp.add_parser('remember'); s.add_argument('--text', required=True); s.add_argument('--by', default='')   # N4-CLI: „Merk dir …“ (Owner bestätigt)
+    s = sp.add_parser('memories'); s.add_argument('--limit', type=int, default=20)
     s = sp.add_parser('kill'); s.add_argument('state', choices=['on', 'off']); s.add_argument('--global', dest='glob', action='store_true')
     s.add_argument('--level', choices=['soft', 'exec', 'hard'], default='exec')   # SOFT: keine neuen Aufträge; EXEC: nichts ausführen; HARD: + Leases/Cloud entziehen
     sp.add_parser('pc-lease'); sp.add_parser('pc-report')
@@ -274,6 +276,10 @@ def main(argv=None):
             return out(app['learning'].listing())
         if a.cmd == 'meta':
             return out({'metacognition': app['learning'].metacognition()})
+        if a.cmd == 'remember':   # N4-CLI
+            return out(app['brain'].remember(cfg['project'], a.text, approver(a.by)))
+        if a.cmd == 'memories':
+            return out(app['brain'].list_confirmed(cfg['project'], a.limit))
         if a.cmd == 'forget':
             if a.kind == 'memory':
                 return out(app['brain'].retract(a.ident))
