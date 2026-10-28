@@ -258,7 +258,7 @@ def main(argv=None):
                 return out({'discovered': app['registry'].discover(selftest=not a.no_selftest), 'caps': app['registry'].listing()})
             return out({'caps': app['registry'].listing()})
         if a.cmd == 'knowledge':   # Memory-Distiller: Review-Queue; approve schreibt eine belegte Notiz in den Vault
-            return out(eng.knowledge(a.op, a.id, a.by or ('cli:' + getpass.getuser())))
+            return out(eng.knowledge(a.op, a.id, approver(a.by) if a.op != 'list' else ''))
         if a.cmd == 'activity':   # Living HQ: normalisierte AgentEvents + wer gerade echt arbeitet
             return out(eng.agent_activity(since_id=max(0, a.since)))
         if a.cmd == 'router':   # Smart-Router: Modus, Shadow-Übereinstimmung, Policy-Verstöße, Budgets mit Herkunft
