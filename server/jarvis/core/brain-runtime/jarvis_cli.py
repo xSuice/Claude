@@ -190,7 +190,7 @@ def main(argv=None):
     s = sp.add_parser('approve'); s.add_argument('job'); s.add_argument('--step'); s.add_argument('--answer', default=''); s.add_argument('--by')
     s = sp.add_parser('revise'); s.add_argument('job'); s.add_argument('--change', required=True); s.add_argument('--expected', type=int); s.add_argument('--by')
     s = sp.add_parser('tick'); s.add_argument('--max-seconds', type=int, default=50); s.add_argument('--log')
-    sp.add_parser('usage'); sp.add_parser('learned'); sp.add_parser('meta'); sp.add_parser('doctor'); sp.add_parser('councils')
+    sp.add_parser('usage'); sp.add_parser('learned'); sp.add_parser('meta'); sp.add_parser('doctor'); sp.add_parser('councils'); sp.add_parser('router'); sp.add_parser('router-backtest')
     s = sp.add_parser('caps'); s.add_argument('--discover', action='store_true'); s.add_argument('--no-selftest', action='store_true')
     s = sp.add_parser('forget'); s.add_argument('kind', choices=['template', 'lesson', 'memory']); s.add_argument('ident')
     s = sp.add_parser('kill'); s.add_argument('state', choices=['on', 'off']); s.add_argument('--global', dest='glob', action='store_true')
@@ -257,6 +257,10 @@ def main(argv=None):
             if a.discover:
                 return out({'discovered': app['registry'].discover(selftest=not a.no_selftest), 'caps': app['registry'].listing()})
             return out({'caps': app['registry'].listing()})
+        if a.cmd == 'router':   # Smart-Router: Modus, Shadow-Übereinstimmung, Policy-Verstöße, Budgets mit Herkunft
+            return out(eng.router_report())
+        if a.cmd == 'router-backtest':
+            return out(eng.router_backtest())
         if a.cmd == 'councils':   # Council-Metriken (Runden, Dauer, Aufrufe, Tokens, Einwände, Konfidenz, Ergebnis)
             return out(eng.council_metrics())
         if a.cmd == 'learned':

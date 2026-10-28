@@ -38,6 +38,7 @@ from capabilities import BUILTIN, CapError, check_rel
 from orders import Orders, killed
 import runner
 import council as council_mod
+import smart_policy
 from secretscan import has_secret
 
 try:
@@ -96,6 +97,10 @@ CREATE TABLE IF NOT EXISTS job_councils(
     job_id TEXT NOT NULL, revision INTEGER NOT NULL, council TEXT NOT NULL, reason TEXT NOT NULL,
     state TEXT NOT NULL CHECK(state IN ('running','done')), opinions TEXT NOT NULL DEFAULT '{}', artifact TEXT,
     started INTEGER NOT NULL, finished INTEGER, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(job_id, revision));
+CREATE TABLE IF NOT EXISTS route_shadow(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, ts INTEGER NOT NULL, planning INTEGER NOT NULL,
+    mode TEXT NOT NULL, actual TEXT NOT NULL, actual_source TEXT NOT NULL, shadow_alias TEXT, shadow_model TEXT,
+    applied INTEGER NOT NULL DEFAULT 0, decision TEXT NOT NULL);
 '''
 DATA_ORDER = ['public', 'internal', 'private']
 ACTIVE = ('queued', 'planning', 'running')
@@ -404,6 +409,9 @@ class Engine:
                     'max_load_per_cpu': 3.0, 'max_bridge_jobs': 1, **(cfg.get('resources') or {})}
         self.lease_s = int(cfg.get('lease_s', 120))
         self.council_cfg = {'enabled': False, 'max_roles': 3, 'model': 'haiku', **(cfg.get('council') or {})}
+        self.router_cfg = {'mode': 'shadow', 'canary_pct': 0, **(cfg.get('router') or {})}
+        self._quota_cache = (0, {})
+        self.aliases = smart_policy.catalog(self.router_cfg, self.cloud.model if self.cloud is not None else None)
         self.me = f'{socket.gethostname()}:{os.getpid()}'
         with brain.connection(True) as c:
             c.executescript(SCHEMA)
@@ -819,60 +827,21 @@ class Engine:
 
     # ------------------------------------------------------------------ claude calls
     def _model_for(self, j: dict, text: str, planning: bool = False, step_model: str | None = None) -> tuple[str, str]:
+        m, reason = self._model_for_legacy(j, text, planning, step_model)
+        return m, reason
+
+    def _model_for_legacy(self, j: dict, text: str, planning: bool, step_model: str | None) -> tuple[str, str]:
+        decision = None
         if j['spec'].get('model'):
-            return j['spec']['model'], 'manuell (Philipp)'
+            return self._route_log(j, planning, j['spec']['model'], 'manuell (Philipp)', None)
         if step_model in ('haiku', 'sonnet', 'opus'):
-            return step_model, 'Plan'
+            return self._route_log(j, planning, step_model, 'Plan', self._smart_decide(j, text, planning))
         
-        # === PHASE 1 INTEGRATION: AP2 + AP3 (Two-Tier Routing) ===
-        # Tier 1: EvidenceRouter (Provider-Selection: kimi_pro/nexum/local/None)
-        if _EVIDENCE_ROUTING_AVAILABLE and self.evidence_router is not None:
-            try:
-                # Lazy-init classifier (AP2)
-                if not hasattr(self, '_classifier'):
-                    if TaskClassifier is not None:
-                        self._classifier = TaskClassifier()
-                    else:
-                        self._classifier = None
-                
-                # Classify task complexity
-                complexity = 'routine'
-                strategic_flag = False
-                if self._classifier is not None:
-                    try:
-                        classification = self._classifier.classify(text[:4000])
-                        complexity = classification['complexity']
-                        strategic_flag = classification['strategic_flag']
-                    except Exception:  # noqa: BLE001 - classification failure -> default routine
-                        pass
-                
-                # Choose provider via evidence router (AP3)
-                provider = _resolve_canonical(self.evidence_router.choose(
-                    task_text=text[:4000],
-                    complexity=complexity,
-                    strategic_flag=strategic_flag
-                ))  # AP-4: canonical via provider_registry
-                
-                # Update tasks table with classification (Spec §2.2)
-                try:
-                    with self._conn(True) as c:
-                        c.execute(
-                            "UPDATE jobs SET task_type = ? WHERE id = ?",
-                            (complexity, j['id'])
-                        )
-                except Exception:  # noqa: BLE001 - DB update failure must not block routing
-                    pass
-                
-                # Provider-Selection: kimi_pro/nexum → direkt return (kein Claude-Call)
-                if provider == 'kimi_pro':
-                    return 'kimi_pro', f'MA-Evidence-Router: {complexity} → kimi_pro'
-                elif provider == 'nexum':
-                    return 'nexum', f'MA-Evidence-Router: {complexity} → nexum'
-                # provider == 'local' or None → fall through to Claude-Router (Tier 2)
-                
-            except Exception:  # noqa: BLE001 - evidence routing failure → fall through to Claude-Router
-                pass
-        
+        # Smart-Router (Router-Vertrag): entscheidet immer mit und wird protokolliert; angewendet nur in mode active oder
+        # im Canary-Anteil und nur, wenn das Ergebnis ein Claude-Modell ist (einziger Werkzeug-Executor). Früherer Tier 1
+        # (EvidenceRouter.choose -> 'kimi_pro'/'nexum') war wegen Namensauflösung wirkungslos und hätte sonst einen
+        # Nicht-Claude-Modellnamen an die Claude-CLI gegeben: ersetzt.
+        decision = self._smart_decide(j, text, planning)
         # Tier 2: Claude-Router (bestehend) für lokale Modell-Selection (haiku/sonnet/opus)
         m, reason = 'sonnet', 'Standard'
         if self.router:
@@ -883,7 +852,168 @@ class Engine:
                 m, reason = 'sonnet', 'Router nicht verfügbar'
         if planning and m == 'haiku':
             m = 'sonnet'  # planning quality matters more than one cheap call
-        return m, reason
+        return self._route_log(j, planning, m, reason, decision)
+
+    # ------------------------------------------------------------------ smart router (Policy, Shadow, Canary)
+    def _route_metrics(self) -> dict:
+        """Gemessene Werte je Alias aus job_calls (letzte 14 Tage); nichts geschätzt."""
+        since = now_s(self.clock) - 14 * 86400
+        alias_of = {'opus': 'claude-opus', 'sonnet': 'claude-sonnet', 'haiku': 'claude-haiku'}
+        out = {}
+        with self._conn() as c:
+            rows = c.execute('SELECT job_id, sid, model, ok, ms, list_usd, ts FROM job_calls WHERE ts>=? ORDER BY id', (since,)).fetchall()
+            # Kontingent-Ablehnungen des Anbieters ("hit your weekly/session limit") sind keine Modellfehler
+            quota_fail = set()
+            for ev in c.execute("SELECT job_id, text FROM job_events WHERE ts>=? AND kind IN ('claude_done','cloud_done') "
+                                "AND text LIKE '%Fehler:%'", (since,)):
+                mm = re.match(r'Schritt (.+?): ', ev['text'])
+                if mm and (_quota_exhausted(ev['text']) or re.search(r'(?i)(session|weekly|usage) limit', ev['text'])):
+                    quota_fail.add((ev['job_id'], mm.group(1)))
+        for r_ in rows:
+            al = alias_of.get(r_['model']) or ('bulk-cheap-untrusted' if str(r_['model']).startswith('cloud:') else None)
+            if not al:
+                continue
+            m = out.setdefault(al, {'calls': 0, 'ok': 0, 'ms': 0, 'usd': 0.0, 'recent': [], 'quota_rejections': 0})
+            if not r_['ok'] and (r_['job_id'], r_['sid']) in quota_fail:
+                m['quota_rejections'] += 1
+                continue
+            m['calls'] += 1
+            m['ok'] += 1 if r_['ok'] else 0
+            m['ms'] += int(r_['ms'] or 0)
+            m['usd'] += float(r_['list_usd'] or 0)
+            m['recent'].append((int(r_['ok'] or 0), r_['ts']))
+        now = now_s(self.clock)
+        for m in out.values():
+            last = [x for x in m.pop('recent')[-3:] if now - x[1] <= 1800]
+            m['recent_fail_streak'] = len(last) if len(last) == 3 and not any(ok for ok, _ in last) else 0
+            m['avg_s'] = round(m['ms'] / m['calls'] / 1000, 1) if m['calls'] else None
+            m['avg_usd'] = round(m['usd'] / m['calls'], 4) if m['calls'] else None
+        return out
+
+    def _route_quota(self) -> dict:
+        """Provider-Budgets mit Herkunft (confidence). Claude: Plan-Sonde des Anbieters; Nexum: lokales Ledger (gemessen);
+        nicht angebundene Provider: remaining None (keine erfundene Restquote)."""
+        t0, cached = self._quota_cache
+        if now_s(self.clock) - t0 < 60 and cached:
+            return cached
+        q = {}
+        why = None
+        try:
+            why = self.ledger.plan_check()
+        except Exception:  # noqa: BLE001
+            why = None
+        rem, conf = None, 'unknown'
+        if self.ledger.plan_probe:
+            try:
+                pr = self.ledger.plan_probe() or {}
+                ps = [float(pr[k]['p']) for k in ('five', 'week') if isinstance(pr.get(k), dict) and pr[k].get('p') is not None]
+                if pr.get('ok') and ps:
+                    rem, conf = round(1 - max(ps) / 100, 3), 'provider_api'
+            except Exception:  # noqa: BLE001
+                pass
+        q['anthropic-plan'] = {'blocked': bool(why), 'remaining': rem, 'confidence': conf, 'note': why or ''}
+        try:
+            nq = self.ledger.get_provider_quota('nexum')
+            q['nexum'] = {'blocked': nq['remaining_pct'] <= 0, 'remaining': round(nq['remaining_pct'] / 100, 3), 'confidence': 'measured',
+                          'spent_today_usd': nq['cost_used_usd'], 'hard_limit_usd': nq['cost_limit_usd'], 'calls_today': nq['calls_used']}
+        except Exception:  # noqa: BLE001
+            q['nexum'] = {'blocked': False, 'remaining': None, 'confidence': 'unknown'}
+        for prov in ('moonshot', 'pc-ollama', 'openrouter'):
+            q[prov] = {'blocked': False, 'remaining': None, 'confidence': 'not_connected'}
+        self._quota_cache = (now_s(self.clock), q)
+        return q
+
+    def _smart_decide(self, j: dict, text: str, planning: bool) -> dict | None:
+        try:
+            complexity = 'routine'
+            if TaskClassifier is not None:
+                if not hasattr(self, '_classifier'):
+                    self._classifier = TaskClassifier()
+                complexity = self._classifier.classify(text[:4000])['complexity']
+            return smart_policy.decide(text=text, spec=j['spec'], complexity=complexity, planning=planning,
+                                       needs_tools=not planning, aliases=self.aliases, metrics=self._route_metrics(),
+                                       quota=self._route_quota())
+        except Exception as e:  # noqa: BLE001 - Router-Fehler darf nie einen Auftrag blockieren (Status quo gilt)
+            return {'alias': None, 'model': None, 'executor': None, 'reason': f'Router-Fehler: {type(e).__name__}', 'error': True}
+
+    def _route_log(self, j: dict, planning: bool, model: str, reason: str, decision: dict | None) -> tuple[str, str]:
+        mode = self.router_cfg.get('mode', 'shadow')
+        applied = False
+        if (decision and decision.get('executor') == 'claude' and decision.get('model') in ('haiku', 'sonnet', 'opus')
+                and not j['spec'].get('model') and reason != 'Plan'
+                and (mode == 'active' or (mode == 'canary' and smart_policy.in_canary(j['id'], float(self.router_cfg.get('canary_pct', 0)))))):
+            if decision['model'] != model:
+                model, reason, applied = decision['model'], f'Smart-Router ({mode}): {decision["reason"]}', True
+        if decision is not None:
+            try:
+                with self._conn(True) as c:
+                    c.execute('INSERT INTO route_shadow(job_id,ts,planning,mode,actual,actual_source,shadow_alias,shadow_model,applied,decision) '
+                              'VALUES(?,?,?,?,?,?,?,?,?,?)',
+                              (j['id'], now_s(self.clock), int(planning), mode, model, reason[:200], decision.get('alias'),
+                               decision.get('model'), int(applied), json.dumps(decision, ensure_ascii=False)[:8000]))
+            except Exception:  # noqa: BLE001 - Protokoll darf nie blockieren
+                pass
+        return model, reason
+
+    def router_report(self, limit: int = 2000) -> dict:
+        """Shadow-Auswertung: Übereinstimmung, Policy-Verstöße (müssen 0 sein), Verteilung, Budgets mit Herkunft."""
+        with self._conn() as c:
+            rows = c.execute('SELECT r.*, j.spec, j.verdict FROM route_shadow r JOIN jobs j ON j.id=r.job_id WHERE j.owner=? '
+                             'ORDER BY r.id DESC LIMIT ?', (self.brain.identity, limit)).fetchall()
+        n = len(rows)
+        agree = sum(1 for r_ in rows if r_['shadow_model'] == r_['actual'])
+        dist, viol, applied, fail_closed = {}, [], 0, 0
+        for r_ in rows:
+            d = json.loads(r_['decision'])
+            spec = json.loads(r_['spec'])
+            dist[r_['shadow_alias'] or 'keiner'] = dist.get(r_['shadow_alias'] or 'keiner', 0) + 1
+            applied += r_['applied']
+            if not d.get('alias'):
+                fail_closed += 1
+                continue
+            v = smart_policy.violations(d, spec, self.aliases)
+            if v:
+                viol.append({'job': r_['job_id'], 'alias': d['alias'], 'why': v})
+        return {'mode': self.router_cfg.get('mode', 'shadow'), 'canary_pct': self.router_cfg.get('canary_pct', 0), 'decisions': n,
+                'agreement': round(agree / n, 3) if n else None, 'applied': applied, 'fail_closed': fail_closed,
+                'distribution': dist, 'policy_violations': viol[:20], 'violation_count': len(viol),
+                'budgets': self._route_quota(), 'measured': self._route_metrics(),
+                'note': 'Shadow: Entscheidung protokolliert, ausgeführt wird der bisherige Weg, außer applied>0 (canary/active, nur Claude-Modelle).'}
+
+    def router_backtest(self, limit: int = 500) -> dict:
+        """Rückwirkende Shadow-Eval: historische Aufrufe (job_calls) durch die Policy schicken und mit dem tatsächlichen Weg vergleichen."""
+        with self._conn() as c:
+            rows = c.execute('SELECT k.job_id, k.sid, k.model, k.ok, k.list_usd, j.request, j.spec, j.verdict FROM job_calls k '
+                             'JOIN jobs j ON j.id=k.job_id WHERE j.owner=? ORDER BY k.id DESC LIMIT ?', (self.brain.identity, limit)).fetchall()
+        metrics, quota = self._route_metrics(), self._route_quota()
+        clf = TaskClassifier() if TaskClassifier is not None else None
+        out = {'calls': 0, 'agree': 0, 'by_pair': {}, 'violations': 0, 'fail_closed': 0, 'actual_usd': 0.0, 'policy_usd_est': 0.0}
+        for r_ in rows:
+            if str(r_['sid']).startswith('council:'):
+                continue
+            spec = json.loads(r_['spec'])
+            planning = r_['sid'] == 'plan'
+            cx = clf.classify(r_['request'][:4000])['complexity'] if clf else 'routine'
+            d = smart_policy.decide(text=r_['request'], spec=spec, complexity=cx, planning=planning, needs_tools=not planning,
+                                    aliases=self.aliases, metrics=metrics, quota={k: {**v, 'blocked': False} for k, v in quota.items()})
+            out['calls'] += 1
+            actual = str(r_['model']).replace('cloud:', '') if str(r_['model']).startswith('cloud:') else r_['model']
+            out['agree'] += 1 if d.get('model') == actual else 0
+            key = f'{r_["model"]} -> {d.get("alias") or "fail-closed"}'
+            out['by_pair'][key] = out['by_pair'].get(key, 0) + 1
+            if not d.get('alias'):
+                out['fail_closed'] += 1
+            elif smart_policy.violations(d, spec, self.aliases):
+                out['violations'] += 1
+            out['actual_usd'] += float(r_['list_usd'] or 0)
+            mm = metrics.get(d.get('alias') or '') or {}
+            out['policy_usd_est'] += float(mm.get('avg_usd') or r_['list_usd'] or 0)
+        out['agreement'] = round(out['agree'] / out['calls'], 3) if out['calls'] else None
+        out['actual_usd'] = round(out['actual_usd'], 2)
+        out['policy_usd_est'] = round(out['policy_usd_est'], 2)
+        out['note'] = ('policy_usd_est = Schätzung aus gemessenen Durchschnittskosten je Modell (Listenpreis-Äquivalent), keine Rechnung; '
+                       'Qualität der abweichenden Wahl ist damit NICHT belegt - dafür Canary.')
+        return out
 
     def _claude_call(self, j: dict, *, prompt: str, model: str, tools: list[str], system: str, sid: str,
                      write: bool = True, max_turns: int | None = None, timeout_s: int | None = None) -> dict | None:
