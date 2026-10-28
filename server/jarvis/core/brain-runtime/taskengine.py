@@ -595,8 +595,9 @@ class Engine:
         with self._conn(True) as c:
             c.execute("UPDATE jobs SET state='cancelled',finished=?,updated=?,verdict='cancelled',summary=? WHERE id=?",
                       (now_s(self.clock), now_s(self.clock), reason[:300], job_id))
-            c.execute("UPDATE job_steps SET state='skipped',updated=? WHERE job_id=? AND state IN ('pending','ready','waiting')",
+            c.execute("UPDATE job_steps SET state='skipped',updated=? WHERE job_id=? AND state IN ('pending','ready','waiting','running')",
                       (now_s(self.clock), job_id))
+            c.execute("UPDATE jobs SET lease_owner=NULL, lease_until=NULL WHERE id=? AND lease_owner LIKE 'pc:%'", (job_id,))
         self.event(job_id, 'cancelled', reason)
         return {'job_id': job_id, 'state': 'cancelled', 'changed': True}
 
@@ -1016,9 +1017,18 @@ class Engine:
         if self._revision(j['id']) != int(j.get('revision') or 1):   # während der Planung geändert: Plan gehört zur alten Revision
             self.event(j['id'], 'superseded', f'Plan der Revision {j.get("revision") or 1} verworfen - Auftrag wurde inzwischen geändert')
             return {'progress': True, 'why': 'superseded'}
+        state = 'waiting_approval' if j['spec'].get('plan_approval') else 'running'
+        rev = int(j.get('revision') or 1)
         with self._conn(True) as c:
-            c.execute('DELETE FROM job_steps WHERE job_id=?', (j['id'],))
-            for i, s in enumerate(plan['steps']):
+            # atomarer, bedingter Zustandswechsel: nur wenn der Auftrag noch in DIESER Planung steckt (nicht abgebrochen/geändert)
+            cur = c.execute("UPDATE jobs SET state=?, plan=?, plan_source=?, task_type=?, updated=? WHERE id=? AND owner=? "
+                            "AND state='planning' AND revision=?",
+                            (state, json.dumps(plan, ensure_ascii=False), source, plan['task_type'], now_s(self.clock), j['id'],
+                             self.brain.identity, rev))
+            fenced = cur.rowcount != 1
+            if not fenced:
+                c.execute('DELETE FROM job_steps WHERE job_id=?', (j['id'],))
+            for i, s in enumerate([] if fenced else plan['steps']):
                 spec = {k: v for k, v in s.items() if k not in ('id', 'title', 'kind', 'deps')}
                 kind = s['kind']
                 if kind == 'improve':
@@ -1026,8 +1036,10 @@ class Engine:
                 c.execute('INSERT INTO job_steps(id,job_id,idx,sid,title,kind,spec,deps,state,updated,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                           (uuid.uuid4().hex, j['id'], i, s['id'], s['title'], kind, json.dumps(spec, ensure_ascii=False),
                            json.dumps(s.get('deps', [])), 'pending', now_s(self.clock), int(j.get('revision') or 1)))
-        state = 'waiting_approval' if j['spec'].get('plan_approval') else 'running'
-        self._set(j['id'], state=state, plan=plan, plan_source=source, task_type=plan['task_type'])
+        if fenced:
+            now = self._job(j['id'])
+            self.event(j['id'], 'fenced', f'Plan verworfen: Auftrag ist inzwischen {now["state"]} (Revision {now.get("revision") or 1})')
+            return {'progress': True, 'why': 'fenced'}
         self.event(j['id'], 'planned', f'{len(plan["steps"])} Schritte, {len(plan["deliverables"])} Ergebnisdateien, Typ {plan["task_type"]}'
                                        + ('; wartet auf Freigabe des Plans' if state == 'waiting_approval' else ''))
         return {'progress': True, 'state': state}
@@ -1083,6 +1095,9 @@ class Engine:
                 return {'progress': False, 'why': 'council deferred'}
             ops[role[0]] = council_mod.parse_opinion(res.get('text') or '', res.get('structured')) if res.get('ok') \
                 else {**council_mod.parse_opinion(''), 'objections': [f'Aufruf fehlgeschlagen: {str(res.get("error"))[:150]}']}
+            if (self._job(j['id']) or {}).get('state') in FINAL:
+                self.event(j['id'], 'fenced', 'Council-Runde beendet - Auftrag wurde abgebrochen')
+                return {'progress': True, 'why': 'fenced'}
             if self._revision(j['id']) != rev:
                 self.event(j['id'], 'superseded', f'Council-Runde der Revision {rev} verworfen - Auftrag wurde geändert')
                 return {'progress': True, 'why': 'superseded'}
@@ -1297,6 +1312,12 @@ class Engine:
             return self._finalize(self._job(j['id']), forced=str(e))
         except CapError as e:
             r = {'ok': False, 'detail': f'Ungültiger Aufruf: {e}'}
+        # Abbruch-Fencing: wurde der Auftrag während des Schritts abgebrochen/abgeschlossen, wird nichts mehr geschrieben.
+        now_state = (self._job(j['id']) or {}).get('state')
+        if now_state in FINAL:
+            self._step_set(s['id'], state='skipped', feedback=f'Ergebnis verworfen: Auftrag {now_state}')
+            self.event(j['id'], 'fenced', f'Schritt {s["sid"]}: Ergebnis verworfen - Auftrag ist {now_state}')
+            return {'progress': True, 'why': 'fenced'}
         # Revisions-Fencing: wurde der Auftrag während des Schritts geändert, gehört dieses Ergebnis zur alten Revision.
         if self._revision(j['id']) != int(j.get('revision') or 1):
             self.event(j['id'], 'superseded', f'Schritt {s["sid"]}: Ergebnis der Revision {j.get("revision") or 1} verworfen '
@@ -1538,6 +1559,10 @@ class Engine:
 
     # ------------------------------------------------------------------ finalize
     def _finalize(self, j: dict, forced: str | None = None) -> dict:
+        now_state = (self._job(j['id']) or {}).get('state')
+        if j['state'] not in FINAL and now_state in FINAL:   # inzwischen abgebrochen: dessen Abschluss gilt, kein zweiter
+            self.event(j['id'], 'fenced', f'Abschluss verworfen - Auftrag ist bereits {now_state}')
+            return {'progress': True, 'why': 'fenced'}
         if j['state'] != 'cancelled' and self._revision(j['id']) != int(j.get('revision') or 1):
             self.event(j['id'], 'superseded', f'Abschluss der Revision {j.get("revision") or 1} verworfen - Auftrag wurde geändert')
             return {'progress': True, 'why': 'superseded'}
