@@ -302,6 +302,9 @@ body::after {
 .voice-ctl { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 8px 0; }
 .voice-opt { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; font-size: var(--fs-small); color: var(--text-muted); margin: 8px 0; }
 .voice-opt select { max-width: 220px; }
+.voice-big { min-height: 52px; padding: 0 22px; font-size: 1.05rem; }
+.voice-ctl2 { margin-top: 0; }
+.voice-ctl .btn.danger { background: var(--crimson, #c0283f); color: #fff; }
 .voice-opt input[type=range] { width: 110px; vertical-align: middle; }
 .voice-meter { display: grid; gap: 4px; justify-items: center; font-size: var(--fs-small); color: var(--text-muted); margin: 6px auto 2px; width: min(320px, 90%); }
 .voice-meter .vm-bar { position: relative; width: 100%; height: 8px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden; }

@@ -1,6 +1,6 @@
 /* MA-HOME HQ — Sprach-Oberflaeche: Orb (animierter Kern, echter Mikrofonpegel), Steuerung, Transkript, Kopfzeilen-Knopf */
 import { $, esc } from './api.js';
-import { V, onVoice, setWake, talkOnce, setSpeak, setVoiceName, voices, stopAll, clearTranscript, micLevel, sayText, setThreshold, resetWakeMax, engineStats } from './voice.js';
+import { V, onVoice, setWake, talkOnce, startConversation, endConversation, setMuted, setBargeVoice, setSpeak, setVoiceName, voices, stopAll, clearTranscript, micLevel, sayText, setThreshold, resetWakeMax, engineStats } from './voice.js';
 import { localHealth } from './localvoice.js';
 
 let stopFn = null;
@@ -32,8 +32,10 @@ export function renderVoice(root, ctx) {
     '<div class="voice-grid"><div class="holo voice-orbcard"><canvas id="vorb" width="520" height="520" aria-label="Animierter JARVIS-Kern"></canvas>' +
     '<div class="voice-state" id="vstate" role="status" aria-live="polite"></div><div class="voice-interim" id="vint"></div>' +
     '<div class="voice-meter" id="vmeter" hidden><span>„Hey Jarvis“-Erkennung</span><div class="vm-bar"><i id="vmb"></i><b id="vmt"></b></div><span id="vmv" class="faint"></span></div>' +
-    '<div class="voice-ctl"><button class="btn primary" id="vtalk">🎤 Jetzt sprechen</button><button class="btn" id="vwake"></button><button class="btn ghost" id="vstop">■ Stopp</button></div>' +
+    '<div class="voice-ctl"><button class="btn primary voice-big" id="vconv"></button><button class="btn" id="vmute" aria-pressed="false">🔇 Stumm</button><button class="btn ghost" id="vstop" title="Unterbricht nur die Sprachausgabe – Aufträge laufen weiter">■ Unterbrechen</button></div>' +
+    '<div class="voice-ctl voice-ctl2"><button class="btn ghost" id="vtalk">Einzelne Frage</button><button class="btn ghost" id="vwake"></button></div>' +
     '<div class="voice-opt"><label><input type="checkbox" id="vspk"> Antworten vorlesen</label><label>Stimme <select id="vvoice"></select></label>' +
+    '<label title="Mit Kopfhörer: du kannst JARVIS einfach ins Wort fallen. Über Lautsprecher besser „Hey Jarvis“ oder Unterbrechen benutzen."><input type="checkbox" id="vbarge"> Unterbrechen per Stimme (Kopfhörer)</label>' +
     '<label title="Niedriger = reagiert leichter, aber öfter versehentlich">Empfindlichkeit <input type="range" id="vthr" min="0.2" max="0.8" step="0.05" aria-label="Wakeword-Schwelle"> <span id="vthrv"></span></label></div>' +
     '<form class="voice-text" id="vtf"><input id="vti" placeholder="…oder Text eingeben (gleicher Pfad wie gesprochen)" autocomplete="off"><button class="btn">Senden</button></form></div>' +
     '<div class="voice-side"><div class="holo"><h2 class="holo-title">Transkript<span class="sub">Gespräch dieser Sitzung · <a href="#" id="vclr">leeren</a></span></h2><ul id="vlog" class="voice-log"></ul></div>' +
@@ -85,7 +87,11 @@ export function renderVoice(root, ctx) {
   }
 
   function ui() {
-    $('#vstate', root).innerHTML = '<span class="dot ' + (V.state === 'off' ? 'warn' : V.state === 'listening' ? 'err' : 'live') + '"></span> ' + esc(STATE_TXT[V.state] || V.state) + (V.err ? '<div class="voice-err">' + esc(V.err) + '</div>' : '');
+    const cb = $('#vconv', root); cb.textContent = V.convo ? '■ Gespräch beenden' : '🎙 Gespräch starten'; cb.classList.toggle('danger', V.convo);
+    const mb = $('#vmute', root); mb.hidden = !(V.convo || V.enabled); mb.setAttribute('aria-pressed', V.muted ? 'true' : 'false'); mb.textContent = V.muted ? '🎤 Mikro an' : '🔇 Stumm';
+    $('#vbarge', root).checked = V.bargeVoice;
+    const stxt = V.muted ? 'Stumm – Mikrofon ist aus' : V.convo && V.userSpeaking ? 'Du sprichst …' : V.convo && V.state === 'listening' ? 'Gespräch läuft – sprich einfach' : V.convo && V.state === 'speaking' ? (V.bargeVoice ? 'Spricht – fall ihm einfach ins Wort' : 'Spricht – „Hey Jarvis“ oder Unterbrechen') : (STATE_TXT[V.state] || V.state);
+    $('#vstate', root).innerHTML = '<span class="dot ' + (V.muted || V.state === 'off' ? 'warn' : V.state === 'listening' ? 'err' : 'live') + '"></span> ' + esc(stxt) + (V.err ? '<div class="voice-err">' + esc(V.err) + '</div>' : '');
     $('#vint', root).textContent = V.interim ? '„' + V.interim + '“' : '';
     $('#vwake', root).textContent = V.enabled ? 'Wakeword aus' : 'Wakeword „Hey Jarvis“ an';
     $('#vspk', root).checked = V.speakOn;
@@ -119,6 +125,9 @@ export function renderVoice(root, ctx) {
   $('#vdiagcp', root).onclick = async e => { e.preventDefault(); const rows = await diag(); const txt = '## JARVIS Sprache – Diagnose ' + new Date().toISOString() + '\n' + rows.map(r => '- ' + (r[1] === null ? '–' : r[1] ? 'OK' : 'FEHLER') + ' ' + r[0] + (r[2] ? ': ' + r[2] : '')).join('\n') + '\n- Zustand: ' + V.state + ', Wakeword-Modus: ' + V.wakeMode + ', Schwelle ' + V.threshold + ', höchster Wert ' + V.wakeMax.toFixed(2) + '\n- Browser: ' + navigator.userAgent + (V.err ? '\n- Fehler: ' + V.err : ''); try { await navigator.clipboard.writeText(txt); e.target.textContent = 'kopiert ✓'; } catch (er) { prompt('Bericht kopieren:', txt); } };
   $('#vthr', root).oninput = e => setThreshold(parseFloat(e.target.value));
   diag();
+  $('#vconv', root).onclick = () => V.convo ? endConversation() : startConversation();
+  $('#vmute', root).onclick = () => setMuted(!V.muted);
+  $('#vbarge', root).onchange = e => setBargeVoice(e.target.checked);
   $('#vtalk', root).onclick = () => talkOnce();
   $('#vwake', root).onclick = () => setWake(!V.enabled);
   $('#vstop', root).onclick = () => stopAll();

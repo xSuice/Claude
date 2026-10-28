@@ -27,9 +27,10 @@ export function renderCC(root, ctx) {
     '<div class="grid cols2 section"><div class="holo" id="ccinc"></div><div class="holo" id="ccjobs"></div></div>' +
     '<div class="grid cols3 section"><div class="holo" id="cctok"></div><div class="holo" id="ccsrv"></div><div class="holo" id="ccconn"></div></div>' +
     '<div class="grid cols3 section"><div class="holo" id="ccauto"></div><div class="holo" id="ccskills"></div><div class="holo" id="cchist"></div></div>' +
+    '<div class="holo section" id="cchealth"></div>' +
     '<div class="holo section" id="ccna"></div>';
   const $id = id => root.querySelector('#' + id);
-  const X = { tele: null, status: null, usage: null, plan: null, jobs: [], conn: null, sched: null, sess: null, errs: {} };
+  const X = { health: null, tele: null, status: null, usage: null, plan: null, jobs: [], conn: null, sched: null, sess: null, errs: {} };
 
   /* ---- Renderer ---- */
   function kpis() {
@@ -161,13 +162,22 @@ export function renderCC(root, ctx) {
       '<div class="faint">Warnung, keine Sperre: Das Debattenbudget (3 Runden ≈ 6 Nachrichten) steht nur in den SOUL.md-Regeln. Gezählt werden gesendete Aufrufe je Agentenpaar (Pause &lt; 30 min = gleiche Kette), ohne Inhalte; kein Zustell- oder Qualitätsnachweis.</div></div>';
   }
 
+  function health() {
+    const h = X.health, L = { up: ['ok', 'läuft'], down: ['err', 'AUSGEFALLEN'], pending: ['warn', 'prüft …'], maintenance: ['warn', 'Wartung'], unknown: ['warn', 'unbekannt'] };
+    $id('cchealth').innerHTML = '<h2 class="holo-title">Dienste<span class="sub">Uptime Kuma prüft jede Minute · Ausfälle kommen per Signal aufs Handy</span></h2>' +
+      (h && h.ok ? (h.down ? '<p><span class="chip crimson">' + h.down + ' ausgefallen</span></p>' : '') + '<div class="grid cols4">' + h.monitors.map(m => {
+        const l = L[m.status] || L.unknown;
+        return '<div class="ccrow"><span><span class="dot ' + l[0] + '"></span> ' + esc(m.name) + '</span><span class="mono">' + (m.status === 'up' && m.ms != null ? m.ms + ' ms' : l[1]) + '</span></div>';
+      }).join('') + '</div>' : '<div class="faint">' + esc((h && h.error) || X.errs.health || 'lädt …') + '</div>');
+  }
+
   function na() {
     $id('ccna').innerHTML = renderLedger(X.ledger) + '<h2 class="holo-title">Weitere Quellen<span class="sub">Angebunden nur, wo eine echte Datenquelle existiert – nichts wird simuliert</span></h2><div class="grid cols3">' +
       NA('Modelle & Router-Quoten', 'Die Entscheidungstabelle des Evidence-Routers (council_decisions) ist leer – es gibt keine Quelle.') + pcPanel() + councilPanel() + logPanel() + '</div>';
   }
 
   let active = true;
-  const paint = () => { if (!active || !root.querySelector('#cckpi')) return; kpis(); agents(); tasks(); incidents(); jobs(); tokens(); server(); conn(); auto(); skills(); history(); na(); };
+  const paint = () => { if (!active || !root.querySelector('#cckpi')) return; kpis(); agents(); tasks(); incidents(); jobs(); tokens(); server(); conn(); auto(); skills(); history(); health(); na(); };
 
   /* ---- Zusatzquellen (30 s) ---- */
   async function slow() {
@@ -175,6 +185,7 @@ export function renderCC(root, ctx) {
     await Promise.all([
       get('status', () => api('/api/status')),
       get('tele', () => api('/api/jarvis/telemetry')),
+      get('health', () => api('/api/jarvis/health')),
       get('ledger', async () => { const r = await api('/api/jarvis', { body: { cmd: 'usage' } }); if (!r.ok) throw new Error('Ledger nicht verfügbar'); return r.data; }),
       get('usage', () => cop('usage', {})),
       get('conn', () => cop('connectors', {})),

@@ -78,3 +78,19 @@ test('hasSpeech: only silence after the wakeword means wait for the question',as
   assert.equal(b.m.hasSpeech(cat(tone(1.0,0.05),tone(0.9,0.001)),ref*0.2),true); // leise Stimme, leiser Massstab
  }finally{b.cleanup()}
 });
+
+test('conversation mode keeps listening after answers and window timers (no wakeword needed)',async()=>{
+ const b=await boot();try{
+  b.m.V.convo=true;
+  await b.m.sayText('Erzähle mir etwas Interessantes');
+  for(let i=0;i<b.audio.length;i++)b.audio[i].onend();
+  assert.equal(b.m.V.state,'listening');
+  for(const x of [...b.timers.values()])try{x.f()}catch(e){}
+  assert.equal(b.m.V.state,'listening');
+  b.m.stopAll();
+  assert.equal(b.m.V.state,'listening');   // Unterbrechen beendet das Gespräch nicht
+  b.m.endConversation();
+  assert.equal(b.m.V.convo,false);
+  assert.notEqual(b.m.V.state,'listening');
+ }finally{b.cleanup()}
+});

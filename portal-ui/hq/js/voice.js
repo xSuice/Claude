@@ -19,12 +19,15 @@ export const V = {
   engine: getSR() ? 'browser' : 'none', localOk: false,   // engine: local (eigener PC) | browser | none
   enabled: false, state: 'off',            // off | wake | listening | thinking | speaking
   interim: '', transcript: [], speakOn: true, level: 0, voiceName: '', err: '', go: null,
+  convo: false, muted: false, bargeVoice: false,   // Gesprächsmodus (wie ChatGPT Voice): einmal starten, frei sprechen
   wakeMode: 'oww', engine2: 'aus', engErr: '', wakeScore: 0, wakeMax: 0, threshold: 0.4, loading: false   // oww = Wakeword-Modell im Browser, text = Fallback per Transkript
 };
 const listeners = new Set();
 const emit = () => listeners.forEach(f => { try { f(V); } catch (e) { console.error(e); } });
 export const onVoice = f => { listeners.add(f); return () => listeners.delete(f); };
 const setState = s => { V.state = s; emit(); };
+/* Ruhezustand: im Gesprächsmodus weiter zuhören, sonst Wakeword oder aus */
+const idle = () => V.convo ? 'listening' : V.enabled ? 'wake' : 'off';
 const say = (r, t, src) => { V.transcript.push({ r, t, src: src || '', ts: Date.now() }); V.transcript = V.transcript.slice(-40); emit(); };
 
 /* ---------- Lokale Intents (token-frei) ---------- */
@@ -80,7 +83,7 @@ function pickVoice() {
 }
 let stopLocal = null;
 const useLocalVoice = () => V.localOk && (!V.voiceName || V.voiceName === LOCAL_VOICE);
-export function cancelSpeech() { speechRun++; clearTimeout(speakTimer); curUtter = null; if (stopLocal) { stopLocal(); stopLocal = null; } try { speechSynthesis.cancel(); } catch (e) { /* */ } earPause(false); if (V.state === 'speaking') setState(V.enabled ? 'wake' : 'off'); }
+export function cancelSpeech() { speechRun++; clearTimeout(speakTimer); curUtter = null; if (stopLocal) { stopLocal(); stopLocal = null; } try { speechSynthesis.cancel(); } catch (e) { /* */ } earPause(false); if (V.state === 'speaking') setState(idle()); }
 function speak(text, done) {
   cancelSpeech();
   const chunks = speechChunks(text);
@@ -88,7 +91,7 @@ function speak(text, done) {
   const run = speechRun, voice = pickVoice();
   let index = 0;
   setState('speaking'); earPause(true);
-  const finish = () => { if (run !== speechRun) return; clearTimeout(speakTimer); curUtter = null; stopLocal = null; setTimeout(() => earPause(false), 350); setState(V.enabled ? 'wake' : 'off'); done && done(); };
+  const finish = () => { if (run !== speechRun) return; clearTimeout(speakTimer); curUtter = null; stopLocal = null; setTimeout(() => earPause(false), 350); setState(idle()); done && done(); };
   if (useLocalVoice()) {
     stopLocal = playLocal(chunks, { isCurrent: () => run === speechRun, onDone: finish,
       onAudio: () => { V.level = 0.8; },
@@ -112,18 +115,18 @@ function speak(text, done) {
 /* ---------- Befehl behandeln ---------- */
 async function handle(raw) {
   const text = raw.replace(WAKE, ' ').replace(/^[\s,.:;!]+/, '').trim();
-  if (text.length < 2) { setState(V.enabled ? 'wake' : 'off'); return; }
+  if (text.length < 2) { setState(idle()); return; }
   say('u', text);
   setState('thinking');
   const fresh = await refresh();        // nie still auf veraltetem/leerem Store antworten
   const loc = answerLocal(text);
   if (loc && !fresh && loc.reply && !loc.nav && !/ Uhr\.$/.test(loc.reply) && !/^Ich beantworte/.test(loc.reply)) loc.reply = 'Achtung, die Live-Daten konnten gerade nicht aktualisiert werden. ' + loc.reply;
   if (loc) {
-    if (loc.action === 'cancel') { cancelSpeech(); say('a', 'Gestoppt.', 'lokal'); setState(V.enabled ? 'wake' : 'off'); return; }
+    if (loc.action === 'cancel') { cancelSpeech(); say('a', 'Gestoppt.', 'lokal'); setState(idle()); return; }
     say('a', loc.reply, 'lokal · 0 Token');
     if (loc.nav && V.go) V.go(loc.nav);
     speak(loc.reply, resumeDialogue);
-    if (V.state === 'thinking') setState(V.enabled ? 'wake' : 'off');
+    if (V.state === 'thinking') setState(idle());
     return;
   }
   try {
@@ -135,12 +138,12 @@ async function handle(raw) {
     say('a', 'Das hat nicht geklappt: ' + e.message, 'Fehler');
     speak('Das hat nicht geklappt.');
   }
-  if (V.state === 'thinking') setState(V.enabled ? 'wake' : 'off');
+  if (V.state === 'thinking') setState(idle());
 }
 
 /* ---------- Spracherkennung ---------- */
 let ear = null, earMode = null;
-function earPause(p) { if (eng) eng.setVad(!p); else if (ear) ear.pause(p); }   // Engine: Wakeword bleibt fuer „Hey Jarvis“-Unterbrechung aktiv
+function earPause(p) { if (eng) eng.setVad(V.muted ? false : (!p || (V.convo && V.bargeVoice))); else if (ear) ear.pause(p); }   // Engine: Wakeword bleibt fuer „Hey Jarvis“-Unterbrechung aktiv
 async function startEar(mode) {
   earMode = mode;
   await micOn();
@@ -174,9 +177,13 @@ async function startEngine() {
         segWake = true; segWakePos = pos; openWindow(8000);
       },
       onScore: sc => { V.wakeScore = sc; const now = performance.now(); if (now - scoreT > 200) { scoreT = now; emit(); } },
-      onSpeechStart: () => { segAccept = V.state === 'listening'; if (segAccept) clearTimeout(winT); },
+      onSpeechStart: () => {
+        if (V.convo && V.bargeVoice && V.state === 'speaking') cancelSpeech();   // Unterbrechen per Stimme (nur mit Kopfhörer empfohlen)
+        segAccept = V.state === 'listening'; if (segAccept) clearTimeout(winT); if (segAccept && V.convo) { V.userSpeaking = true; emit(); }
+      },
       onMisfire: () => { if (V.state === 'listening') openWindow(8000, false); },
       onSpeechEnd: audio => {
+        V.userSpeaking = false;
         const accept = segAccept || segWake, woke = segWake, wpos = segWakePos; segAccept = false; segWake = false; segWakePos = null;
         if (!accept || V.state === 'speaking' || V.state === 'thinking') return;   // ohne Wakeword: nichts verlaesst den Browser
         const ref = peakRms(audio);   // Lautstaerke des ganzen Segments (inkl. „Hey Jarvis“) als Massstab
@@ -186,10 +193,10 @@ async function startEngine() {
         setState('thinking');
         transcribeWav(blob).then(t => {
           const cmd = isHallucination(t) ? '' : woke ? stripWake(t, WAKE) : t.replace(WAKE, ' ').trim();
-          if (cmd.length < 2) { if (woke) openWindow(8000, false); else { setState(V.enabled ? 'wake' : 'off'); if (!V.enabled) stopEar(); } return; }   // nur „Hey Jarvis“ gesagt: Fenster fuer die Frage
+          if (cmd.length < 2) { if (woke) openWindow(8000, false); else { setState(idle()); if (!V.enabled) stopEar(); } return; }   // nur „Hey Jarvis“ gesagt: Fenster fuer die Frage
           setState('listening'); handle(cmd);
           if (earMode === 'ptt' && !V.enabled) setTimeout(() => { if (V.state !== 'speaking' && V.state !== 'thinking') stopEar(); }, 0);
-        }).catch(e => { V.err = 'Lokale Spracherkennung: ' + e.message; setState(V.enabled ? 'wake' : 'off'); });
+        }).catch(e => { V.err = 'Lokale Spracherkennung: ' + e.message; setState(idle()); });
       },
       onError: e => { V.err = 'Sprach-Engine: ' + (e && e.message || e); emit(); } });
     V.engine2 = 'bereit'; V.engErr = ''; V.err = '';
@@ -212,8 +219,9 @@ export function setThreshold(t) { V.threshold = t; try { localStorage.setItem('h
 export function resetWakeMax() { V.wakeMax = 0; if (eng) eng.resetMax(); emit(); }
 let rec = null, restartT = null, winT = null, recMode = null, backoff = 400;
 function stopRec(clearWindow = true) { clearTimeout(restartT); if (clearWindow) clearTimeout(winT); if (rec) { rec.onend = null; rec.onerror = null; try { rec.abort(); } catch (e) { /* */ } rec = null; } }
-function openWindow(ms, cue = true) { setState('listening'); clearTimeout(winT); winT = setTimeout(() => { if (V.state === 'listening') setState(V.enabled ? 'wake' : 'off'); if (!V.enabled) stopEar(); }, ms || 8000); if (cue) beep(880, 90); }
+function openWindow(ms, cue = true) { setState('listening'); clearTimeout(winT); winT = setTimeout(() => { if (V.convo) return; if (V.state === 'listening') setState(idle()); if (!V.enabled) stopEar(); }, ms || 8000); if (cue) beep(880, 90); }
 function resumeDialogue() {
+  if (V.convo) { setState('listening'); return; }
   if (!V.enabled || !V.supported) return;
   startRec('wake');
   openWindow(12000, false);
@@ -269,7 +277,7 @@ function startRec(mode) {
       if (recErr) backoff = Math.min(8000, backoff * 1.6); else backoff = 400;
       recErr = false; restartT = setTimeout(() => startRec('wake'), d);
     }
-    else if (V.state === 'listening') setState(V.enabled ? 'wake' : 'off');
+    else if (V.state === 'listening') setState(idle());
   };
   try { rec.start(); } catch (e) { /* laeuft bereits */ }
 }
@@ -320,14 +328,37 @@ export async function talkOnce() {
 }
 export const setSpeak = on => { V.speakOn = on; if (!on) cancelSpeech(); emit(); };
 export const setVoiceName = n => { V.voiceName = n; try { localStorage.setItem('hq-voice', n); } catch (e) { /* */ } emit(); };
-export function stopAll() { cancelSpeech(); clearTimeout(winT); V.interim = ''; setState(V.enabled ? 'wake' : 'off'); }
+/* ---------- Gesprächsmodus ---------- */
+export async function startConversation() {
+  if (V.convo) return;
+  unlockAudio(); cancelSpeech(); V.convo = true; V.muted = false; V.err = ''; emit();
+  await micOn();
+  if (!stream) { V.convo = false; V.err = 'Mikrofon-Zugriff verweigert. Bitte im Browser bzw. in den App-Berechtigungen erlauben.'; setState('off'); return; }
+  await startEar('convo');
+  if (!eng && !ear) { V.convo = false; setState(idle()); return; }
+  setState('listening'); beep(660, 80);
+}
+export function endConversation() {
+  if (!V.convo) return;
+  V.convo = false; V.muted = false; V.userSpeaking = false; cancelSpeech(); clearTimeout(winT);   // beendet nur das Gespräch – laufende Aufträge bleiben unberührt
+  if (!V.enabled) { stopEar(); micOff(); }
+  setState(idle()); beep(440, 80);
+}
+export function setMuted(m) {
+  V.muted = !!m;
+  if (stream) stream.getTracks().forEach(t => { t.enabled = !V.muted; });
+  if (eng) { eng.setVad(!V.muted && V.state !== 'speaking'); eng.setWake(!V.muted); }
+  emit();
+}
+export function setBargeVoice(on) { V.bargeVoice = !!on; try { localStorage.setItem('hq-barge', on ? '1' : '0'); } catch (e) { /* */ } emit(); }
+export function stopAll() { cancelSpeech(); clearTimeout(winT); V.interim = ''; setState(idle()); }
 export function clearTranscript() { V.transcript = []; emit(); }
 /* Fuer Tests / Text-Eingabe: gleicher Pfad wie gesprochen */
 export const sayText = txt => { if (useLocalVoice()) unlockAudio(); return handle(txt); };
 
 export function initVoice(go) {
   V.go = go;
-  try { V.voiceName = localStorage.getItem('hq-voice') || ''; V.speakOn = localStorage.getItem('hq-speak') !== '0'; const th = parseFloat(localStorage.getItem('hq-wake-thr')); if (th >= 0.2 && th <= 0.9) V.threshold = th; } catch (e) { /* */ }
+  try { V.voiceName = localStorage.getItem('hq-voice') || ''; V.speakOn = localStorage.getItem('hq-speak') !== '0'; V.bargeVoice = localStorage.getItem('hq-barge') === '1'; const th = parseFloat(localStorage.getItem('hq-wake-thr')); if (th >= 0.2 && th <= 0.9) V.threshold = th; } catch (e) { /* */ }
   if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => emit();
   // Auto-Wiederaufnahme nur, wenn frueher aktiviert UND Mikrofon-Berechtigung bereits erteilt ist (kein erneutes Prompten)
   let was = false; try { was = localStorage.getItem('hq-wake') === '1'; } catch (e) { /* */ }
