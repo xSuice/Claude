@@ -10,6 +10,18 @@ import os
 import re
 import time
 from pathlib import Path
+from secretscan import redact
+
+
+def _redact_values(value):
+    """Sanitize persisted candidate fields without serializing secrets first."""
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, list):
+        return [_redact_values(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _redact_values(v) for k, v in value.items()}
+    return value
 
 MAX_BODY = 1800
 STOP = set('der die das und oder mit von für fur auf aus ist sind ein eine einer eines den dem des im in zu zur zum als bei nicht nur '
@@ -55,11 +67,12 @@ def extract(job: dict, plan: dict, acceptance: dict, events: list[dict], council
     if council and council.get('constraints'):
         out.append({'kind': 'decision', 'topic': f'decision:{council.get("council")}:{tt}',
                     'title': f'{council.get("council")}-Council: Randbedingungen für {tt}',
-                    'body': ('Beratend beschlossen und in der Ausführung eingehalten (Abnahme bestanden):\n'
+                    'body': ('Beratende Vorgaben; Einhaltung nicht separat verifiziert. Die Dateiabnahme allein belegt ihre Einhaltung nicht:\n'
                              + '\n'.join(f'- {c}' for c in council['constraints'][:8])
                              + (f'\nAbweichende Meinungen: {len(council.get("dissent") or [])}' if council.get('dissent') else ''))[:MAX_BODY],
                     'evidence': {**evidence, 'council_confidence': council.get('confidence')}})
     private = (job.get('spec') or {}).get('data_class') == 'private'
+    out = _redact_values(out)
     for c in out:
         c['private'] = private
         c['fingerprint'] = fingerprint(c['kind'], c['topic'], c['body'])
@@ -88,6 +101,9 @@ def slug(text: str) -> str:
 
 def write_note(vault_dir: Path, cand: dict, approved_by: str, clock=time.time) -> Path:
     """Atomar und ohne Überschreiben (O_EXCL). Frontmatter mit Herkunft; private Kandidaten bleiben private: true."""
+    # Re-check legacy candidates at the persistence boundary as well.
+    cand = _redact_values(cand)
+    approved_by = redact(str(approved_by))
     vault_dir.mkdir(parents=True, exist_ok=True)
     day = time.strftime('%Y-%m-%d', time.localtime(clock()))
     path = vault_dir / f'{day}-{slug(cand["title"])}-k{cand["id"]}.md'
