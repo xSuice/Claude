@@ -9,6 +9,8 @@ const norm = t => t.toLowerCase().replace(/[!?]/g, ' ').replace(/\s+/g, ' ').tri
 
 export function parseTaskIntent(raw) {
   const t = norm(raw);
+  const rv = raw.trim().replace(/\s+/g, ' ').match(/^(?:bitte )?(?:ändere|änder|ändern|korrigiere|ergänze|erweitere|passe)\s+(?:bitte\s+)?(?:den |meinen |bitte den )?(?:letzten |laufenden |aktuellen )?auftr\w*(?:\s+an)?\s*[:,.!-]?\s*(.*)$/i);
+  if (rv) { const ch = rv[1].replace(/[!?]+$/, '').trim(); return ch.length >= 5 ? { kind: 'revise', change: ch } : { kind: 'revise_empty' }; }
   let m = t.match(/^(?:(?:neue[rn]?|nächster|weiterer) auftr\w*|(?:erstelle|erstell|mach|lege?|leg) (?:mir )?(?:einen |einen neuen |neuen )?auftr\w*(?: an)?|auftr\w* für jarvis|jarvis auftr\w*)\s*[:,.-]?\s*(.*)$/);
   if (m) { const req = raw.trim().replace(/\s+/g, ' ').replace(/^.*?\bauftr\w*(?: an| für jarvis)?\s*[:,.!-]?\s*/i, '').replace(/[!?]+$/, '').trim(); return req.length >= 8 ? { kind: 'submit', request: req } : { kind: 'submit_empty' }; }
   if (/^(?:br\w{0,3}ch\w{0,2}|richte|bericht|stopp?e?|beende) (?:den |meinen |bitte den )?(?:letzten |laufenden |aktuellen )?auftr\w*(?: bitte)?(?: ab\b|$)|^(?:den )?(?:letzten |laufenden )?auftr\w* (?:abbrechen|stoppen|beenden)/.test(t.replace(/[.,]/g, ''))) return { kind: 'cancel' };   // tolerant gegen Whisper-Varianten (Briecht, Brecht)
@@ -39,12 +41,14 @@ export async function handleTaskVoice(text, deps = { jv, now: Date.now }) {
       pending = null;
       if (p.kind === 'submit') { const r = await deps.jv('submit', { request: p.request, client_id: p.client_id }); return { reply: 'Auftrag ist angelegt' + (r.job_id ? ', Nummer ' + String(r.job_id).slice(-6) : '') + '. Frag mich jederzeit nach dem Fortschritt.', meta: 'Auftrag angelegt' }; }
       if (p.kind === 'cancel') { await deps.jv('cancel', { job: p.job }); return { reply: 'Der Auftrag wird abgebrochen.', meta: 'Auftrag abgebrochen' }; }
+      if (p.kind === 'revise') { const r = await deps.jv('revise', { job: p.job, request: p.change, expected: p.expected }); return { reply: 'Erledigt: Der Auftrag läuft jetzt als Revision ' + r.revision + ' weiter. Bereits erstellte Dateien bleiben erhalten.', meta: 'Auftrag geändert' }; }
     }
     if (isNo(text)) { pending = null; return { reply: 'Okay, ich mache nichts.', meta: 'verworfen' }; }
     pending = null;   // etwas anderes gesagt: Rückfrage verfällt, normal weiter
   }
   const it = parseTaskIntent(text);
   if (!it) return null;
+  if (it.kind === 'revise_empty') return { reply: 'Was soll ich am Auftrag ändern? Sag zum Beispiel: Ändere den Auftrag, nimm Java 25.' };
   if (it.kind === 'submit_empty') return { reply: 'Was soll der Auftrag sein? Sag zum Beispiel: Neuer Auftrag, fasse die Serverlogs von heute zusammen.' };
   if (it.kind === 'submit') {
     pending = { kind: 'submit', request: it.request, client_id: rid(), until: deps.now() + CONFIRM_MS };
@@ -54,6 +58,11 @@ export async function handleTaskVoice(text, deps = { jv, now: Date.now }) {
   const list = jobs || [];
   if (it.kind === 'progress') return { reply: list[0] ? jobSentence(list[0]) : 'Es gibt noch keinen Auftrag.' };
   const run = list.find(j => !FINAL.includes(j.state));
+  if (it.kind === 'revise') {
+    if (!run) return { reply: 'Es läuft gerade kein Auftrag, den ich ändern könnte. Für etwas Neues sag „Neuer Auftrag“.' };
+    pending = { kind: 'revise', job: run.id, change: it.change, expected: run.revision || 1, until: deps.now() + CONFIRM_MS };
+    return { reply: 'Ich ändere den Auftrag „' + short(run.request) + '“: „' + short(it.change) + '“. Der Auftrag behält seine Nummer und wird neu geplant. Soll ich? Sag Ja oder Nein.', meta: 'wartet auf Bestätigung', confirm: true };
+  }
   if (!run) return { reply: 'Es läuft gerade kein Auftrag, den ich abbrechen könnte.' };
   pending = { kind: 'cancel', job: run.id, until: deps.now() + CONFIRM_MS };
   return { reply: 'Soll ich den Auftrag „' + short(run.request) + '“ wirklich abbrechen? Sag Ja oder Nein.', meta: 'wartet auf Bestätigung', confirm: true };

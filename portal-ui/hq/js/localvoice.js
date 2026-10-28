@@ -171,3 +171,24 @@ export function playLocal(chunks, { onDone, onError, isCurrent, onAudio }) {
   step();
   return () => { stopped = true; clearTimeout(guard); if (src) { src.onended = null; try { src.stop(); } catch (e) { /* */ } } };
 }
+
+/* Gespräch mit Qwen lokal auf dem PC (über das Portal). Wirft bei „nicht bereit“ (503), damit der Aufrufer Claude nimmt. */
+export async function warmChat() {
+  try { const r = await fetch('/api/voice/warm', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: '{}' }); return (await r.json()).state || 'off'; } catch (e) { return 'off'; }
+}
+export async function qwenChat(messages, onPartial, signal) {
+  const r = await fetch('/api/voice/chat', { method: 'POST', credentials: 'same-origin', signal, headers: { 'Content-Type': 'application/json', 'X-MA-Request': '1' }, body: JSON.stringify({ messages }) });
+  if (!r.ok || !r.body) { let st = ''; try { st = (await r.json()).state || ''; } catch (e) { /* */ } const err = new Error('Qwen nicht bereit'); err.state = st; err.status = r.status; throw err; }
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', text = '';
+  for (;;) {
+    const { value, done } = await rd.read(); if (done) break;
+    buf += dec.decode(value, { stream: true }); let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i); buf = buf.slice(i + 1);
+      let o; try { o = JSON.parse(line); } catch (e) { continue; }
+      if (o.t) { text += o.t; if (onPartial) onPartial(text); }
+    }
+  }
+  if (!text.trim()) throw new Error('Qwen leer');
+  return text.trim();
+}

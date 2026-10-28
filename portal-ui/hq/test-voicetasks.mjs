@@ -53,3 +53,22 @@ test('cancel asks and targets the running job; progress reads state', async () =
   assert.deepEqual(d.calls.find(c => c[0] === 'cancel')[1], { job: 'j1' });
   assert.match((await m.handleTaskVoice('Wie weit ist mein Auftrag', d)).reply, /läuft/);
 });
+
+test('revise: parse, confirm with expected revision, nothing without yes', async () => {
+  assert.deepEqual(m.parseTaskIntent('Ändere den Auftrag: nimm Java 25 und teste erneut.'), { kind: 'revise', change: 'nimm Java 25 und teste erneut.' });
+  assert.equal(m.parseTaskIntent('Ergänze meinen Auftrag, auch eine README auf Englisch').kind, 'revise');
+  assert.equal(m.parseTaskIntent('Ändere den Auftrag').kind, 'revise_empty');
+  assert.equal(m.parseTaskIntent('Ändere die Farbe vom Licht'), null);
+  m.clearPending();
+  const calls = [];
+  const d = { now: () => 1000, jv: async (cmd, x) => { calls.push([cmd, x]); if (cmd === 'list') return { jobs: [{ id: 'j1', request: 'Java bauen', state: 'running', revision: 3 }] }; if (cmd === 'revise') return { revision: 4 }; return {}; } };
+  const a = await m.handleTaskVoice('Ändere den Auftrag: nimm Java 25', d);
+  assert.ok(a.confirm); assert.ok(!calls.some(c => c[0] === 'revise'));
+  const b = await m.handleTaskVoice('Ja', d);
+  assert.deepEqual(calls.find(c => c[0] === 'revise')[1], { job: 'j1', request: 'nimm Java 25', expected: 3 });
+  assert.match(b.reply, /Revision 4/);
+  m.clearPending(); calls.length = 0;
+  await m.handleTaskVoice('Ändere den Auftrag: nimm Java 25', d);
+  await m.handleTaskVoice('Nein', d);
+  assert.ok(!calls.some(c => c[0] === 'revise'));
+});

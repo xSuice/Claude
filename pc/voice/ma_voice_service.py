@@ -82,6 +82,40 @@ def synthesize(text):
 class Handler(BaseHTTPRequestHandler):
     server_version = 'ma-voice/1'
 
+    def chat(self, body):
+        """Streamt NDJSON {"t": "..."} … {"done": true}. 503 wenn Qwen kalt ist oder die GPU belegt ist (Portal nimmt dann Claude)."""
+        try:
+            msgs = clean_messages(json.loads(body.decode('utf-8')).get('messages'))
+        except (ValueError, json.JSONDecodeError, AttributeError) as e:
+            return self.reply(400, {'error': str(e)[:120]})
+        if chat_state() != 'warm':
+            return self.reply(503, {'error': 'Qwen nicht bereit', 'state': warm_up()})
+        try:
+            up = _ollama('/api/chat', {'model': CHAT_MODEL, 'messages': [{'role': 'system', 'content': CHAT_SYS}] + msgs, 'stream': True, 'think': False,
+                                        'keep_alive': KEEP_ALIVE, 'options': {'num_ctx': 4096, 'temperature': 0.6, 'num_predict': 220}}, timeout=20)
+        except (OSError, ValueError):
+            return self.reply(503, {'error': 'Ollama nicht erreichbar'})
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/x-ndjson')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Connection', 'close')
+        self.end_headers()
+        try:
+            with up:
+                for line in up:
+                    try:
+                        d = json.loads(line)
+                    except ValueError:
+                        continue
+                    piece = (d.get('message') or {}).get('content') or ''
+                    if piece:
+                        self.wfile.write((json.dumps({'t': piece}, ensure_ascii=False) + '\n').encode()); self.wfile.flush()
+                    if d.get('done'):
+                        break
+            self.wfile.write(b'{"done": true}\n')
+        except (OSError, ValueError):
+            pass
+
     def log_message(self, fmt, *args):  # no paths/bodies in logs
         sys.stderr.write('%s %s %s\n' % (time.strftime('%H:%M:%S'), self.command, args[1] if len(args) > 1 else ''))
 
@@ -100,6 +134,10 @@ class Handler(BaseHTTPRequestHandler):
         return check_token(expected, self.headers.get('X-Voice-Token', ''))
 
     def do_GET(self):
+        if self.path == '/chat/state':
+            if not self.authorized():
+                return self.reply(401, {'error': 'nicht autorisiert'})
+            return self.reply(200, {'state': chat_state(), 'model': CHAT_MODEL})
         if self.path != '/health':
             return self.reply(404, {'error': 'unbekannt'})
         if not self.authorized():
@@ -116,6 +154,10 @@ class Handler(BaseHTTPRequestHandler):
         if length <= 0 or length > MAX_AUDIO:
             return self.reply(413, {'error': 'Größe ungültig'})
         body = self.rfile.read(length)
+        if self.path == '/warm':
+            return self.reply(200, {'state': warm_up(), 'model': CHAT_MODEL})
+        if self.path == '/chat':
+            return self.chat(body)
         if not _lock.acquire(timeout=20):
             return self.reply(503, {'error': 'Sprachdienst ist gerade belegt'})
         try:
@@ -136,6 +178,87 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(500, {'error': 'Sprachdienst-Fehler: ' + type(e).__name__})
         finally:
             _lock.release()
+
+
+# ---------- Gesprächs-LLM: Qwen lokal über Ollama (privat, kostenlos). Gaming hat Vorrang. ----------
+import subprocess, urllib.request, urllib.error
+OLLAMA = 'http://127.0.0.1:11434'
+CHAT_MODEL = os.environ.get('MA_CHAT_MODEL', 'qwen3:8b')
+KEEP_ALIVE = '15m'                  # danach gibt Ollama den Grafikspeicher wieder frei
+GPU_BUSY_MIB = 1500                 # belegt schon etwas anderes (Spiel) so viel VRAM, wird Qwen nicht geladen
+CHAT_SYS = ('Du bist JARVIS, der persönliche Assistent von Andre im MA-HOME. Sprich natürliches, freundliches Deutsch wie in einem echten Gespräch: '
+            'höchstens drei kurze Sätze, kein Markdown, keine Listen, keine Emojis, keine Links. Bleib bei Fakten ehrlich: wenn du unsicher bist, sag es. '
+            'Du hast keinen Zugriff auf Dateien, Notizen oder Aufträge und behauptest nie, etwas nachgesehen oder erledigt zu haben.')
+_warm = {'state': 'off', 'since': 0.0}
+_warm_lock = threading.Lock()
+
+
+def _ollama(path, body=None, timeout=5):
+    req = urllib.request.Request(OLLAMA + path, data=None if body is None else json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def model_loaded():
+    try:
+        with _ollama('/api/ps', timeout=3) as r:
+            return any(m.get('name') == CHAT_MODEL or m.get('model') == CHAT_MODEL for m in json.load(r).get('models', []))
+    except (OSError, ValueError):
+        return False
+
+
+def gpu_used_mib():
+    try:
+        out = subprocess.run(['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=5,
+                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
+        return int(out.strip().splitlines()[0])
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
+def chat_state():
+    if model_loaded():
+        _warm['state'] = 'warm'
+    elif _warm['state'] == 'warm':
+        _warm['state'] = 'off'
+    return _warm['state']
+
+
+def warm_up():
+    """Laedt das Modell im Hintergrund (Kaltstart ~1 min). Nicht, wenn die GPU schon belegt ist (Spiel)."""
+    if chat_state() == 'warm':
+        return 'warm'
+    used = gpu_used_mib()
+    if used is not None and used > GPU_BUSY_MIB:
+        _warm['state'] = 'busy'
+        return 'busy'
+    with _warm_lock:
+        if _warm['state'] == 'loading' and time.time() - _warm['since'] < 180:
+            return 'loading'
+        _warm.update(state='loading', since=time.time())
+
+    def run():
+        try:
+            with _ollama('/api/generate', {'model': CHAT_MODEL, 'prompt': '', 'keep_alive': KEEP_ALIVE}, timeout=240) as r:
+                r.read()
+            _warm['state'] = 'warm' if model_loaded() else 'off'
+        except (OSError, ValueError):
+            _warm['state'] = 'off'
+    threading.Thread(target=run, daemon=True).start()
+    return 'loading'
+
+
+def clean_messages(msgs):
+    if not isinstance(msgs, list) or not 1 <= len(msgs) <= 12:
+        raise ValueError('messages ungültig')
+    out = []
+    for m in msgs:
+        role, content = (m or {}).get('role'), (m or {}).get('content')
+        if role not in ('user', 'assistant') or not isinstance(content, str) or not content.strip():
+            raise ValueError('message ungültig')
+        out.append({'role': role, 'content': content.strip()[:2000]})
+    if out[-1]['role'] != 'user':
+        raise ValueError('letzte Nachricht muss vom Nutzer sein')
+    return out
 
 
 def lower_priority():

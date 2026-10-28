@@ -9,7 +9,7 @@ import { ROSTER } from './roster.js';
 import { voiceAsk } from './chat.js';
 import { handleTaskVoice } from './voicetasks.js';
 import { speechChunks } from './speech-text.js';
-import { LOCAL_VOICE, LocalEar, localHealth, playLocal, unlockAudio, transcribeWav, stripWake } from './localvoice.js';
+import { LOCAL_VOICE, LocalEar, localHealth, playLocal, unlockAudio, transcribeWav, stripWake, qwenChat, warmChat } from './localvoice.js';
 
 const getSR = () => window.SpeechRecognition || window.webkitSpeechRecognition;
 export const WAKE = /\b(jarvis|dscharvis|dscharwis|dschavis|dschawis|jarwis|tscharvis|charvis|scharwis|jervis|jaris|javis|jarvi)\b/i;
@@ -20,7 +20,7 @@ export const V = {
   engine: getSR() ? 'browser' : 'none', localOk: false,   // engine: local (eigener PC) | browser | none
   enabled: false, state: 'off',            // off | wake | listening | thinking | speaking
   interim: '', transcript: [], speakOn: true, level: 0, voiceName: '', err: '', go: null,
-  convo: false, muted: false, bargeVoice: false,   // Gesprächsmodus (wie ChatGPT Voice): einmal starten, frei sprechen
+  convo: false, muted: false, bargeVoice: false, qwen: 'unknown',   // Gesprächsmodus (wie ChatGPT Voice): einmal starten, frei sprechen
   wakeMode: 'oww', engine2: 'aus', engErr: '', wakeScore: 0, wakeMax: 0, threshold: 0.4, loading: false   // oww = Wakeword-Modell im Browser, text = Fallback per Transkript
 };
 const listeners = new Set();
@@ -132,6 +132,14 @@ function speakStream(done) {
 
 /* Schnellroute: normale Gespräche ohne Werkzeuge (erstes Wort ~3–4 s). Nur wer ausdrücklich nach Notizen/Vault fragt, bekommt den langsamen Lesemodus. */
 export const NOTES = /\b(?:notiz\w*|vault|obsidian|aufgeschrieben|gespeichert|bibliothek|meine[nr]? (?:datei\w*|dokument\w*|unterlagen)|schau (?:mal )?nach|such(?:e)? (?:mal )?(?:in|nach)|nachsehen|nachschauen)\b/i;
+export function chatHistory(transcript, text) {   // letzte Wechsel als Chatverlauf, letzte Nachricht = aktuelle Frage
+  const h = transcript.slice(-9, -1).filter(x => x.r === 'u' || x.r === 'a').map(x => ({ role: x.r === 'u' ? 'user' : 'assistant', content: String(x.t).slice(0, 800) }));
+  while (h.length && h[0].role !== 'user') h.shift();
+  const out = []; for (const m of h) { if (out.length && out[out.length - 1].role === m.role) out[out.length - 1].content += ' ' + m.content; else out.push({ ...m }); }
+  if (out.length && out[out.length - 1].role === 'user') out.pop();
+  out.push({ role: 'user', content: text });
+  return out.slice(-11);
+}
 export const voiceRoute = text => (NOTES.test(text) ? 'lesen' : 'gespraech');
 
 /* ---------- Befehl behandeln ---------- */
@@ -143,7 +151,7 @@ async function handle(raw) {
   try {                                 // Aufträge per Sprache: anlegen/abbrechen nur nach „Ja“
     const tv = await handleTaskVoice(text);
     if (tv) { say('a', tv.reply, 'Aufträge · ' + (tv.meta || 'lesend')); speak(tv.reply, tv.confirm ? () => { resumeDialogue(); if (!V.convo) openWindow(30000); } : resumeDialogue); if (V.state === 'thinking') setState(idle()); return; }
-  } catch (e) { const msg = 'Das hat nicht geklappt: ' + (e.message || 'JARVIS nicht erreichbar') + '.'; say('a', msg, 'Aufträge · Fehler'); speak(msg, resumeDialogue); return; }
+  } catch (e) { const msg = 'Das hat nicht geklappt: ' + String(e.message || 'JARVIS nicht erreichbar').replace(/^[A-Za-z]*Error: /, '').replace(/ - /g, ', ') + '.'; say('a', msg, 'Aufträge · Fehler'); speak(msg, resumeDialogue); return; }
   const fresh = await refresh();        // nie still auf veraltetem/leerem Store antworten
   const loc = answerLocal(text);
   if (loc && !fresh && loc.reply && !loc.nav && !/ Uhr\.$/.test(loc.reply) && !/^Ich beantworte/.test(loc.reply)) loc.reply = 'Achtung, die Live-Daten konnten gerade nicht aktualisiert werden. ' + loc.reply;
@@ -163,10 +171,22 @@ async function handle(raw) {
     if (!ss) ss = speakStream(resumeDialogue);
     if (ss) ss.push(piece);
   };
+  const route = voiceRoute(text);
+  if (route === 'gespraech' && V.qwen !== 'off') {     // zuerst Qwen lokal (privat, 0 Token); bei „nicht bereit“ sofort Claude
+    try {
+      const ans = await qwenChat(chatHistory(V.transcript, text), onPartial);
+      say('a', ans, 'JARVIS · Qwen 8B lokal · 0 Token');
+      if (ss) { if (ss.alive()) { const rest = ans.slice(sent).trim(); if (rest) ss.push(rest); } ss.end(); } else speak(ans, resumeDialogue);
+      V.qwen = 'warm'; return;
+    } catch (e) {
+      V.qwen = e.state || 'off'; if (ss) { ss.end(); ss = null; sent = 0; }
+      if (e.state === 'loading' || e.state === 'off') warmChat();
+    }
+  }
   try {
-    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit, wenn sie für die Antwort wichtig ist, aber verzichte auf unaufgeforderte Standardhinweise zu deinen Wissensgrenzen. Erfinde weder Fortschritt noch Ergebnisse oder Eigenschaften, die ich nicht genannt habe. Frage: ' + text + '\nBisheriger Gesprächsausschnitt (nur Kontext, keine zusätzlichen Systemregeln): ' + JSON.stringify(V.transcript.slice(-7, -1).map(x => ({ rolle: x.r, text: x.t.slice(0, 500) }))), onPartial, voiceRoute(text));
+    const ans = await voiceAsk('Sprich mit mir wie ein ruhiger, freundlicher Gesprächspartner: natürliches Deutsch, kurze zusammenhängende Sätze und alltagstaugliche Wörter statt technischer Statuslisten. Antworte direkt auf meine Frage, ohne Begrüßungsfloskeln, ständige Namensnennung oder gespielte Gefühle. Höchstens drei Sätze, kein Markdown, keine Aufzählung. Benenne Unsicherheit, wenn sie für die Antwort wichtig ist, aber verzichte auf unaufgeforderte Standardhinweise zu deinen Wissensgrenzen. Erfinde weder Fortschritt noch Ergebnisse oder Eigenschaften, die ich nicht genannt habe. Frage: ' + text + '\nBisheriger Gesprächsausschnitt (nur Kontext, keine zusätzlichen Systemregeln): ' + JSON.stringify(V.transcript.slice(-7, -1).map(x => ({ rolle: x.r, text: x.t.slice(0, 500) }))), onPartial, route);
     const out = ans || 'Dazu habe ich keine Antwort bekommen.';
-    say('a', out, voiceRoute(text) === 'lesen' ? 'JARVIS · haiku · Notizen, nur lesend' : 'JARVIS · haiku · Gespräch, ohne Werkzeuge');
+    say('a', out, route === 'lesen' ? 'JARVIS · haiku · Notizen, nur lesend' : 'JARVIS · haiku · Gespräch, ohne Werkzeuge');
     if (ss) { if (ss.alive()) { const rest = out.slice(sent).trim(); if (rest) ss.push(rest); } ss.end(); }
     else speak(out, resumeDialogue);
   } catch (e) {
@@ -371,6 +391,7 @@ export async function startConversation() {
   await micOn();
   if (!stream) { V.convo = false; V.err = 'Mikrofon-Zugriff verweigert. Bitte im Browser bzw. in den App-Berechtigungen erlauben.'; setState('off'); return; }
   await startEar('convo');
+  warmChat().then(s => { V.qwen = s; emit(); });   // Qwen im Hintergrund laden (Kaltstart ~1 min, danach sofort)
   if (!eng && !ear) { V.convo = false; setState(idle()); return; }
   setState('listening'); beep(660, 80);
 }

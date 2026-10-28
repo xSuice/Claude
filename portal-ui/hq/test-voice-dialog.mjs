@@ -6,9 +6,9 @@ async function boot(){
  globalThis.SpeechSynthesisUtterance=class{constructor(t){this.text=t}};
  globalThis.speechSynthesis={getVoices:()=>[],cancel(){},speak(u){audio.push(u)}};
  globalThis.localStorage={getItem:()=>null,setItem(){}};
- globalThis.__deps={speechChunks,toast(){},S:{tasks:[],incidents:[],agents:[]},agentState(){return {status:'idle',open:[]}},isFresh:()=>true,shortName:s=>s,refresh:async()=>true,ROSTER:[],handleTaskVoice:async()=>null,voiceAsk:async p=>{requests.push(p);return 'Lass uns das zusammen anschauen.'}};
+ globalThis.__deps={speechChunks,toast(){},S:{tasks:[],incidents:[],agents:[]},agentState(){return {status:'idle',open:[]}},isFresh:()=>true,shortName:s=>s,refresh:async()=>true,ROSTER:[],handleTaskVoice:async()=>null,qwenChat:async()=>{throw Object.assign(new Error('nicht bereit'),{state:'off'})},warmChat:async()=>'off',voiceAsk:async p=>{requests.push(p);return 'Lass uns das zusammen anschauen.'},...(globalThis.__over||{})};
  let s=fs.readFileSync(new URL('./js/voice.js',import.meta.url),'utf8').replace(/^import .*;\r?$/gm,'');
- s='const {speechChunks,toast,S,agentState,isFresh,shortName,refresh,ROSTER,voiceAsk,handleTaskVoice}=globalThis.__deps;\n'+s;
+ s='const {speechChunks,toast,S,agentState,isFresh,shortName,refresh,ROSTER,voiceAsk,handleTaskVoice,qwenChat,warmChat}=globalThis.__deps;\n'+s;
  const saved={setTimeout:globalThis.setTimeout,clearTimeout:globalThis.clearTimeout};
  globalThis.setTimeout=(f,ms)=>{timers.set(++id,{f,ms});return id};globalThis.clearTimeout=i=>timers.delete(i);
  const m=await import('data:text/javascript;base64,'+Buffer.from(s+'//'+Math.random()).toString('base64'));
@@ -109,4 +109,27 @@ test('voice route: fast conversation by default, notes only when asked',async()=
   for(const q of ['Erzähle mir etwas über Minecraft Modding','Wie geht es dir?','Was ist der Unterschied zwischen Fabric und Forge?'])assert.equal(b.m.voiceRoute(q),'gespraech',q);
   for(const q of ['Was steht in meinen Notizen zu Minecraft?','Schau nach, was ich zu Fabric aufgeschrieben habe','Such in meinem Vault nach Prüfung'])assert.equal(b.m.voiceRoute(q),'lesen',q);
  }finally{b.cleanup()}
+});
+
+test('chat history alternates roles and ends with the current question',async()=>{
+ const b=await boot();try{
+  const tr=[{r:'a',t:'Hallo'},{r:'u',t:'Erzähl was über Minecraft'},{r:'a',t:'Minecraft ist ein Spiel.'},{r:'u',t:'Und Fabric?'},{r:'u',t:'Und Fabric?'}];
+  const h=b.m.chatHistory(tr,'Und Fabric?');
+  assert.deepEqual(h.map(x=>x.role),['user','assistant','user']);
+  assert.equal(h[h.length-1].content,'Und Fabric?');
+ }finally{b.cleanup()}
+});
+test('qwen answers first; when not ready claude answers',async()=>{
+ const b=await boot();try{
+  b.m.V.speakOn=false;
+  await b.m.sayText('Erzähle mir etwas über Minecraft');
+  assert.equal(b.requests.length,1);                // Qwen nicht bereit -> Claude
+  globalThis.__over={qwenChat:async()=> 'Gern, Minecraft ist ein Sandbox-Spiel.'};
+ }finally{b.cleanup()}
+ const c=await boot();globalThis.__over=null;try{
+  c.m.V.speakOn=false;
+  await c.m.sayText('Erzähle mir etwas über Minecraft');
+  assert.equal(c.requests.length,0);                // Qwen hat geantwortet, kein Claude-Aufruf
+  assert.match(c.m.V.transcript.at(-1).t,/Sandbox/);
+ }finally{c.cleanup()}
 });
