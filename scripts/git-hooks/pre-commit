@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""pre-commit: blockiert Commits, deren HINZUGEFUEGTE Zeilen wie Zugangsdaten aussehen.
+Nutzt dieselben Regeln wie die Engine (server/jarvis/core/brain-runtime/secretscan.py, spans()).
+Installieren: ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+Bewusste Ausnahme (z.B. Testkanarie): git commit --no-verify  -- nur nach eigener Pruefung."""
+import os, re, subprocess, sys
+
+ROOT = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
+sys.path.insert(0, os.path.join(ROOT, 'server/jarvis/core/brain-runtime'))
+from secretscan import spans, _PREFIX  # noqa: E402
+
+SKIP_SUFFIX = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.woff', '.woff2', '.onnx', '.bin', '.lock')
+# Testdateien duerfen bewusst Kanarien enthalten (z.B. sk-... in secretscan-Tests)
+SKIP_PATH = ('/tests/', 'test_', 'secretscan.py')
+# Code statt Wert: Aufruf, Variable, Attribut, Template, Regex-Klasse, Platzhalter
+_CODE = re.compile(r'[()\[\]{}]|^\$|^\w+\.\w+|^[A-Za-z_][A-Za-z0-9_]*$|\$\{|^<|\\|^(change|example|xxx|placeholder|your|dummy|test)', re.I)
+
+
+def _real(v, quoted=False):
+    """Echter Kandidat: bekanntes Schluesselformat ODER langes gemischtes Literal, das kein Code ist.
+    quoted: Wert stand in Anfuehrungszeichen -> Literal, nie ein Variablenname."""
+    v = v.strip('\'"“„”')
+    if _PREFIX.search(v):
+        return True
+    if not quoted and _CODE.search(v):
+        return False
+    if quoted and re.search(r'\$\{|^\$|^<|^(change|example|xxx|placeholder|your|dummy|test)', v, re.I):
+        return False
+    return len(v) >= 12 and bool(re.search('[A-Za-z]', v)) and bool(re.search('[0-9]', v))
+
+
+def staged_added_lines(diff_text):
+    path = None
+    for line in diff_text.splitlines():
+        if line.startswith('+++ '):
+            path = line[6:] if line.startswith('+++ b/') else None
+        elif line.startswith('+') and not line.startswith('+++') and path:
+            yield path, line[1:]
+
+
+def findings(diff_text):
+    out = []
+    for path, text in staged_added_lines(diff_text):
+        if path.endswith(SKIP_SUFFIX) or any(s in path for s in SKIP_PATH):
+            continue
+        if any(_real(text[a:b], a > 0 and text[a - 1] in '\'"“„') for a, b in spans(text)):
+            out.append(path)
+    return sorted(set(out))
+
+
+def main():
+    diff = subprocess.run(['git', 'diff', '--cached', '-U0', '--no-color'], capture_output=True, text=True, errors='replace').stdout
+    bad = findings(diff)
+    if bad:
+        print('pre-commit: moegliche Zugangsdaten in hinzugefuegten Zeilen (Werte werden nicht angezeigt):', file=sys.stderr)
+        for p in bad:
+            print('  - ' + p, file=sys.stderr)
+        print('Entfernen/redigieren und erneut committen. Nur nach eigener Pruefung: git commit --no-verify', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
