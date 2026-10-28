@@ -39,6 +39,7 @@ from orders import Orders, killed
 import runner
 import council as council_mod
 import smart_policy
+import distiller
 from secretscan import has_secret
 
 try:
@@ -101,6 +102,12 @@ CREATE TABLE IF NOT EXISTS route_shadow(
     id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, ts INTEGER NOT NULL, planning INTEGER NOT NULL,
     mode TEXT NOT NULL, actual TEXT NOT NULL, actual_source TEXT NOT NULL, shadow_alias TEXT, shadow_model TEXT,
     applied INTEGER NOT NULL DEFAULT 0, decision TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS knowledge_candidates(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, job_id TEXT NOT NULL, revision INTEGER NOT NULL, kind TEXT NOT NULL,
+    topic TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, evidence TEXT NOT NULL, fingerprint TEXT NOT NULL,
+    private INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL CHECK(state IN ('proposed','duplicate','conflict','approved','rejected','written')),
+    ref INTEGER, created INTEGER NOT NULL, decided INTEGER, decided_by TEXT, note_path TEXT);
 '''
 DATA_ORDER = ['public', 'internal', 'private']
 ACTIVE = ('queued', 'planning', 'running')
@@ -1245,6 +1252,64 @@ class Engine:
                                                                                'Plan braucht Freigabe' if art['blocked_by'] else ''))
         return None
 
+    def agent_activity(self, since_id: int = 0, window_s: int = 6 * 3600, limit: int = 120) -> dict:
+        """Living-HQ-Vertrag: normalisierte AgentEvents aus echten Engine-Ereignissen (Pixel-Agents-Muster: Hooks ->
+        Normalisierung -> sichtbarer Zustand). Jede Figur bewegt sich nur, wenn hier ein Ereignis steht."""
+        role_profile = {(c, r): prof for c, v in council_mod.COUNCILS.items() for r, prof, _f in v['roles']}
+
+        def who(kind: str, text: str) -> tuple[str, str]:
+            m_ = re.match(r'Schritt (council:([A-Z]+):(.+?)|[^:]+): ', text)
+            sid = m_.group(1) if m_ else ''
+            if m_ and m_.group(2):
+                return role_profile.get((m_.group(2), m_.group(3)), 'jarvis-architecture'), 'consult'
+            if kind in ('council', 'council_done', 'council_skip'):
+                return 'jarvis-architecture', 'council'
+            if kind in ('claude', 'claude_done') and sid == 'plan' or kind in ('planned', 'plan', 'plan_invalid', 'revised'):
+                return 'jarvis-planner', 'plan'
+            if kind in ('cloud', 'cloud_done', 'cloud_fallback'):
+                return 'jarvis-cloud-dev', 'work'
+            if kind in ('pc', 'pc_done'):
+                return 'jarvis-worker', 'work'
+            if kind in ('claude', 'claude_done', 'step_done', 'step_failed', 'correction'):
+                return 'jarvis-core', 'work'
+            if kind in ('finished', 'attribution'):
+                return 'jarvis-qa', 'verify'
+            if kind in ('deferred',):
+                return 'jarvis-router', 'wait'
+            if kind in ('fenced', 'superseded', 'recovered'):
+                return 'jarvis-recovery', 'fence'
+            if kind in ('cancelled', 'failed', 'question', 'approved', 'submitted'):
+                return 'jarvis-core', 'control'
+            return 'jarvis-core', 'other'
+
+        start_kinds, end_kinds = {'claude', 'cloud', 'pc'}, {'claude_done', 'cloud_done', 'pc_done'}
+        since_ts = now_s(self.clock) - window_s
+        with self._conn() as c:
+            rows = c.execute('SELECT e.id, e.job_id, e.ts, e.kind, e.text FROM job_events e JOIN jobs j ON j.id=e.job_id '
+                             'WHERE j.owner=? AND e.ts>=? ORDER BY e.id', (self.brain.identity, since_ts)).fetchall()
+            final = {r_['id']: r_['state'] for r_ in c.execute(
+                "SELECT id, state FROM jobs WHERE owner=? AND updated>=?", (self.brain.identity, since_ts))}
+        open_calls, events = {}, []
+        for r_ in rows:
+            agent, act = who(r_['kind'], r_['text'])
+            mm = re.match(r'(?:PC-)?Schritt (.+?): ', r_['text'])
+            key = (r_['job_id'], mm.group(1) if mm else r_['kind'])
+            if r_['kind'] in start_kinds:
+                open_calls[key] = {'agent': agent, 'activity': act, 'job': r_['job_id'], 'since': r_['ts'], 'text': r_['text'][:140]}
+            elif r_['kind'] in end_kinds:
+                open_calls.pop(key, None)
+            if r_['id'] > since_id:
+                ok = r_['kind'] not in ('step_failed', 'failed', 'cancelled', 'deferred', 'fenced', 'superseded') and 'Fehler' not in r_['text']
+                events.append({'id': r_['id'], 'ts': r_['ts'], 'job': r_['job_id'], 'agent': agent, 'activity': act,
+                               'kind': r_['kind'], 'text': r_['text'][:180], 'sev': 'ok' if ok and r_['kind'] in end_kinds | {'finished', 'council_done'} else ('warn' if not ok else 'info')})
+        busy = {}
+        for v in open_calls.values():
+            if final.get(v['job']) in FINAL:
+                continue   # Auftrag inzwischen beendet: kein Phantom-Arbeiten
+            busy.setdefault(v['agent'], v)
+        return {'agents': busy, 'events': events[-limit:], 'last_id': rows[-1]['id'] if rows else since_id,
+                'note': 'Zustand nur aus Engine-Ereignissen; offener Aufruf = gestartet ohne Abschluss in einem aktiven Auftrag.'}
+
     def council_metrics(self) -> dict:
         """Messbar statt behauptet: Runden je Council, Dauer, Aufrufe, Tokens, Einwände, Konfidenz, Ergebnis des Auftrags."""
         with self._conn() as c:
@@ -1771,7 +1836,74 @@ class Engine:
                 self.learning.record(self._job(j['id']), plan, verdict, acc)
             except Exception as e:  # noqa: BLE001 - learning must never break delivery
                 self.event(j['id'], 'learning_error', f'{type(e).__name__}: {e}')
+        if verdict == 'done':
+            try:
+                self._distill(self._job(j['id']), plan, acc)
+            except Exception as e:  # noqa: BLE001 - Wissensextraktion darf die Lieferung nie verhindern
+                self.event(j['id'], 'knowledge_error', f'{type(e).__name__}: {e}')
         return {'progress': True, 'state': verdict}
+
+    # ------------------------------------------------------------------ memory distiller (Knowledge-Vertrag)
+    def _distill(self, job: dict, plan: dict, acc: dict) -> list[int]:
+        rev = int(job.get('revision') or 1)
+        evs = self.events(job['id'], 0, 1000)
+        cands = distiller.extract(job, plan, acc, evs, self.council_artifact(job['id'], rev) if self.council_cfg.get('enabled') else None)
+        ids = []
+        with self._conn(True) as c:
+            existing = [dict(r_) for r_ in c.execute('SELECT id, topic, body, fingerprint, state FROM knowledge_candidates WHERE owner=?',
+                                                     (self.brain.identity,))]
+            for cd in cands:
+                state, ref = distiller.classify(cd, existing)
+                c.execute('INSERT INTO knowledge_candidates(owner,job_id,revision,kind,topic,title,body,evidence,fingerprint,private,state,ref,created) '
+                          'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                          (self.brain.identity, job['id'], rev, cd['kind'], cd['topic'], cd['title'], cd['body'],
+                           json.dumps(cd['evidence'], ensure_ascii=False), cd['fingerprint'], int(cd['private']), state, ref, now_s(self.clock)))
+                nid = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                existing.append({'id': nid, 'topic': cd['topic'], 'body': cd['body'], 'fingerprint': cd['fingerprint'], 'state': state})
+                ids.append(nid)
+        if cands:
+            st = {}
+            for x in existing[-len(cands):]:
+                st[x['state']] = st.get(x['state'], 0) + 1
+            self.event(job['id'], 'knowledge', f'{len(cands)} Wissenskandidat(en) zur Prüfung: ' + ', '.join(f'{v} {k}' for k, v in st.items())
+                       + ' - nichts wird ohne Freigabe ins Gedächtnis geschrieben')
+        return ids
+
+    def knowledge(self, op: str = 'list', ident: int | None = None, by: str = '') -> dict:
+        """Review-Queue. approve schreibt genau diese eine Notiz (mit Herkunft) in den Vault; reject verwirft."""
+        if op == 'list':
+            with self._conn() as c:
+                rows = [dict(r_) for r_ in c.execute('SELECT id, job_id, revision, kind, title, body, state, ref, private, created, note_path '
+                                                    'FROM knowledge_candidates WHERE owner=? ORDER BY id DESC LIMIT 60', (self.brain.identity,))]
+            for r_ in rows:
+                r_['private'] = bool(r_['private'])
+            counts = {}
+            for r_ in rows:
+                counts[r_['state']] = counts.get(r_['state'], 0) + 1
+            return {'candidates': rows, 'counts': counts}
+        if op not in ('approve', 'reject') or not ident:
+            raise ValueError('op approve|reject mit id')
+        if not re.fullmatch(r'(portal|cli|voice):[A-Za-z0-9._-]{1,40}', by or ''):
+            raise PermissionError('Freigabe ohne bekannten Urheber')
+        if killed(self.brain):
+            raise PermissionError('KILL aktiv')
+        with self._conn(True) as c:
+            row = c.execute("SELECT * FROM knowledge_candidates WHERE id=? AND owner=? AND state IN ('proposed','conflict')",
+                            (int(ident), self.brain.identity)).fetchone()
+            if not row:
+                raise PermissionError('Kandidat nicht offen oder unbekannt')
+            if op == 'reject':
+                c.execute("UPDATE knowledge_candidates SET state='rejected', decided=?, decided_by=? WHERE id=? AND state IN ('proposed','conflict')",
+                          (now_s(self.clock), by, row['id']))
+                return {'id': row['id'], 'state': 'rejected'}
+            c.execute("UPDATE knowledge_candidates SET state='approved', decided=?, decided_by=? WHERE id=?", (now_s(self.clock), by, row['id']))
+        cand = {**dict(row), 'evidence': json.loads(row['evidence']), 'private': bool(row['private'])}
+        vault = Path(self.cfg.get('knowledge_dir') or '/srv/ma-home/library/vault-notizen/40 Wissen/JARVIS-Erkenntnisse')
+        path = distiller.write_note(vault, cand, by, clock=self.clock)
+        with self._conn(True) as c:
+            c.execute("UPDATE knowledge_candidates SET state='written', note_path=? WHERE id=?", (str(path), row['id']))
+        self.event(row['job_id'], 'knowledge_written', f'Wissensnotiz #{row["id"]} nach Freigabe ({by}) geschrieben: {path.name}')
+        return {'id': row['id'], 'state': 'written', 'note': str(path)}
 
     def _close_goal(self, j: dict, outcome: str, summary: str, verified: bool = False) -> None:
         """Brain episode (verified only by the deterministic acceptance) + goal state."""
