@@ -138,6 +138,25 @@ class Handler(BaseHTTPRequestHandler):
         res['ms'] = int((time.time() - t0) * 1000)
         return self.reply(200, res)
 
+    def route(self, body):
+        """Chat-Router: {text} -> {fach, ms}. 503 kalt/Ollama weg, 502 unbrauchbar -> Bruecke nimmt Claude (bisheriges Verhalten)."""
+        try:
+            text = ' '.join(str(json.loads(body.decode('utf-8')).get('text') or '').split())[:ROUTE_MAX_TEXT]
+        except (ValueError, json.JSONDecodeError, AttributeError) as e:
+            return self.reply(400, {'error': str(e)[:120]})
+        if not text:
+            return self.reply(400, {'error': 'leer'})
+        if chat_state() != 'warm':
+            return self.reply(503, {'error': 'Qwen nicht bereit', 'state': warm_up()})
+        t0 = time.time()
+        try:
+            fach = classify_route(text)
+        except (OSError, ValueError):
+            return self.reply(503, {'error': 'Ollama nicht erreichbar'})
+        if fach is None:
+            return self.reply(502, {'error': 'Fachgebiet nicht erkannt'})
+        return self.reply(200, {'fach': fach, 'ms': int((time.time() - t0) * 1000)})
+
     def log_message(self, fmt, *args):  # no paths/bodies in logs
         sys.stderr.write('%s %s %s\n' % (time.strftime('%H:%M:%S'), self.command, args[1] if len(args) > 1 else ''))
 
@@ -182,6 +201,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.chat(body)
         if self.path == '/intent':
             return self.intent(body)
+        if self.path == '/route':
+            return self.route(body)
         if not _lock.acquire(timeout=20):
             return self.reply(503, {'error': 'Sprachdienst ist gerade belegt'})
         try:
@@ -291,7 +312,8 @@ INTENT_MAX_TEXT = 300
 INTENT_SCHEMA = {'type': 'object', 'required': ['intent', 'text'],
                  'properties': {'intent': {'type': 'string', 'enum': list(INTENTS)}, 'text': {'type': 'string'}}}
 INTENT_SYS = '''Du ordnest eine gesprochene deutsche Äußerung an den Heimassistenten JARVIS einer Absicht zu. JARVIS erledigt Aufträge (Jobs).
-Die Nachricht beginnt mit [Kontext: ...]: entweder der gerade laufende Auftrag oder "kein laufender Auftrag". Danach folgt die Äußerung.
+Die Nachricht beginnt mit [Kontext: ...]: der gerade laufende Auftrag, oder "kein laufender Auftrag" (eventuell mit dem zuletzt bearbeiteten Auftrag). Danach folgt die Äußerung.
+Fragen wie "Bist du fertig?" oder "Hat das geklappt?" beziehen sich auf den laufenden oder zuletzt bearbeiteten Auftrag -> progress.
 Antworte nur mit JSON {"intent": ..., "text": ...}.
 
 intent:
@@ -309,6 +331,7 @@ Beispiele:
 [Kontext: laufender Auftrag "Logs zusammenfassen"] Vergiss es, brauch ich nicht -> {"intent":"cancel","text":""}
 [Kontext: kein laufender Auftrag] Prüf mal, ob alle Dienste laufen -> {"intent":"submit","text":"prüfen, ob alle Dienste laufen"}
 [Kontext: laufender Auftrag "Backup erstellen"] Klappt das? -> {"intent":"progress","text":""}
+[Kontext: kein laufender Auftrag; zuletzt bearbeitet: "Notizen exportieren" (ist erledigt)] Und, alles gut gegangen? -> {"intent":"progress","text":""}
 [Kontext: kein laufender Auftrag] Was ist ein Backup? -> {"intent":"none","text":""}'''
 
 
@@ -325,9 +348,12 @@ def clean_intent_input(text, run):
 
 def classify_intent(text, run):
     """Liefert {'intent', 'text'} oder None bei unbrauchbarer Modellantwort (nie geraten)."""
-    ctx = 'laufender Auftrag "%s"' % run if run else 'kein laufender Auftrag'
+    if run and run.startswith('zuletzt: '):   # N2: kein laufender Auftrag, aber Bezug auf den zuletzt bearbeiteten
+        ctx = 'kein laufender Auftrag; zuletzt bearbeitet: "%s"' % run[len('zuletzt: '):]
+    else:
+        ctx = 'laufender Auftrag "%s"' % run if run else 'kein laufender Auftrag'
     body = {'model': CHAT_MODEL, 'stream': True, 'think': False, 'format': INTENT_SCHEMA, 'keep_alive': KEEP_ALIVE,
-            'options': {'temperature': 0, 'num_predict': 80, 'num_ctx': 4096},   # = Chat-num_ctx, sonst laedt Ollama das Modell neu
+            'options': {'temperature': 0, 'num_predict': 16, 'num_ctx': 4096},   # = Chat-num_ctx (sonst Neuladen); 16 Token reichen fuer {"intent": "..." - Ollama rechnet nach Abbruch sonst bis num_predict weiter und blockiert den Chat
             'messages': [{'role': 'system', 'content': INTENT_SYS}, {'role': 'user', 'content': '[Kontext: %s] %s' % (ctx, text)}]}
     # Streamen und abbrechen, sobald die Absicht feststeht: sie wird laut Schema VOR dem Text erzeugt (temperature 0),
     # das Ergebnis ist also identisch zum vollstaendigen Lauf, spart aber die Text-Token (~1,4 s -> ~0,9 s gemessen).
@@ -348,6 +374,49 @@ def classify_intent(text, run):
         return None
     # Auftrags-/Aenderungstext = Andrews Wortlaut (normalisiert); die Engine plant daraus selbst.
     return {'intent': intent, 'text': text[:INTENT_MAX_TEXT] if intent in ('submit', 'revise') else ''}
+
+
+# Chat-Router 29.10.: Fachgebiet einer Chat-Nachricht. Nur Zuordnung - welche Rolle antwortet, ob Claude noetig ist
+# (Werkzeuge, private Daten) und ob der Supervisor gerufen wird, entscheidet die Bruecke auf dem Server (fail-closed -> Claude).
+FAECHER = ('ausfuehren', 'entwicklung', 'architektur', 'sicherheit', 'betrieb', 'design', 'planung', 'test',
+           'abhaengigkeiten', 'recherche', 'entscheidung', 'allgemein')
+ROUTE_MAX_TEXT = 1500
+ROUTE_SCHEMA = {'type': 'object', 'required': ['fach'], 'properties': {'fach': {'type': 'string', 'enum': list(FAECHER)}}}
+ROUTE_SYS = '''Du ordnest eine Chat-Nachricht an den Heimassistenten JARVIS genau einem Fachgebiet zu. Antworte nur mit JSON {"fach": "..."}.
+ausfuehren: JARVIS soll etwas TUN, das Zugriff auf Server, Dateien, Notizen, Vault, Mails, Kalender oder Befehle braucht (erstellen, ändern, löschen, sortieren, prüfen auf dem System, nachsehen in meinen Daten).
+entwicklung: Fragen zu Programmierung, Code, Sprachen, Frameworks, Plugins, Fehlermeldungen im Code.
+architektur: Aufbau und Zusammenspiel von Systemen, Schnittstellen, wie man etwas sauber strukturiert.
+sicherheit: Sicherheit, Datenschutz, Angriffe, Rechte, Schlüssel, Verschlüsselung, Risiken.
+betrieb: Server-Betrieb, Linux, Dienste, Netzwerk, Docker, Ausfälle, Leistung (als Frage, nicht als Auftrag).
+design: Gestaltung, Oberflächen, Bedienbarkeit, Farben, Layout.
+planung: Vorgehen, Reihenfolge, Zeitplan, Aufgaben zerlegen.
+test: Testen, Qualitätssicherung, Abnahme.
+abhaengigkeiten: Versionen, Updates, Bibliotheken, Kompatibilität.
+recherche: Fakten nachschlagen, Vergleiche, aktuelle Informationen, Produkte.
+entscheidung: schwierige Abwägung oder Grundsatzentscheidung mit mehreren Seiten, Bitte um Bewertung einer Idee.
+allgemein: alles andere (Smalltalk, Allgemeinwissen, Erklärungen).
+Beispiele: "Sortier meine Downloads" -> ausfuehren. "Was steht in meinen Notizen zu Java?" -> ausfuehren. "Ist Kotlin oder Java besser für Paper-Plugins?" -> entwicklung. "Wie sichere ich SSH ab?" -> sicherheit. "Warum ist mein Docker-Container langsam?" -> betrieb. "Soll ich mir einen neuen Server kaufen oder aufrüsten?" -> entscheidung. "Was ist ein Schwarzes Loch?" -> allgemein.'''
+_ROUTE_RE = re.compile(r'"fach"\s*:\s*"([a-z]+)"')
+
+
+def classify_route(text):
+    """Liefert das Fachgebiet oder None (nie geraten)."""
+    body = {'model': CHAT_MODEL, 'stream': True, 'think': False, 'format': ROUTE_SCHEMA, 'keep_alive': KEEP_ALIVE,
+            'options': {'temperature': 0, 'num_predict': 12, 'num_ctx': 4096},   # = Chat-num_ctx (sonst Neuladen)
+            'messages': [{'role': 'system', 'content': ROUTE_SYS}, {'role': 'user', 'content': text}]}
+    raw = ''
+    with _ollama('/api/chat', body, timeout=8) as r:
+        for line in r:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            raw += (d.get('message') or {}).get('content') or ''
+            m = _ROUTE_RE.search(raw)
+            if (m and m.group(1) in FAECHER) or d.get('done'):
+                break
+    m = _ROUTE_RE.search(raw)
+    return m.group(1) if m and m.group(1) in FAECHER else None
 
 
 def lower_priority():

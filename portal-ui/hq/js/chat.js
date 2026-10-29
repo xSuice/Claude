@@ -2,6 +2,7 @@
    Auto-Eskalation, Slash-Befehle, Anhaenge, Verlaeufe, geplante Aufgaben. Logik unveraendert.) */
 import { $, esc, api, cop, toast, mdLite, fmtTok, fmtAgo } from './api.js';
 import { pushLayer } from './viewer.js';
+import { lastExchange } from './chatctx.js';
 
 let claudeState = { msgs: [], sid: null, busy: false, tok: null };
 let PLAN = null;
@@ -147,9 +148,10 @@ async function claudeSend(prompt, opts0) {
   S.busy = true; S.idx = 0; S.jobId = null; S.opts = { model: opts.model }; S.act = 'Anfrage wird gesendet …'; S.reconn = false; S.fail = 0; S.denied = null;
   const files = pendingFiles; pendingFiles = []; imgChips();
   S.last = { p: prompt, opts: { ...opts, mode: opts.mode === 'voll_senden' ? 'voll' : opts.mode } };
+  const ctx = lastExchange(S.msgs);   // CHAT-ROUTE: letzter Austausch als Kontext für Fachrollen
   S.msgs.push({ r: 'u', p: prompt, t: files.map(x => (isPic(x.name) ? '🖼 ' : '📄 ') + x.name + '\n').join('') + prompt }, { r: 'a', t: '', live: true });
   claudeRender(true);
-  await claudePump({ prompt, session: S.sid, ...opts, files: files.map(x => x.ref) });
+  await claudePump({ prompt, session: S.sid, ...opts, files: files.map(x => x.ref), ctx });
 }
 
 async function claudePump(body) {

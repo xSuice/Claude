@@ -16,8 +16,13 @@
       ],
       "format": "esm"
     },
+    "js/chatctx.js": {
+      "bytes": 855,
+      "imports": [],
+      "format": "esm"
+    },
     "js/chat.js": {
-      "bytes": 50782,
+      "bytes": 50933,
       "imports": [
         {
           "path": "js/api.js",
@@ -28,6 +33,11 @@
           "path": "js/viewer.js",
           "kind": "import-statement",
           "original": "./viewer.js"
+        },
+        {
+          "path": "js/chatctx.js",
+          "kind": "import-statement",
+          "original": "./chatctx.js"
         }
       ],
       "format": "esm"
@@ -346,10 +356,13 @@
           "bytesInOutput": 10034
         },
         "js/chat.js": {
-          "bytesInOutput": 37407
+          "bytesInOutput": 37430
         },
         "js/viewer.js": {
           "bytesInOutput": 6983
+        },
+        "js/chatctx.js": {
+          "bytesInOutput": 358
         },
         "js/hq.js": {
           "bytesInOutput": 13146
@@ -403,7 +416,7 @@
           "bytesInOutput": 19255
         }
       },
-      "bytes": 226771
+      "bytes": 227152
     }
   }
 }

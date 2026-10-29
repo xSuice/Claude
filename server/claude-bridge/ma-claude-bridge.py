@@ -65,6 +65,10 @@ try:                                   # gemeinsame Quelle fuer PC und Server: s
     import router_core
 except ImportError:
     router_core = None
+try:                                   # CHAT-ROUTE 29.10.: Fachfragen -> Hermes-Rollen/Supervisor, Claude nur fuer Werkzeug-Auftraege
+    import ma_chat_route
+except ImportError:
+    ma_chat_route = None
 
 
 def pick_model(prompt, mode, has_images):
@@ -1311,6 +1315,8 @@ class Handler(socketserver.StreamRequestHandler):
                 return self.reply({'type': 'note', **note_api(req.get('data') or '')})
             if op == 'connectors':
                 return self.reply({'type': 'connectors', **connectors_status()})
+            if op == 'route_report' and ma_chat_route:   # CHAT-ROUTE: Tageszaehler fuer das Command Center (ohne Inhalte)
+                return self.reply({'type': 'route_report', 'data': ma_chat_route.State().report(), 'mode': ma_chat_route.MODE})
             if op == 'usage':
                 return self.reply({'type': 'usage', 'ok': True, **usage_report()})
             if op == 'lern_feedback':
@@ -1392,6 +1398,9 @@ class Handler(socketserver.StreamRequestHandler):
                 sid = req.get('session')
                 if isinstance(sid, str) and SESSION.fullmatch(sid):
                     args += ['--resume', sid]
+            route_env, route_label = {}, None   # CHAT-ROUTE: nur normale Chat-Auftraege; jeder Fehler -> Claude unveraendert
+            if ma_chat_route and cat == 'chat' and req.get('mode') != 'gespraech':
+                args, route_env, route_label, _rd = ma_chat_route.wrap(args, prompt, req, bool(img_paths), bool(file_paths))
         except Exception:
             return self.reply({'type': 'bridge_error', 'error': 'Ungueltige Anfrage'})
         if not LIMIT.acquire(blocking=False):
@@ -1404,12 +1413,13 @@ class Handler(socketserver.StreamRequestHandler):
             env.pop('MA_ALLOW_SEND', None)
             if req.get('mode') == 'voll_senden':
                 env['MA_ALLOW_SEND'] = '1'
+            env.update(route_env)   # CHAT-ROUTE
             proc = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
             jid = uuid.uuid4().hex[:12]
-            job = {'proc': proc, 'start': time.time(), 'prompt': ' '.join(prompt.split())[:60], 'model': model, 'mode': str(req.get('mode')),
+            job = {'proc': proc, 'start': time.time(), 'prompt': ' '.join(prompt.split())[:60], 'model': route_label or model, 'mode': str(req.get('mode')),
                    'events': [], 'done': False, 'cond': threading.Condition(), 'cat': cat}
             usage_add(cat, jobs=1)
-            job_push(job, {'type': 'bridge_model', 'model': model})
+            job_push(job, {'type': 'bridge_model', 'model': route_label or model})   # CHAT-ROUTE: zeigt, wer antwortet
             job_push(job, {'type': 'bridge_job', 'id': jid})
             with JOBS_LOCK:
                 JOBS[jid] = job

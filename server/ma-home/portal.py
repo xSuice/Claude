@@ -363,7 +363,7 @@ def claude_chat():
     if not g.admin:
         abort(403)
     body = request.get_json()
-    req = {k: body.get(k) for k in ('prompt', 'session', 'dir', 'mode', 'model', 'images', 'files', 'attach', 'from')}
+    req = {k: body.get(k) for k in ('prompt', 'session', 'dir', 'mode', 'model', 'images', 'files', 'attach', 'from', 'ctx')}   # CHAT-ROUTE-CTX
 
     def generate():
         import select as _select
