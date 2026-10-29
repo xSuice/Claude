@@ -99,8 +99,29 @@
       ],
       "format": "esm"
     },
+    "js/dialogref.js": {
+      "bytes": 4106,
+      "imports": [],
+      "format": "esm"
+    },
     "js/voicetasks.js": {
-      "bytes": 8120,
+      "bytes": 11076,
+      "imports": [
+        {
+          "path": "js/api.js",
+          "kind": "import-statement",
+          "original": "./api.js"
+        },
+        {
+          "path": "js/dialogref.js",
+          "kind": "import-statement",
+          "original": "./dialogref.js"
+        }
+      ],
+      "format": "esm"
+    },
+    "js/memoryvoice.js": {
+      "bytes": 5494,
       "imports": [
         {
           "path": "js/api.js",
@@ -127,7 +148,7 @@
       "format": "esm"
     },
     "js/voice.js": {
-      "bytes": 32744,
+      "bytes": 33345,
       "imports": [
         {
           "path": "js/api.js",
@@ -153,6 +174,11 @@
           "path": "js/voicetasks.js",
           "kind": "import-statement",
           "original": "./voicetasks.js"
+        },
+        {
+          "path": "js/memoryvoice.js",
+          "kind": "import-statement",
+          "original": "./memoryvoice.js"
         },
         {
           "path": "js/speech-text.js",
@@ -324,10 +350,16 @@
           "bytesInOutput": 12242
         },
         "js/voice.js": {
-          "bytesInOutput": 18808
+          "bytesInOutput": 18989
         },
         "js/voicetasks.js": {
-          "bytesInOutput": 5517
+          "bytesInOutput": 7100
+        },
+        "js/dialogref.js": {
+          "bytesInOutput": 2388
+        },
+        "js/memoryvoice.js": {
+          "bytesInOutput": 3648
         },
         "js/speech-text.js": {
           "bytesInOutput": 554
@@ -345,7 +377,7 @@
           "bytesInOutput": 19255
         }
       },
-      "bytes": 217465
+      "bytes": 225265
     }
   }
 }

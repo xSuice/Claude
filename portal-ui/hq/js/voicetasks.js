@@ -1,6 +1,7 @@
 /* MA-HOME HQ — Aufträge per Sprache (VOICE-007). Anlegen und Abbrechen NUR nach ausdrücklicher Bestätigung („Ja“).
    Fortschritt fragen ist lesend. Unterbrechen der Sprachausgabe bricht nie einen Auftrag ab. Zustände kommen aus der Engine, nicht aus dem Modell. */
 import { api } from './api.js';
+import { resolveIntent, isNew, isChange, obviousChat } from './dialogref.js';
 
 const STATE = { queued: 'wartet', planning: 'wird geplant', running: 'läuft', waiting_approval: 'braucht deine Freigabe', waiting_pc: 'wartet auf den PC', done: 'ist erledigt', partial: 'ist teilweise erledigt', failed: 'ist fehlgeschlagen', cancelled: 'wurde abgebrochen' };
 const FINAL = ['done', 'partial', 'failed', 'cancelled'];
@@ -46,14 +47,27 @@ export async function modelIntent(text, run, ms = 2500) {
 const words = s => String(s).trim().replace(/\s+/g, ' ').replace(/[!?.]+$/, '').trim();
 
 let pending = null;   // { kind, request|job, until }
+let recent = null;    // N2: Auftragsliste der letzten Äußerung { at, jobs } – nur als Kontext für die parallele Erkennung
+const RECENT_MS = 30000;
 export const pendingTask = (now = Date.now()) => (pending && now < pending.until ? pending : null);
-export function clearPending() { pending = null; }
+export function clearPending() { pending = null; recent = null; }
+// Kontext fürs Modell: laufender Auftrag, sonst „zuletzt: …“ (Bezug für „Bist du fertig?“), sonst null
+function context(list) {
+  const run = list.find(j => !FINAL.includes(j.state));
+  if (run) return run.request;
+  return list[0] ? 'zuletzt: ' + short(list[0].request) + ' (' + (STATE[list[0].state] || list[0].state) + ')' : null;
+}
 
 /* Liefert {reply, meta} oder null (= nicht zuständig). deps.local(text) = true: die lokale Übersicht antwortet (Modell wird nicht gefragt). */
 export async function handleTaskVoice(text, deps = {}) {
   deps = { jv, now: Date.now, classify: modelIntent, local: () => false, ...deps };
   const p = pendingTask(deps.now());
-  if (p) {
+  if (p && p.kind === 'choose') {   // N2: „neu“ / „ändern“ beantworten die Rückfrage ausdrücklich (Wortlaut stand in der Frage)
+    if (isNew(text)) { pending = null; const r = await deps.jv('submit', { request: p.text, client_id: p.client_id }); return { reply: 'Neuer Auftrag ist angelegt' + (r.job_id ? ', Nummer ' + String(r.job_id).slice(-6) : '') + '. Der laufende Auftrag bleibt unverändert.', meta: 'Auftrag angelegt' }; }
+    if (isChange(text)) { pending = null; const r = await deps.jv('revise', { job: p.job, request: p.text, expected: p.expected }); return { reply: 'Erledigt: Der Auftrag läuft jetzt als Revision ' + r.revision + ' weiter. Bereits erstellte Dateien bleiben erhalten.', meta: 'Auftrag geändert' }; }
+    if (isYes(text)) { pending.until = deps.now() + CONFIRM_MS; return { reply: 'Bitte sag „neu“ für einen neuen Auftrag oder „ändern“ für den laufenden Auftrag.', meta: 'wartet auf Auswahl', confirm: true }; }
+  }
+  if (p && p.kind !== 'choose') {
     if (isYes(text)) {
       pending = null;
       if (p.kind === 'submit') { const r = await deps.jv('submit', { request: p.request, client_id: p.client_id }); return { reply: 'Auftrag ist angelegt' + (r.job_id ? ', Nummer ' + String(r.job_id).slice(-6) : '') + '. Frag mich jederzeit nach dem Fortschritt.', meta: 'Auftrag angelegt' }; }
@@ -63,16 +77,32 @@ export async function handleTaskVoice(text, deps = {}) {
     if (isNo(text)) { pending = null; return { reply: 'Okay, ich mache nichts.', meta: 'verworfen' }; }
     pending = null;   // etwas anderes gesagt: Rückfrage verfällt, normal weiter
   }
+  if (p && p.kind === 'choose') {
+    if (isNo(text)) { pending = null; return { reply: 'Okay, ich mache nichts.', meta: 'verworfen' }; }
+    pending = null;
+  }
   let it = parseTaskIntent(text), list = null, via = '';
   const jobs = async () => { if (!list) list = ((await deps.jv('list', { limit: 5 })) || {}).jobs || []; return list; };
   if (!it) {
     if (deps.local(text)) return null;
-    let k = null;
+    if (obviousChat(text)) return null;   // Gruß/Dank/Wissensfrage: direkt ins Gespräch, ohne ~1 s Erkennung
+    let k = null, run = null;
     try {
-      const run = (await jobs()).find(j => !FINAL.includes(j.state));
-      k = await deps.classify(text, run ? run.request : null);
+      // Folgeäußerung (< 30 s): Erkennung mit dem Kontext der letzten Liste parallel zur frischen Liste starten (spart ~0,4 s).
+      // Aktionen nutzen immer die frische Liste.
+      const now = deps.now(), warm = recent && now - recent.at < RECENT_MS ? recent.jobs : null;
+      const listP = jobs();
+      const kP = warm ? deps.classify(text, context(warm)) : listP.then(l => deps.classify(text, context(l)));
+      const [l, kk] = await Promise.all([listP, kP]);
+      recent = { at: now, jobs: l }; k = kk;
+      run = l.find(j => !FINAL.includes(j.state)) || null;
     } catch (e) { k = null; }
     const w = words(text);
+    k = k ? resolveIntent(k, w, run ? run.request : null) : null;   // N2: Gesprächsbezug prüfen, bei Widerspruch nachfragen
+    if (k === 'choose' && run && w.length >= 5) {
+      pending = { kind: 'choose', text: w, job: run.id, expected: run.revision || 1, client_id: rid(), until: deps.now() + CONFIRM_MS };
+      return { reply: 'Kurze Rückfrage zu „' + short(w) + '“: Soll das ein neuer Auftrag werden oder den laufenden Auftrag „' + short(run.request) + '“ ändern? Sag „neu“, „ändern“ oder „nein“.', meta: 'wartet auf Auswahl · erkannt von Qwen lokal', confirm: true };
+    }
     if (k === 'submit') it = w.length >= 8 ? { kind: 'submit', request: w } : { kind: 'submit_empty' };
     else if (k === 'revise') it = w.length >= 5 ? { kind: 'revise', change: w } : { kind: 'revise_empty' };
     else if (k === 'cancel' || k === 'progress') it = { kind: k };

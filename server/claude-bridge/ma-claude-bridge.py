@@ -37,10 +37,15 @@ CONNECTOR_READ = [
     'mcp__claude_ai_Google_Calendar__search_events',
     'mcp__claude_ai_Multi_Mail__mailboxes_list', 'mcp__claude_ai_Multi_Mail__messages_list', 'mcp__claude_ai_Multi_Mail__messages_list_all_mailboxes',
     'mcp__claude_ai_Multi_Mail__messages_get', 'mcp__claude_ai_Multi_Mail__threads_get']
+VOICE_SYS = ('Du bist JARVIS, der persoenliche Assistent von Andre im MA-HOME. Du sprichst Deutsch, natuerlich und freundlich wie im Gespraech. '
+             'Antworte kurz (hoechstens drei Saetze), ohne Markdown, Listen, Emojis oder Links. Du hast in diesem Modus keinen Zugriff auf Dateien, '
+             'Notizen oder Werkzeuge; behaupte nie, etwas nachgesehen oder erledigt zu haben. Fuer Auftraege sagt Andre "Neuer Auftrag".')
 MODES = {
     # Geplantes Pruefen von Mail und Kalender: nur lesen (kein Write/Edit/Bash, damit Mailtext nichts veraendern kann); die Bruecke schreibt das Ergebnis selbst
     'konnektoren': ('default', ['Read', 'Grep', 'Glob'] + CONNECTOR_READ),
     'lesen': ('default', ['Read', 'Grep', 'Glob'] + READ_BASH),
+    # GESPRAECH-MODE: Sprachdialog. KEINE Werkzeuge (--tools ''), keine Settings/MCP, 1 Zug. Liest und aendert nichts.
+    'gespraech': ('default', []),
     'plan': ('plan', ['Read', 'Grep', 'Glob'] + READ_BASH),      # Plan-Modus: Claude plant nur, nichts wird veraendert
     'notizen': ('acceptEdits', ['Read', 'Grep', 'Glob', 'Edit', 'Write'] + READ_BASH),
     # wie am PC: Dateien aendern und beliebige Befehle als andrew (ohne sudo). Gesperrtes steht in ~/.claude/settings.json (deny).
@@ -1158,7 +1163,7 @@ def plan_usage():
 JARVIS_PY = os.environ.get('MA_JARVIS_PY', '/home/andrew/.local/share/ma-jarvis/current/brain-runtime/jarvis_cli.py')
 JARVIS_CFGDIR = os.environ.get('MA_JARVIS_CFGDIR', '/home/andrew/.config/ma-jarvis')
 JARVIS_JOB = re.compile(r'j\d{8}-[0-9a-f]{6}')
-JARVIS_SIMPLE = ('usage', 'caps', 'learned', 'meta')
+JARVIS_SIMPLE = ('usage', 'caps', 'learned', 'meta', 'councils', 'router', 'audit', 'memories')  # JARVIS-COUNCILS, N4-BRIDGE: memories (lesend)
 
 
 def jarvis_config(user):
@@ -1193,6 +1198,31 @@ def jarvis_api(req):
             if not who:
                 return {'ok': False, 'error': 'Freigabe ohne bekannten Portal-Benutzer'}
             args += ['--by', 'portal:' + who]
+    elif cmd == 'revise':                            # JARVIS-REVISE: Auftrag aendern (gleiche ID, neue Revision), Urheber = Portal-Benutzer
+        if not JARVIS_JOB.fullmatch(job):
+            return {'ok': False, 'error': 'Ungueltige Auftrags-ID'}
+        text = str(req.get('request') or '').strip()
+        if not 3 <= len(text) <= 8000:
+            return {'ok': False, 'error': 'Aenderung leer oder laenger als 8000 Zeichen'}
+        who = re.sub(r'[^A-Za-z0-9._-]', '', user)[:40]
+        if not who:
+            return {'ok': False, 'error': 'Aenderung ohne bekannten Portal-Benutzer'}
+        args = ['revise', job, '--change', text, '--by', 'portal:' + who]
+        exp = req.get('expected')
+        if isinstance(exp, int) and exp > 0:
+            args += ['--expected', str(exp)]
+    elif cmd == 'activity':                          # JARVIS-P345: Living HQ, normalisierte AgentEvents (lesend)
+        args = ['activity', '--since', str(max(0, int(req.get('since') or 0)))]
+    elif cmd == 'knowledge':                         # JARVIS-P345: Review-Queue des Memory-Distillers
+        op, ident = str(req.get('kind') or 'list'), str(req.get('ident') or '')
+        if op not in ('list', 'approve', 'reject'):
+            return {'ok': False, 'error': 'Ungueltige Angabe'}
+        args = ['knowledge', '--op', op]
+        if op != 'list':
+            who = re.sub(r'[^A-Za-z0-9._-]', '', user)[:40]
+            if not who or not re.fullmatch(r'[0-9]{1,9}', ident):
+                return {'ok': False, 'error': 'Freigabe ohne Benutzer oder ID'}
+            args += ['--id', ident, '--by', 'portal:' + who]
     elif cmd == 'list':
         args = ['list', '--limit', str(min(50, max(1, int(req.get('limit') or 20))))]
     elif cmd == 'submit':
@@ -1207,6 +1237,16 @@ def jarvis_api(req):
         args = [cmd]
     elif cmd == 'kill':                              # nur der eigene Not-Aus; der globale bleibt der Kommandozeile vorbehalten
         args = ['kill', 'on' if req.get('state') == 'on' else 'off']
+        if req.get('state') == 'on' and str(req.get('kind') or '') in ('soft', 'exec', 'hard'):   # JARVIS-P8: Not-Aus-Stufe
+            args += ['--level', str(req['kind'])]
+    elif cmd == 'remember':                         # N4-BRIDGE: „Merk dir …“, im Portal per Ja bestätigt; Geheimnisprüfung in der Engine
+        text = ' '.join(str(req.get('request') or '').split())
+        if not 3 <= len(text) <= 500:
+            return {'ok': False, 'error': 'Merktext leer oder laenger als 500 Zeichen'}
+        who = re.sub(r'[^A-Za-z0-9._-]', '', user)[:40]
+        if not who:
+            return {'ok': False, 'error': 'Merken ohne bekannten Portal-Benutzer'}
+        args = ['remember', '--text', text, '--by', 'portal:' + who]
     elif cmd == 'forget':
         kind, ident = str(req.get('kind') or ''), str(req.get('ident') or '')
         if kind not in ('template', 'lesson', 'memory') or not re.fullmatch(r'[A-Za-z0-9._:-]{1,80}', ident):
@@ -1344,9 +1384,14 @@ class Handler(socketserver.StreamRequestHandler):
                 args += ['--add-dir', UP_DIR]
             if mode[1]:
                 args += ['--strict-mcp-config']   # Lesen/Notizen brauchen keine Verbindungen: spart die lange Werkzeugliste (Token)
-            sid = req.get('session')
-            if isinstance(sid, str) and SESSION.fullmatch(sid):
-                args += ['--resume', sid]
+            if req.get('mode') == 'gespraech':   # GESPRAECH-MODE: Argumente komplett ersetzen (nichts aus anderen Modi uebernehmen)
+                args = [CLAUDE, '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
+                        '--model', model if req.get('model') in MODELS else 'haiku', '--tools', '', '--setting-sources', '',
+                        '--strict-mcp-config', '--max-turns', '1', '--system-prompt', VOICE_SYS]
+            else:
+                sid = req.get('session')
+                if isinstance(sid, str) and SESSION.fullmatch(sid):
+                    args += ['--resume', sid]
         except Exception:
             return self.reply({'type': 'bridge_error', 'error': 'Ungueltige Anfrage'})
         if not LIMIT.acquire(blocking=False):
