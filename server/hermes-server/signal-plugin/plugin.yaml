@@ -1,0 +1,6 @@
+name: ma-signal-self
+label: MA-HOME Signal Self Chat
+kind: platform
+version: 1.0.0
+description: Owner-only self chat and remote Linux attachment transfer using the bundled Signal adapter.
+author: MA-HOME
