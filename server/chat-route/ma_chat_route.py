@@ -13,6 +13,7 @@ import os
 import re
 import threading
 import time
+import urllib.error
 import urllib.request
 
 MODE = os.environ.get('MA_CHAT_ROUTE', 'auto')            # auto | off
@@ -93,19 +94,37 @@ def _token():
         return ''
 
 
+def _warm():
+    """Qwen entladen/kalt: im Hintergrund anwärmen, damit die NÄCHSTE Frage routen kann (diese geht an Claude)."""
+    try:
+        req = urllib.request.Request(VOICE + '/warm', data=b'{}', method='POST',
+                                     headers={'X-Voice-Token': _token(), 'Content-Type': 'application/json'})
+        urllib.request.urlopen(req, timeout=3).close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def fach_via_pc(text):
     req = urllib.request.Request(VOICE + '/route', data=json.dumps({'text': text[:1500]}).encode(), method='POST',
                                  headers={'X-Voice-Token': _token(), 'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=4) as r:
-        return json.load(r).get('fach')
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.load(r).get('fach')
+    except urllib.error.HTTPError as e:
+        if e.code == 503:
+            threading.Thread(target=_warm, daemon=True).start()
+        raise
+
+
+ROLE_RUNNER = '/home/andrew/hermes-server/network_runner.py'   # Server-Modus: Rollen laufen hier in der Sandbox, nicht auf dem PC
+ROLE_WORK = '/home/andrew/hermes-jobs/roles'
+HERMES_BIN = '/home/andrew/.local/bin/hermes'
+ROLE_MAX_S = 190
 
 
 def receiver_alive():
-    try:
-        with urllib.request.urlopen(RECEIVER + '/healthz', timeout=1.5) as r:
-            return r.status == 200
-    except Exception:  # noqa: BLE001
-        return False
+    """Rollen laufen auf dem Server: bereit, wenn der Sandbox-Runner vorhanden ist (PC nicht nötig)."""
+    return os.path.isfile(ROLE_RUNNER)
 
 
 def _claude(why, fach=None):
@@ -189,5 +208,15 @@ def wrap(args, prompt, req, has_images=False, has_files=False, decide_fn=None, s
     state.count(d['target'])
     if d['target'] != 'kimi-supervisor':
         state.count('rollen')
-    env = {'MA_ROUTE_CLAUDE_ARGS': json.dumps(args), 'MA_ROUTE_CTX': ' '.join(str(req.get('ctx') or '').split())[:2000]}
+    env = {'MA_ROUTE_CLAUDE_ARGS': json.dumps(args), 'MA_ROUTE_CTX': ' '.join(str(req.get('ctx') or '').split())[:2000],
+           'XDG_RUNTIME_DIR': '/run/user/1000',
+           # Rolle als transiente Einheit im Benutzer-Dienstmanager: passende Gruppe (der Brückendienst hat ma-web, die Hermes-Dateien
+           # gehören andrew), hartes Zeitlimit, bei Ende wird die ganze Prozessgruppe beendet.
+           'MA_ROUTE_LOCAL_CMD': json.dumps(['systemd-run', '--user', '--quiet', '--wait', '--collect', '--pipe',
+                                             '-p', 'RuntimeMaxSec=%d' % ROLE_MAX_S, '-p', 'KillMode=control-group',
+                                             python, ROLE_RUNNER, ROLE_WORK, '--', HERMES_BIN])}
+    try:
+        os.makedirs(ROLE_WORK, exist_ok=True)
+    except OSError:
+        pass
     return [python, ASK, d['target'], label(d)], env, label(d), d

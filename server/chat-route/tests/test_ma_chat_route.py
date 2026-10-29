@@ -107,6 +107,30 @@ class Rules(unittest.TestCase):
         self.assertEqual(R.label(d), 'jarvis-security · Nexum (Fachrolle Sicherheit)')
         self.assertEqual(R.label({'target': 'kimi-supervisor', 'fach': 'entscheidung'}), 'kimi-supervisor · Supervisor')
 
+    def test_server_modus_setzt_lokalen_runner_und_alive_ohne_pc(self):
+        tmp = Path(tempfile.mkdtemp())
+        runner = tmp / 'network_runner.py'
+        runner.write_text('#', encoding='utf-8')
+        old = R.ROLE_RUNNER
+        R.ROLE_RUNNER = str(runner)
+        try:
+            self.assertTrue(R.receiver_alive())
+            st = R.State(tmp / 's.json')
+            dec = lambda *a, **k: {'target': 'jarvis-security', 'why': 't', 'fach': 'sicherheit'}
+            a, env, lab, d = R.wrap(['claude'], 'Frage', {}, decide_fn=dec, state=st, log_file=str(tmp / 'l'))
+            cmd = json.loads(env['MA_ROUTE_LOCAL_CMD'])
+            self.assertEqual(cmd[0], 'systemd-run')                 # Benutzer-Dienstmanager: richtige Gruppe, Zeitlimit, control-group-Kill
+            self.assertIn('--user', cmd)
+            self.assertIn('KillMode=control-group', cmd)
+            self.assertTrue(any(c.startswith('RuntimeMaxSec=') for c in cmd))
+            self.assertIn(str(runner), cmd)
+            self.assertEqual(env['XDG_RUNTIME_DIR'], '/run/user/1000')
+            self.assertIn('--', cmd)
+            R.ROLE_RUNNER = str(tmp / 'fehlt.py')
+            self.assertFalse(R.receiver_alive())
+        finally:
+            R.ROLE_RUNNER = old
+
     def test_wrap_fuer_die_bruecke(self):
         tmp = Path(tempfile.mkdtemp())
         st, logf = R.State(tmp / 's.json'), str(tmp / 'log.jsonl')

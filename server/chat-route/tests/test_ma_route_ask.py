@@ -36,6 +36,31 @@ def run(receiver=None, ctx='Vorher: X'):
     return r.returncode, [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
 
 
+class LocalRole(unittest.TestCase):
+    def test_local_server_mode_runs_command_and_answers(self):
+        fake = TMP / 'fake_local.py'
+        fake.write_text('import sys,json\nprint("LOKAL:"+" ".join(sys.argv[1:])[:60])\nprint("session_id: x")\n', encoding='utf-8')
+        env = dict(os.environ, MA_ROUTE_LOCAL_CMD=json.dumps([sys.executable, str(fake)]), MA_ROUTE_RECEIVER='http://127.0.0.1:9',
+                   MA_ROUTE_CLAUDE_ARGS=json.dumps([sys.executable, str(FAKE_CLAUDE)]), MA_ROUTE_TIMEOUT='20')
+        r = subprocess.run([sys.executable, str(HELPER), 'jarvis-security', 'Sicherheit'], input='Frage?', capture_output=True,
+                           text=True, env=env, timeout=40, encoding='utf-8')
+        out = [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
+        res = [o for o in out if o.get('type') == 'result'][-1]
+        self.assertFalse(res['is_error'])
+        self.assertTrue(res['result'].startswith('LOKAL:'), res)
+        self.assertIn('-p jarvis-security', res['result'])
+        self.assertNotIn('session_id', res['result'])
+
+    def test_local_failure_falls_back_to_claude(self):
+        fake = TMP / 'fake_fail.py'
+        fake.write_text('import sys\nsys.exit(3)\n', encoding='utf-8')
+        env = dict(os.environ, MA_ROUTE_LOCAL_CMD=json.dumps([sys.executable, str(fake)]),
+                   MA_ROUTE_CLAUDE_ARGS=json.dumps([sys.executable, str(FAKE_CLAUDE)]), MA_ROUTE_TIMEOUT='20')
+        r = subprocess.run([sys.executable, str(HELPER), 'jarvis-security', 'Sicherheit'], input='Frage?', capture_output=True,
+                           text=True, env=env, timeout=40, encoding='utf-8')
+        self.assertIn('CLAUDE:Frage?', r.stdout)
+
+
 class Helper(unittest.TestCase):
     def test_answer_in_claude_stream_format(self):
         MODE['code'] = 200
