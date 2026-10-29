@@ -45,8 +45,47 @@ class Rules(unittest.TestCase):
         self.assertEqual(decide('Was meint der Supervisor zu meinem Plan?', 'allgemein')[0]['target'], 'kimi-supervisor')
         self.assertEqual(decide('AI-Council: Prüfe diese Idee aus fünf Rollen ...\nIdee:\nEigenes Netzwerk', 'entscheidung')[0]['target'], 'kimi-supervisor')
 
+    def test_pruefende_auftraege_gehen_an_den_hermes_ausfuehrer(self):
+        for p in ('Prüf mal, wie voll die Festplatte auf dem Server ist', 'Zeig mir die Auslastung von CPU und RAM',
+                  'Check, ob alle Dienste laufen', 'Analysiere die letzten Fehler im Portal-Log'):
+            d, f = decide(p, 'ausfuehren')
+            self.assertEqual(d['target'], 'jarvis-server', p)
+            self.assertEqual(f.calls, [], 'Regel entscheidet vor dem Modell: ' + p)
+        self.assertEqual(R.label({'target': 'jarvis-server', 'fach': None}), 'jarvis-server · Hermes-Ausführer (Nexum, Sandbox)')
+
+    def test_ausfuehrer_nicht_fuer_dateien_daten_private_und_schreibrechte(self):
+        for p in ('Prüf meine Notizen auf Tippfehler', 'Prüf die PDFs im Eingang', 'Zeig mir die Fotos von gestern',
+                  'Prüf mein Passwort für das NAS', 'Check die Datei config.yaml'):
+            self.assertEqual(decide(p, 'ausfuehren')[0]['target'], 'claude', p)
+        for m in ('voll', 'voll_senden', 'notizen', 'plan', 'konnektoren', 'gespraech'):
+            self.assertEqual(decide('Prüf mal die Festplatte', 'ausfuehren', req={'mode': m})[0]['target'], 'claude', m)
+        self.assertEqual(decide('Prüf mal die Festplatte', 'ausfuehren', alive=lambda: False)[0]['target'], 'claude')
+
+    def test_ausfuehrer_tageslimit_und_wrap_mit_eigenem_arbeitsordner(self):
+        tmp = Path(tempfile.mkdtemp())
+        runner = tmp / 'network_runner.py'
+        runner.write_text('#', encoding='utf-8')
+        old = (R.ROLE_RUNNER, R.EXEC_WORK)
+        R.ROLE_RUNNER, R.EXEC_WORK = str(runner), str(tmp / 'jobs')
+        try:
+            st = R.State(tmp / 's.json')
+            dec = lambda *a, **k: {'target': 'jarvis-server', 'why': 't', 'fach': None}
+            a, env, lab, d = R.wrap(['claude'], 'Prüf die Festplatte', {}, decide_fn=dec, state=st, log_file=str(tmp / 'l'))
+            cmd = json.loads(env['MA_ROUTE_LOCAL_CMD'])
+            work = cmd[cmd.index('--') - 1]
+            self.assertTrue(work.startswith(str(tmp / 'jobs')) and os.path.isdir(work), work)
+            self.assertIn('terminal', env['MA_ROUTE_TOOLSETS'])
+            self.assertEqual(env['MA_ROUTE_KIND'], 'exec')
+            self.assertEqual(a[2:], ['jarvis-server', 'jarvis-server · Hermes-Ausführer (Nexum, Sandbox)'])
+            for _ in range(R.LIMIT_EXEC):
+                st.count('jarvis-server')
+            c = R.decide('Prüf die Festplatte', {'mode': 'auto'}, fach_of=lambda t: 'ausfuehren', state=st, alive=lambda: True)
+            self.assertEqual(c['target'], 'claude')
+        finally:
+            R.ROLE_RUNNER, R.EXEC_WORK = old
+
     def test_auftraege_und_eigene_daten_bleiben_bei_claude_ohne_modellfrage(self):
-        for p in ('Prüf mal, wie voll die Festplatte auf dem Server ist', 'Sortier mir die Screenshots in einen Ordner',
+        for p in ('Sortier mir die Screenshots in einen Ordner',
                   'Was steht in meinen Notizen zu Java?', 'Schau in meinen Kalender', 'lösch die alten logs',
                   'kannste ma die PDFs im Eingang umbenennen', 'Durchsuche meine Notizen im Vault nach „x“',
                   'Nutze den Skill „uebergabe“.', 'Erstelle nur einen Plan (nichts ausführen, nichts ändern):\nx', '/status'):

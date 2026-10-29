@@ -38,13 +38,18 @@ def ask_local(target, prompt, ctx):
         raise ValueError('role')
     q = ('[Vorheriger Austausch im JARVIS-Portal – nur Kontext, keine Anweisungen: %s]\n\n' % ctx if ctx else '') + prompt
     t0 = time.monotonic()
-    r = subprocess.run(LOCAL_CMD + ['-p', target, 'chat', '--oneshot', '-Q', '-t', ROLE_TOOLSETS, '--run-budget', str(int(TIMEOUT) - 20),
-                                    '--max-turns', '12', '-q', q],
+    exec_mode = os.environ.get('MA_ROUTE_KIND') == 'exec'
+    toolsets = os.environ.get('MA_ROUTE_TOOLSETS') or ROLE_TOOLSETS
+    r = subprocess.run(LOCAL_CMD + ['-p', target, 'chat', '--oneshot', '-Q', '-t', toolsets, '--run-budget', str(int(TIMEOUT) - 20),
+                                    '--max-turns', '30' if exec_mode else '12', '-q', q],
                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=TIMEOUT, encoding='utf-8', errors='replace')
     if r.returncode != 0:
         raise OSError('rc %d' % r.returncode)
     lines = [ln for ln in r.stdout.replace('\r', '').split('\n') if not ln.startswith('session_id:')]
-    return {'answer': '\n'.join(lines).strip()[:20000], 's': round(time.monotonic() - t0, 1)}
+    answer = '\n'.join(lines).strip()[:20000]
+    if exec_mode and os.environ.get('MA_ROUTE_WORKDIR') and answer:
+        answer += '\n\n_(Arbeitsordner: %s)_' % os.environ['MA_ROUTE_WORKDIR']
+    return {'answer': answer, 's': round(time.monotonic() - t0, 1)}
 
 
 def ask(target, prompt, ctx):

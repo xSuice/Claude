@@ -51,6 +51,21 @@ class LocalRole(unittest.TestCase):
         self.assertIn('-p jarvis-security', res['result'])
         self.assertNotIn('session_id', res['result'])
 
+    def test_exec_mode_uses_full_toolsets_and_names_workdir(self):
+        fake = TMP / 'fake_args.py'
+        fake.write_text('import sys\nprint("ARGS:"+" ".join(sys.argv[1:]))\n', encoding='utf-8')
+        env = dict(os.environ, MA_ROUTE_LOCAL_CMD=json.dumps([sys.executable, str(fake)]), MA_ROUTE_KIND='exec',
+                   MA_ROUTE_TOOLSETS='terminal,file,web', MA_ROUTE_WORKDIR='/home/andrew/hermes-jobs/x1', MA_ROUTE_TIMEOUT='280',
+                   MA_ROUTE_CLAUDE_ARGS=json.dumps([sys.executable, str(FAKE_CLAUDE)]))
+        r = subprocess.run([sys.executable, str(HELPER), 'jarvis-server', 'Ausführer'], input='Prüf die Platte', capture_output=True,
+                           text=True, env=env, timeout=40, encoding='utf-8')
+        res = [json.loads(l) for l in r.stdout.splitlines() if l.strip()][-1]
+        self.assertFalse(res['is_error'])
+        self.assertIn('-t terminal,file,web', res['result'])
+        self.assertIn('--max-turns 30', res['result'])
+        self.assertIn('--run-budget 260', res['result'])
+        self.assertIn('Arbeitsordner: /home/andrew/hermes-jobs/x1', res['result'])
+
     def test_local_failure_falls_back_to_claude(self):
         fake = TMP / 'fake_fail.py'
         fake.write_text('import sys\nsys.exit(3)\n', encoding='utf-8')

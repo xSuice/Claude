@@ -23,6 +23,9 @@ VOICE_TOKEN_FILE = '/home/andrew/.config/ma-jarvis/voice-token'
 STATE_FILE = '/home/andrew/.local/share/ma-claude/route-state.json'
 LIMIT_SUPERVISOR = 15                                   # pro Tag (Supervisor nutzt das teure Modell)
 LIMIT_ROLES = 200
+LIMIT_EXEC = 40                                         # Ausführer-Läufe pro Tag (je ~2-3 Minuten CPU auf dem 2-Kern-Server)
+EXEC_WORK = '/home/andrew/hermes-jobs'
+EXEC_TOOLSETS = 'terminal,file,web,skills,todo,memory,session_search,delegation'
 
 ROLES = {'entwicklung': 'jarvis-cloud-dev', 'architektur': 'jarvis-architecture', 'sicherheit': 'jarvis-security',
          'betrieb': 'jarvis-server-fix', 'design': 'jarvis-design', 'planung': 'jarvis-planner', 'test': 'jarvis-qa',
@@ -47,6 +50,12 @@ PRIVATE = W(r'(?:mein|meine|meinen|meinem|meiner)\s+(?:\w+\s+)?(?:passw\w*|kennw
             r'lohn|steuer\w*|diagnose|krankheit\w*|therap\w*|medikament\w*|adresse|telefonnummer|geburtsdatum|ausweis\w*)|'
             r'(?:passw\w*|kennw\w*|pin)\s*(?:ist|lautet|:)|diagnose|arzt|[A-Z]{2}\d{2}(?:\s?\d{4}){4,7}')   # „ohne Passwort lauscht“ ist nicht privat
 SUPERVISOR = W(r'supervisor|kimi|spezialist\w*|fachleute|experten|council|ai-council')
+# Prüfende Aufträge dürfen an den Hermes-Ausführer (Sandbox: schreibt nur in den eigenen Arbeitsordner). Alles, was Dateien/Notizen
+# ändern oder auf eigene Daten zugreifen soll, bleibt bei Claude mit den im Chat gewählten Rechten.
+EXEC_VERB = re.compile(r'^\s*(?:(?:hey|hi|jarvis|bitte|kannst du|kannste|könntest du|würdest du|mal|ma|jetzt|und|also|ok|okay)[\s,]+)*'
+                       r'(?:prüf|pruef|check|zeig|analysier|diagnostizier|miss|teste?\b|schau (?:mal )?nach)\w*', re.I)
+EXEC_BLOCK = W(r'datei\w*|ordner\w*|pdfs?|screenshots?|fotos?|bilder?|downloads?|eingang|bibliothek|vault|notiz\w*|kalender|'
+               r'mails?|e-mails?|dokument\w*|unterlagen|\.\w{2,4}')
 NO_ROUTE = re.compile(r'^\s*(?:frag (?:mal )?claude|claude[,:]|ohne router|ohne weiterleitung)', re.I)
 SECRETISH = re.compile(r'\b(?:sk-|ghp_|gho_|xox[bap]-|AKIA)[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY')
 
@@ -120,6 +129,7 @@ ROLE_RUNNER = '/home/andrew/hermes-server/network_runner.py'   # Server-Modus: R
 ROLE_WORK = '/home/andrew/hermes-jobs/roles'
 HERMES_BIN = '/home/andrew/.local/bin/hermes'
 ROLE_MAX_S = 190
+EXEC_MAX_S = 290
 
 
 def receiver_alive():
@@ -146,10 +156,18 @@ def decide(prompt, req, has_images=False, has_files=False, fach_of=fach_via_pc, 
         return _claude('Modell ausdrücklich gewählt')
     if NO_ROUTE.match(head):
         return _claude('ausdrücklich Claude')
-    if head.startswith('/') or CMD.match(head) or MY_DATA.search(p):
+    if head.startswith('/') or MY_DATA.search(p):
         return _claude('Auftrag oder eigene Daten: braucht Werkzeuge auf dem Server')
     if PRIVATE.search(p) or SECRETISH.search(p):
         return _claude('privater Inhalt: nicht an Nexum')
+    if EXEC_VERB.match(head) and not EXEC_BLOCK.search(p):          # prüfender Auftrag ohne Dateien/Daten -> Hermes-Ausführer
+        if not alive():
+            return _claude('Hermes-Ausführer nicht bereit')
+        if state.used('jarvis-server') >= LIMIT_EXEC:
+            return _claude('Tageslimit Ausführer erreicht')
+        return {'target': 'jarvis-server', 'why': 'prüfender Auftrag: Hermes-Ausführer (Sandbox)', 'fach': None}
+    if CMD.match(head):
+        return _claude('Auftrag oder eigene Daten: braucht Werkzeuge auf dem Server')
     if not alive():
         return _claude('PC/Fachrollen nicht erreichbar')
     wants_sup = bool(SUPERVISOR.search(head)) or head.startswith('AI-Council:')
@@ -175,6 +193,8 @@ def decide(prompt, req, has_images=False, has_files=False, fach_of=fach_via_pc, 
 def label(d):
     if d['target'] == 'kimi-supervisor':
         return 'kimi-supervisor · Supervisor'
+    if d['target'] == 'jarvis-server':
+        return 'jarvis-server · Hermes-Ausführer (Nexum, Sandbox)'
     if d['target'] == 'claude':
         return 'claude'
     return '%s · Nexum (Fachrolle %s)' % (d['target'], NAMES.get(d.get('fach'), d.get('fach') or ''))
@@ -206,17 +226,24 @@ def wrap(args, prompt, req, has_images=False, has_files=False, decide_fn=None, s
     if d['target'] == 'claude':
         return args, {}, None, d
     state.count(d['target'])
-    if d['target'] != 'kimi-supervisor':
+    execute = d['target'] == 'jarvis-server'
+    if d['target'] != 'kimi-supervisor' and not execute:
         state.count('rollen')
+    work = ROLE_WORK
+    if execute:                       # eigener Arbeitsordner je Lauf: dort darf der Ausführer schreiben, sonst nirgends
+        work = os.path.join(EXEC_WORK, time.strftime('%Y%m%d-%H%M%S') + '-' + os.urandom(3).hex())
+    try:
+        os.makedirs(work, exist_ok=True)
+    except OSError:
+        pass
     env = {'MA_ROUTE_CLAUDE_ARGS': json.dumps(args), 'MA_ROUTE_CTX': ' '.join(str(req.get('ctx') or '').split())[:2000],
            'XDG_RUNTIME_DIR': '/run/user/1000',
            # Rolle als transiente Einheit im Benutzer-Dienstmanager: passende Gruppe (der Brückendienst hat ma-web, die Hermes-Dateien
            # gehören andrew), hartes Zeitlimit, bei Ende wird die ganze Prozessgruppe beendet.
            'MA_ROUTE_LOCAL_CMD': json.dumps(['systemd-run', '--user', '--quiet', '--wait', '--collect', '--pipe',
-                                             '-p', 'RuntimeMaxSec=%d' % ROLE_MAX_S, '-p', 'KillMode=control-group',
-                                             python, ROLE_RUNNER, ROLE_WORK, '--', HERMES_BIN])}
-    try:
-        os.makedirs(ROLE_WORK, exist_ok=True)
-    except OSError:
-        pass
+                                             '-p', 'RuntimeMaxSec=%d' % (EXEC_MAX_S if execute else ROLE_MAX_S), '-p', 'KillMode=control-group',
+                                             python, ROLE_RUNNER, work, '--', HERMES_BIN])}
+    if execute:
+        env.update({'MA_ROUTE_KIND': 'exec', 'MA_ROUTE_TOOLSETS': EXEC_TOOLSETS, 'MA_ROUTE_WORKDIR': work,
+                    'MA_ROUTE_TIMEOUT': str(EXEC_MAX_S - 10)})
     return [python, ASK, d['target'], label(d)], env, label(d), d
