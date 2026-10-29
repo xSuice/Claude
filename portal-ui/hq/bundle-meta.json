@@ -68,8 +68,13 @@
       "imports": [],
       "format": "esm"
     },
+    "js/jobstats.js": {
+      "bytes": 1312,
+      "imports": [],
+      "format": "esm"
+    },
     "js/cc.js": {
-      "bytes": 29590,
+      "bytes": 29592,
       "imports": [
         {
           "path": "js/api.js",
@@ -95,6 +100,11 @@
           "path": "js/ledger-view.js",
           "kind": "import-statement",
           "original": "./ledger-view.js"
+        },
+        {
+          "path": "js/jobstats.js",
+          "kind": "import-statement",
+          "original": "./jobstats.js"
         }
       ],
       "format": "esm"
@@ -219,6 +229,11 @@
       "imports": [],
       "format": "esm"
     },
+    "js/kbfield.js": {
+      "bytes": 739,
+      "imports": [],
+      "format": "esm"
+    },
     "js/port.js": {
       "bytes": 69889,
       "imports": [
@@ -257,7 +272,7 @@
       "format": "esm"
     },
     "js/app.js": {
-      "bytes": 15761,
+      "bytes": 16645,
       "imports": [
         {
           "path": "js/api.js",
@@ -295,6 +310,11 @@
           "original": "./install.js"
         },
         {
+          "path": "js/kbfield.js",
+          "kind": "import-statement",
+          "original": "./kbfield.js"
+        },
+        {
           "path": "js/port.js",
           "kind": "import-statement",
           "original": "./port.js"
@@ -323,7 +343,7 @@
           "bytesInOutput": 3999
         },
         "js/app.js": {
-          "bytesInOutput": 9650
+          "bytesInOutput": 10034
         },
         "js/chat.js": {
           "bytesInOutput": 37407
@@ -341,10 +361,13 @@
           "bytesInOutput": 1914
         },
         "js/cc.js": {
-          "bytesInOutput": 23647
+          "bytesInOutput": 23786
         },
         "js/ledger-view.js": {
           "bytesInOutput": 1093
+        },
+        "js/jobstats.js": {
+          "bytesInOutput": 718
         },
         "js/voiceui.js": {
           "bytesInOutput": 12242
@@ -370,6 +393,9 @@
         "js/install.js": {
           "bytesInOutput": 1007
         },
+        "js/kbfield.js": {
+          "bytesInOutput": 265
+        },
         "js/port.js": {
           "bytesInOutput": 51112
         },
@@ -377,7 +403,7 @@
           "bytesInOutput": 19255
         }
       },
-      "bytes": 225265
+      "bytes": 226771
     }
   }
 }

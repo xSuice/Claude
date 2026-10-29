@@ -6,6 +6,7 @@ import { subscribe, S, isFresh, shortName } from './store.js';
 import { ROSTER, SYSTEM, ROOMS } from './roster.js';
 import { SLASH_CMDS, SLASH_SKILLS } from './chat.js';
 import { renderLedger } from './ledger-view.js';
+import { jobStats, jobStatsText } from './jobstats.js';   // D1: Erfolgsquote 24 h
 
 let stopFn = null;
 export function leaveCC() { if (stopFn) { stopFn(); stopFn = null; } }
@@ -80,6 +81,7 @@ export function renderCC(root, ctx) {
   function jobs() {
     const sum = X.jobs.reduce((a, j) => a + (j.tokens_new || 0), 0), calls = X.jobs.reduce((a, j) => a + (j.claude_calls || 0), 0);
     $id('ccjobs').innerHTML = '<h2 class="holo-title">Engine-Jobs<span class="sub">/api/jarvis/jobs · ' + X.jobs.length + ' letzte · ' + fmtTok(sum) + ' neue Token · ' + calls + ' Claude-Aufrufe</span></h2>' +
+      (() => { const st = jobStats(X.jobs); return '<p class="ccrate"><span class="chip' + (st.rate != null && st.rate < 70 ? ' crimson' : '') + '">' + esc(jobStatsText(st)) + '</span></p>'; })() +
       (S.engine.active.length ? '<p><span class="chip cyan"><span class="dot live"></span> ' + S.engine.active.length + ' aktiv</span></p>' : '') +
       '<div class="ccscroll" tabindex="0" role="region" aria-label="Tabelle, mit Pfeiltasten scrollbar"><table class="table"><thead><tr><th>Job</th><th>Anfrage</th><th>Calls</th><th>Token</th><th>Ergebnis</th></tr></thead><tbody>' +
       (X.jobs.slice(0, 12).map(j => '<tr><td class="mono">' + esc(j.id.slice(-6)) + '<div class="faint">' + (j.finished ? hhmm(j.finished * 1000) : '') + '</div></td><td>' + esc(trunc(j.request, 40)) + '</td><td class="mono">' + (j.claude_calls ?? '–') + '</td><td class="mono">' + fmtTok(j.tokens_new || 0) + '</td><td><span class="chip ' + (j.verdict === 'done' ? 'cyan' : 'crimson') + '">' + esc(j.verdict || j.state) + '</span></td></tr>').join('') || '<tr><td colspan="5" class="faint">Keine Jobs.</td></tr>') + '</tbody></table></div>';

@@ -4,8 +4,9 @@ import { renderChat, chatUi } from './chat.js';
 import { renderHQ, leaveHQ } from './hq.js';
 import { renderCC, leaveCC } from './cc.js';
 import { renderVoice, leaveVoice, mountVoiceButton } from './voiceui.js';
-import { initVoice } from './voice.js';
+import { initVoice, V as VS, setMuted, stopAll } from './voice.js';
 import { mountInstall } from './install.js';
+import { raisesKeyboard } from './kbfield.js';
 import { setMe, renderNeu, renderMusik, renderEinstellungen, renderWissen, renderVault, renderJarvis } from './port.js';
 import { closeViewer } from './viewer.js';
 import * as V from './views.js';
@@ -177,6 +178,15 @@ function wirePalette() {
   });
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
+    // D1 Tastenkürzel (nicht in Eingabefeldern): Esc = JARVIS verstummt, Alt+M = Mikro stumm im Gesprächsmodus, Alt+1..4 = HQ/CC/Chat/Sprache
+    const typing = /^(?:INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '') || (e.target && e.target.isContentEditable);
+    if (e.key === 'Escape' && !typing && (VS.state === 'speaking' || VS.state === 'thinking')) { stopAll(); toast('JARVIS gestoppt'); }
+    if (e.altKey && !e.ctrlKey && !typing) {
+      const k = e.key.toLowerCase();
+      if (k === 'm' && VS.convo) { e.preventDefault(); setMuted(!VS.muted); toast(VS.muted ? 'Mikrofon stumm' : 'Mikrofon an'); }
+      const nav = { 1: 'hq', 2: 'cc', 3: 'chat', 4: 'voice' }[k];
+      if (nav) { e.preventDefault(); go(nav); }
+    }
   });
 }
 
@@ -227,7 +237,7 @@ function mountTabbar() {
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('nav-open')) { closeSheet(); const m = $('#tab-more'); if (m) m.focus(); } });
   // Bildschirmtastatur: Tab-Leiste ausblenden, solange ein Eingabefeld fokussiert ist (Eingabefeld bleibt sichtbar)
-  const isField = t => t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+  const isField = raisesKeyboard;   // Fix 29.10.: SELECT/Häkchen setzten body.kb und versteckten ihr eigenes Optionsfeld
   document.addEventListener('focusin', e => { if (isField(e.target) && matchMedia('(max-width: 720px), (max-height: 500px)').matches) document.body.classList.add('kb'); });
   document.addEventListener('focusout', () => { setTimeout(() => { if (!isField(document.activeElement)) document.body.classList.remove('kb'); }, 50); });
 }
