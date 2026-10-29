@@ -1,0 +1,86 @@
+model:
+  default: qwen-3.8-max-thinking
+  provider: nexum
+agent:
+  reasoning_effort: high
+  max_turns: 30
+  run_budget_seconds: 600
+  verify_on_stop: true
+  disabled_toolsets:
+    - cronjob
+    - kanban
+    - browser
+    - computer_use
+    - image_gen
+    - video_gen
+delegation:
+  orchestrator_enabled: false
+  max_concurrent_children: 1
+  subagent_auto_approve: false
+  reasoning_effort: high
+  provider: kimi
+  model: kimi-for-coding
+kanban:
+  dispatch_in_gateway: false
+  auto_decompose: false
+  auto_subscribe_on_create: false
+approvals:
+  mode: manual
+  cron_mode: deny
+  single_query_mode: deny
+  unattended_mode: deny
+platform_toolsets:
+  cli:
+    - file
+    - terminal
+    - web
+    - skills
+    - todo
+    - memory
+    - session_search
+    - delegation
+fallback_providers:
+  - provider: nexum
+    model: qwen-3.7-max-thinking
+  - provider: nexum
+    model: qwen-3.8-omni-flash
+  - provider: kimi
+    model: kimi-for-coding
+moa:
+  privacy_filter: full
+terminal:
+  cwd: /home/andrew/.hermes/profiles/jarvis-server/workspace
+curator:
+  enabled: false
+auxiliary:
+  background_review:
+    enabled: false
+  title_generation:
+    provider: nexum
+    model: qwen-3.8-omni-flash
+  compression:
+    provider: nexum
+    model: qwen-3.8-omni-flash
+    reasoning_effort: low
+providers:
+  nexum:
+    name: nexum
+    base_url: https://dialagram.me/router/v1
+    model: qwen-3.8-max-thinking
+    key_env: NEXUM_API_KEY
+    context_length: 65536
+  kimi:
+    name: kimi
+    base_url: https://api.kimi.ai/coding/v1
+    model: kimi-for-coding
+    key_env: KIMI_API_KEY
+    models:
+      - kimi-for-coding
+      - kimi-for-coding-highspeed
+model_aliases:
+  supervisor:
+    provider: kimi
+    model: kimi-for-coding
+  schnell:
+    provider: nexum
+    model: qwen-3.8-omni-flash
