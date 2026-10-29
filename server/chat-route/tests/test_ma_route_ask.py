@@ -64,6 +64,7 @@ class LocalRole(unittest.TestCase):
         self.assertIn('-t terminal,file,web', res['result'])
         self.assertIn('--max-turns 30', res['result'])
         self.assertIn('--run-budget 260', res['result'])
+        self.assertIn('--in /home/andrew/hermes-jobs/x1', res['result'])
         self.assertIn('Arbeitsordner: /home/andrew/hermes-jobs/x1', res['result'])
 
     def test_local_failure_falls_back_to_claude(self):

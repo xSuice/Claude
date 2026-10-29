@@ -1,5 +1,6 @@
 """Run on server, exercises the real network-isolated candidate, no model calls."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -36,6 +37,20 @@ print(json.dumps(r))
         for host in ['dialagram.me','api.kimi.ai']:
             self.assertIsInstance(r[host], int, r)
         print(json.dumps(r, sort_keys=True))
+
+    def test_runner_timeout_env_and_no_timeout_for_terminal(self):
+        import pty
+        runner = Path(__file__).with_name('network_runner.py')
+        work = Path.home() / 'hermes-qualification/jobs/timeout-test'
+        work.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ, MA_RUNNER_TIMEOUT='2')
+        cmd = [sys.executable, str(runner), str(work), '--', '/bin/sleep', '4']
+        p = subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+        self.assertEqual(p.returncode, 124)                      # Hintergrundauftrag: hartes Limit
+        master, slave = pty.openpty()
+        p = subprocess.run(cmd, env=env, stdin=slave, capture_output=True, timeout=30)
+        os.close(master); os.close(slave)
+        self.assertEqual(p.returncode, 0)                        # interaktive Sitzung am Terminal: kein Limit
 
     def test_cancel_kills_detached_descendants(self):
         import os

@@ -69,7 +69,9 @@ def outside(work, argv):
         try:
             proc = subprocess.Popen(['/bin/bash', str(script), work, '--', *argv], start_new_session=True)
             try:
-                return proc.wait(timeout=300)
+                # Terminal-Sitzung (Mensch am Server): kein Limit. Hintergrundauftrag: hartes Limit, überschreibbar.
+                limit = None if os.isatty(0) else float(os.environ.get('MA_RUNNER_TIMEOUT') or 300)
+                return proc.wait(timeout=limit)
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()

@@ -41,7 +41,7 @@ exec bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp \
   --bind "$WORK" "$WORK" \
   --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup-try --share-net --disable-userns \
   --die-with-parent --new-session --cap-drop ALL --clearenv \
-  --setenv HOME "$H" --setenv USER andrew --setenv LANG C.UTF-8 --setenv TERM dumb \
+  --setenv TERMINAL_CWD "$WORK" --setenv HOME "$H" --setenv USER andrew --setenv LANG C.UTF-8 --setenv TERM dumb \
   --setenv PATH "$H/.local/bin:/usr/local/bin:/usr/bin:/bin" \
   --setenv NEXUM_API_KEY "$NEXUM" --setenv KIMI_API_KEY "$KIMI" \
   --chdir "$WORK" \

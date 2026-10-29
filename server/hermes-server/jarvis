@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# jarvis - KI direkt auf ma-server benutzen (Hermes-Profil jarvis-server: Nexum, Kimi nur als Supervisor per Delegation).
+# Läuft in der Sandbox: schreibt nur in den Arbeitsordner, kein sudo, keine Schlüssel/Dienst-Sockets, Netz nur zu Nexum/Kimi.
+# Aufruf:  jarvis [arbeitsordner]            interaktiv (Standard: ~/hermes-jobs/arbeit)
+#          jarvis [arbeitsordner] "Aufgabe"   einmalige Aufgabe, Antwort im Terminal
+set -euo pipefail
+DIR=${1:-$HOME/hermes-jobs/arbeit}
+mkdir -p "$DIR"
+if [ $# -ge 2 ]; then
+  shift
+  exec timeout 600 python3 "$HOME/hermes-server/network_runner.py" "$DIR" -- "$HOME/.local/bin/hermes" -p jarvis-server chat --in "$DIR" --oneshot -Q --run-budget 540 -q "$*"
+fi
+echo "JARVIS (Hermes, Nexum; Kimi = Supervisor). Arbeitsordner: $DIR  - Beenden mit /exit" >&2
+exec python3 "$HOME/hermes-server/network_runner.py" "$DIR" -- "$HOME/.local/bin/hermes" -p jarvis-server chat --in "$DIR"

@@ -40,8 +40,9 @@ def ask_local(target, prompt, ctx):
     t0 = time.monotonic()
     exec_mode = os.environ.get('MA_ROUTE_KIND') == 'exec'
     toolsets = os.environ.get('MA_ROUTE_TOOLSETS') or ROLE_TOOLSETS
+    in_dir = ['--in', os.environ['MA_ROUTE_WORKDIR']] if exec_mode and os.environ.get('MA_ROUTE_WORKDIR') else []
     r = subprocess.run(LOCAL_CMD + ['-p', target, 'chat', '--oneshot', '-Q', '-t', toolsets, '--run-budget', str(int(TIMEOUT) - 20),
-                                    '--max-turns', '30' if exec_mode else '12', '-q', q],
+                                    '--max-turns', '30' if exec_mode else '12', *in_dir, '-q', q],
                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=TIMEOUT, encoding='utf-8', errors='replace')
     if r.returncode != 0:
         raise OSError('rc %d' % r.returncode)
